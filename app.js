@@ -8962,7 +8962,9 @@
   function buildCalDayTaskRow(t, node) {
     const li = document.createElement("li");
     const subProg = taskSubtaskProgress(t);
-    li.className = "task-row" + (t.done ? " done" : "");
+    const dueDate = t.due ? fromISODate(t.due) : null;
+    const isOverdue = !!(dueDate && !t.done && dueDate < startOfToday());
+    li.className = "task-row" + (t.done ? " done" : "") + (isOverdue ? " overdue" : "");
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -8978,10 +8980,26 @@
       renderCalendar();
     });
 
+    const main = document.createElement("div");
+    main.className = "task-main";
+
+    const rowTop = document.createElement("div");
+    rowTop.className = "task-row-top";
+
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
+
+    const starsWrap = document.createElement("span");
+    starsWrap.className = "task-stars";
+    const starCount = getTaskStars(t);
+    for (let i = 0; i < Math.max(starCount, 1); i++) {
+      const s = document.createElement("span");
+      s.className = "task-star" + (i < starCount ? " filled" : "");
+      s.textContent = i < starCount ? "★" : "";
+      if (i < starCount) starsWrap.appendChild(s);
+    }
 
     const nodeBtn = document.createElement("button");
     nodeBtn.type = "button";
@@ -8995,9 +9013,23 @@
       focusNodeInCanvas(node.id);
     });
 
+    rowTop.appendChild(text);
+    if (starCount > 0) rowTop.appendChild(starsWrap);
+    rowTop.appendChild(nodeBtn);
+    main.appendChild(rowTop);
+
+    if (subProg.total > 0) {
+      const mini = document.createElement("div");
+      mini.className = "task-progress-mini";
+      const fill = document.createElement("div");
+      fill.className = "task-progress-mini-fill";
+      fill.style.width = Math.round(subProg.pct * 100) + "%";
+      mini.appendChild(fill);
+      main.appendChild(mini);
+    }
+
     li.appendChild(cb);
-    li.appendChild(text);
-    li.appendChild(nodeBtn);
+    li.appendChild(main);
     return li;
   }
   $("#cal-day-modal-close-btn").addEventListener("click", closeCalDayModal);

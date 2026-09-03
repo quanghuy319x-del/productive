@@ -2816,121 +2816,175 @@ kbd{
 /* ============================================================
    Calendar — a single month grid across every task (on every node) in
    the current map that has a due date, opened from the toolbar's
-   📅 Calendar button. Same flat black & white theme as the Tasks
-   modal, scoped to #calendar-modal / #cal-day-modal(-backdrop) so the
-   rest of the app keeps its usual dark/colorful look. */
+   📅 Calendar button. Ported with the exact palette/typography of the
+   standalone Tasks app's own Calendar tab (light card, blue accent,
+   gold star, red danger, soft drop-shadow), scoped to #calendar-modal
+   / #cal-day-modal(-backdrop) so the rest of Branchline keeps its
+   usual dark/colorful theme. */
+#calendar-modal{
+  --cal-bg: #f4f2ec;
+  --cal-card: #ffffff;
+  --cal-card-border: #e4e0d4;
+  --cal-text: #24231f;
+  --cal-text-dim: #6f6b5e;
+  --cal-text-faint: #a29d8c;
+  --cal-accent: #3b6ef0;
+  --cal-accent-dim: #eaf0ff;
+  --cal-danger: #c0392b;
+  --cal-star: #e0a52c;
+  --cal-radius: 12px;
+  --cal-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
 #calendar-modal .modal-card{
-  background: #ffffff;
-  color: #5a5a5a;
-  border: 1px solid #5a5a5a;
+  background: var(--cal-card);
+  color: var(--cal-text);
+  border: none;
+  box-shadow: var(--cal-shadow);
+  border-radius: var(--cal-radius);
 }
-.calendar-modal-card{ width: 620px; max-width: 94vw; }
+.calendar-modal-card{ width: 640px; max-width: 94vw; }
 #calendar-modal .modal-back-btn{
-  background: #ffffff;
-  color: #5a5a5a;
-  border: 1px solid #5a5a5a;
+  border:1px solid var(--cal-card-border); background: var(--cal-card); color: var(--cal-text);
+  box-shadow: var(--cal-shadow);
 }
-#calendar-modal .modal-back-btn:hover{ background: #f0f0f0; }
-#calendar-modal h2{ color: #5a5a5a; }
+#calendar-modal .modal-back-btn:hover{ border-color: var(--cal-accent); color: var(--cal-accent); background: var(--cal-card); }
+#calendar-modal h2{ color: var(--cal-text); font-weight:700; }
 
 #calendar-header{
   display:flex; align-items:center; justify-content:center; gap:10px;
   margin-bottom: 12px;
 }
-#cal-month-label{ font-size:15px; font-weight:700; min-width: 150px; text-align:center; color: #5a5a5a; }
+#cal-month-label{ font-size:15px; font-weight:700; min-width: 150px; text-align:center; color: var(--cal-text); }
 .cal-nav-btn{
-  border:1px solid #5a5a5a; background: #ffffff; color: #5a5a5a;
+  border:1px solid var(--cal-card-border); background: var(--cal-card); color: var(--cal-text);
   border-radius:8px; width:30px; height:30px; font-size:16px; line-height:1;
-  cursor:pointer;
+  cursor:pointer; box-shadow: var(--cal-shadow);
 }
-.cal-nav-btn:hover{ background: #f0f0f0; }
+.cal-nav-btn:hover{ border-color: var(--cal-accent); color: var(--cal-accent); }
 .cal-today-btn{
-  border:1px solid #5a5a5a; background: #ffffff; color: #5a5a5a;
+  border:1px solid var(--cal-card-border); background: var(--cal-card); color: var(--cal-text-dim);
   border-radius:999px; padding:5px 12px; font-size:12px; font-weight:600;
-  cursor:pointer;
+  cursor:pointer; box-shadow: var(--cal-shadow);
 }
-.cal-today-btn:hover{ background: #f0f0f0; }
+.cal-today-btn:hover{ border-color: var(--cal-accent); color: var(--cal-accent); }
 
 #calendar-weekdays{
   display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; margin-bottom:4px;
 }
 .calendar-weekday{
-  text-align:center; font-size:11px; font-weight:700; color: #a0a0a0;
+  text-align:center; font-size:11px; font-weight:700; color: var(--cal-text-faint);
   text-transform:uppercase; letter-spacing:0.03em; padding-bottom:2px;
 }
 #calendar-grid{
-  display:grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(64px, auto);
+  display:grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: minmax(70px, auto);
   gap:4px;
 }
 .calendar-cell{
-  background: #f7f7f7; border:1px solid #e2e2e2; border-radius:8px;
+  background: var(--cal-card); border:1px solid var(--cal-card-border); border-radius:8px;
   padding: 4px 4px 5px; display:flex; flex-direction:column; gap:3px;
   cursor:pointer; min-width:0;
 }
-.calendar-cell:hover{ border-color: #5a5a5a; }
+.calendar-cell:hover{ border-color: var(--cal-accent); }
 .calendar-cell.other-month{ background: transparent; border-color: transparent; }
-.calendar-cell.other-month .calendar-day-num{ color: #c2c2c2; }
+.calendar-cell.other-month .calendar-day-num{ color: var(--cal-text-faint); opacity:0.5; }
 .calendar-cell.today .calendar-day-num{
-  background: #5a5a5a; color:#fff; border-radius:999px; font-weight:700;
+  background: var(--cal-accent); color:#fff; border-radius:999px; font-weight:700;
   width:20px; height:20px; display:flex; align-items:center; justify-content:center;
 }
-.calendar-day-num{ font-size:10.5px; font-weight:500; color: #a0a0a0; flex:none; }
+.calendar-day-num{ font-size:10.5px; font-weight:500; color: var(--cal-text-faint); flex:none; }
 .calendar-day-head{ display:flex; align-items:center; gap:5px; }
 .calendar-day-counter{
-  font-size:12px; font-weight:800; color:#fff; background: #33b3f0;
-  border-radius:999px; min-width:22px; height:18px; padding: 0 6px; line-height:18px;
+  font-size:12px; font-weight:800; color:#fff; background: var(--cal-accent);
+  border-radius:999px; min-width:24px; height:19px; padding: 0 7px; line-height:19px;
   text-align:center; flex:none; font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 4px rgba(59,110,240,0.35);
 }
-.calendar-day-counter.all-done{ background: #f5c14b; color: #4a3402; }
+.calendar-day-counter.all-done{ background: var(--cal-star); color: #4a3402; box-shadow: 0 1px 4px rgba(224,165,44,0.45); }
 .calendar-day-tasks{ display:flex; flex-wrap:wrap; gap:2px 3px; min-width:0; }
-.calendar-task-box{ font-size: inherit; line-height:1; color: #33b3f0; flex:none; }
+.calendar-task-box{
+  font-size: inherit; line-height:1; color: var(--cal-accent); flex:none;
+}
 .calendar-task-box.calendar-subtask-box{ font-size:0.85em; opacity:0.85; }
-.calendar-task-box.done{ color: #c0392b; font-weight:700; }
+.calendar-task-box.done{ color: var(--cal-danger); font-weight:700; }
 
 @media (max-width: 480px){
-  #calendar-grid{ grid-auto-rows: minmax(50px, auto); gap:3px; }
+  #calendar-grid{ grid-auto-rows: minmax(56px, auto); gap:3px; }
   .calendar-cell{ padding:3px 3px 4px; }
   .calendar-task-box{ font-size:11.5px; }
-  .calendar-day-counter{ font-size:10.5px; min-width:18px; height:15px; line-height:15px; padding:0 4px; }
+  .calendar-day-counter{ font-size:10.5px; min-width:20px; height:16px; line-height:16px; padding:0 5px; }
   .calendar-weekday{ font-size:9.5px; }
   #cal-month-label{ min-width:120px; font-size:13.5px; }
 }
 
-/* ---- Day detail popup — tapping a day opens this blurred-backdrop
-   card showing that day's full due list across the whole map. ---- */
+/* ---- Day detail modal — tapping a day opens this blurred-backdrop
+   card showing that day's full due list, styled to match the same
+   Calendar palette above (it isn't nested inside #calendar-modal in
+   the DOM, so it repeats the same values directly). ---- */
 .day-modal-backdrop{
   position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center;
-  padding: 20px; background: rgba(20,18,12,0.4);
+  padding: 20px; background: rgba(20,18,12,0.32);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 .day-modal-backdrop.hidden{ display:none; }
 .day-modal{
-  background: #ffffff; color:#5a5a5a; border: 1px solid #5a5a5a; border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.22);
   width:100%; max-width: 460px; max-height: 82vh; overflow-y:auto;
   padding: 18px 18px 20px;
+  color: #24231f;
 }
 .day-modal-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
-.day-modal-header h2{ font-size:16px; font-weight:700; margin:0; color:#5a5a5a; }
+.day-modal-header h2{ font-size:16px; font-weight:700; margin:0; letter-spacing:-0.01em; color:#24231f; }
 .day-modal-close-btn{
-  border:none; background:none; color: #5a5a5a; cursor:pointer;
+  border:none; background:none; color: #6f6b5e; cursor:pointer;
   font-size:20px; line-height:1; padding: 2px 7px; border-radius:7px; flex:none;
 }
-.day-modal-close-btn:hover{ background: #f0f0f0; }
+.day-modal-close-btn:hover{ background: #eaf0ff; color: #3b6ef0; }
 
 .today-task-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
-.today-task-list .task-row{ background: #f7f7f7; border-radius:6px; }
-.today-task-list .task-drag-handle{ display:none; } /* no reordering from this cross-node view */
-.today-task-list .task-source-node{
-  flex:none; font-size:11px; color:#a0a0a0; border:1px solid #d8d8d8; border-radius:999px;
-  padding:2px 8px; cursor:pointer; white-space:nowrap; max-width:120px; overflow:hidden;
-  text-overflow:ellipsis; background:#ffffff;
+
+/* ---- Cross-node task row inside the day popup — same markup/classes
+   and look as the standalone Tasks app's row (checkbox, main column
+   with text + stars, optional subtask progress sliver, then a small
+   pill showing which node it lives on, since these tasks don't all
+   belong to one flat list the way they do in that app). ---- */
+#cal-day-modal .task-row{
+  display:flex; align-items:flex-start; gap:8px;
+  background: #ffffff; border:1px solid #e4e0d4; border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
+  padding: 10px 12px;
 }
-.today-task-list .task-source-node:hover{ color:#33b3f0; border-color:#33b3f0; }
-#cal-day-modal .task-text{ color:#000000; }
-#cal-day-modal .task-row.done .task-text{ color:#c2c2c2; text-decoration: line-through; }
-#cal-day-modal .task-checkbox{ border-color:#5a5a5a; accent-color:#5a5a5a; }
+#cal-day-modal .task-row.done .task-text{ text-decoration: line-through; color: #a29d8c; }
+#cal-day-modal .task-row.overdue .task-text{ color: #c0392b; }
+#cal-day-modal .task-checkbox{
+  width:17px; height:17px; margin: 2px 0 0; flex:none; accent-color: #3b6ef0; cursor:pointer;
+  border-radius: 0; border: none; background: none; appearance: auto; -webkit-appearance: auto;
+  transform:none;
+}
+#cal-day-modal .task-main{ flex:1; min-width:0; }
+#cal-day-modal .task-row-top{ display:flex; align-items:flex-start; gap:8px; }
+#cal-day-modal .task-text{
+  flex:1; min-width:0; font-size:14.5px; line-height:1.4; padding-top:1px;
+  word-break: break-word; white-space: pre-wrap; color:#24231f;
+}
+#cal-day-modal .task-stars{ display:flex; gap:1px; flex:none; padding-top:1px; }
+#cal-day-modal .task-star{
+  font-size:14px; line-height:1; color: #d8d4c6;
+}
+#cal-day-modal .task-star.filled{ color: #e0a52c; }
+#cal-day-modal .task-progress-mini{
+  height:4px; border-radius:999px; background: #e4e0d4; margin-top:6px; overflow:hidden;
+}
+#cal-day-modal .task-progress-mini-fill{ height:100%; background: #3b6ef0; border-radius:999px; }
+#cal-day-modal .task-source-node{
+  flex:none; font-size:11px; color:#6f6b5e; border:1px solid #e4e0d4; border-radius:999px;
+  padding:2px 8px; cursor:pointer; white-space:nowrap; max-width:130px; overflow:hidden;
+  text-overflow:ellipsis; background:#ffffff; margin-top:1px;
+}
+#cal-day-modal .task-source-node:hover{ color:#3b6ef0; border-color:#3b6ef0; background:#eaf0ff; }
+
 #cal-day-modal-empty-state.empty-state{
-  text-align:center; color:#a0a0a0; font-size:13.5px; margin-top:20px;
+  text-align:center; color:#a29d8c; font-size:13.5px; margin-top:20px;
 }
 #cal-day-modal-empty-state.empty-state.hidden{ display:none; }
