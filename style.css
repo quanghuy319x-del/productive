@@ -1706,7 +1706,6 @@ kbd{
   .task-note-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-note-btn.has-note{ opacity: 1; }
   .task-due-btn{ opacity: 0; transition: opacity .12s ease; }
-  .task-due-btn.has-due{ opacity: 1; }
   .task-row:hover .task-drag-handle,
   .task-row:focus-within .task-drag-handle,
   .task-row:hover .task-star,
