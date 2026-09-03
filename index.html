@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 <div id="app">
@@ -379,6 +379,10 @@
       <h2 id="cal-day-modal-title"></h2>
       <button id="cal-day-modal-close-btn" type="button" class="day-modal-close-btn" title="Close">×</button>
     </div>
+    <div class="day-modal-add-row">
+      <textarea id="cal-day-new-input" class="day-modal-new-input autosize-input" rows="1" placeholder="Add a task and press Enter…" spellcheck="false"></textarea>
+      <button type="button" id="cal-day-sort-stars" class="day-modal-sort-btn" title="Sort tasks by stars, highest first">★ Sort</button>
+    </div>
     <ul id="cal-day-modal-task-list" class="today-task-list"></ul>
     <div id="cal-day-modal-empty-state" class="empty-state hidden">Nothing due this day.</div>
   </div>
@@ -437,6 +441,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

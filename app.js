@@ -8803,9 +8803,12 @@
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
   const calDayModalEmpty = $("#cal-day-modal-empty-state");
+  const calDayNewInput = $("#cal-day-new-input");
+  const calDaySortBtn = $("#cal-day-sort-stars");
   let calCursor = new Date();
   calCursor.setDate(1); // first of the currently-displayed month
   let calDayModalDate = null; // "YYYY-MM-DD" of the day currently shown, or null when closed
+  let calDaySortByStars = false; // view-only sort toggle for the day popup, reset each time it opens
 
   // Every task on every node, anywhere in the tree — deliberately
   // ignores node.collapsed (unlike the render walks) so a task due
@@ -8934,13 +8937,25 @@
   calendarModal.addEventListener("click", (e) => { if (e.target === calendarModal) closeCalendarModal(); });
   $("#btn-calendar").addEventListener("click", openCalendarModal);
 
-  /* ---- Day detail popup — a lightweight, read-through task row (check
-     off, jump to its node) rather than the full editor from the Tasks
-     modal; renaming/subtasks/etc. still happen there. ---- */
+  /* ---- Day detail popup — now the same rich, hover-revealed row used
+     by the standalone Tasks modal (drag handle, checkbox, "+" to add a
+     subtask, ★ priority, delete) rather than the old read-only row, so
+     a task can be triaged right from the calendar. The due date itself
+     is left off each row — the whole popup is already scoped to one
+     day, so repeating it would just be noise. Tasks here still live on
+     whichever node owns them (this list is a filtered view across the
+     whole tree), so each row keeps a small hover-reveal pill to jump
+     to that node, and drag-reorder only takes effect between two tasks
+     on the *same* node — a drop across nodes is a no-op. */
+  let calDayTaskDragState = null; // { taskId, nodeId }
+  let calDaySubtaskDragState = null; // { taskId, subtaskId } — reorder within one task's own list
+
   function openCalDayModal(iso) {
     calDayModalDate = iso;
+    calDaySortByStars = false;
     renderCalDayModal();
     calDayModalBackdrop.classList.remove("hidden");
+    requestAnimationFrame(() => autosizeTextarea(calDayNewInput));
   }
   function closeCalDayModal() {
     calDayModalDate = null;
@@ -8954,17 +8969,68 @@
       ? `Today · ${MONTH_LABELS[d.getMonth()]} ${d.getDate()}`
       : `${MONTH_LABELS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 
-    const dayEntries = allTasksWithNodes().filter(e => e.task.due === calDayModalDate);
+    let dayEntries = allTasksWithNodes().filter(e => e.task.due === calDayModalDate);
+    if (calDaySortByStars) {
+      dayEntries = dayEntries.slice().sort((a, b) => getTaskStars(b.task) - getTaskStars(a.task));
+    }
     calDayModalList.innerHTML = "";
-    dayEntries.forEach(({ task: t, node }) => calDayModalList.appendChild(buildCalDayTaskRow(t, node)));
+    dayEntries.forEach(({ task: t, node }) => {
+      calDayModalList.appendChild(buildCalDayTaskRow(t, node));
+      const subProg = taskSubtaskProgress(t);
+      const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
+      if (subExpanded) calDayModalList.appendChild(renderCalDaySubtaskPanel(node, t));
+    });
     calDayModalEmpty.classList.toggle("hidden", dayEntries.length > 0);
+    calDaySortBtn.disabled = dayEntries.length < 2;
   }
+
   function buildCalDayTaskRow(t, node) {
     const li = document.createElement("li");
     const subProg = taskSubtaskProgress(t);
-    const dueDate = t.due ? fromISODate(t.due) : null;
-    const isOverdue = !!(dueDate && !t.done && dueDate < startOfToday());
-    li.className = "task-row" + (t.done ? " done" : "") + (isOverdue ? " overdue" : "");
+    const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
+    li.className = "task-row" + (t.done ? " done" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (subExpanded ? " has-open-subtasks" : "");
+
+    li.addEventListener("dragover", (e) => {
+      if (!calDayTaskDragState || calDayTaskDragState.taskId === t.id || calDayTaskDragState.nodeId !== node.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const rect = li.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height / 2;
+      li.classList.toggle("drag-over-top", before);
+      li.classList.toggle("drag-over-bottom", !before);
+    });
+    li.addEventListener("dragleave", (e) => {
+      if (e.relatedTarget && li.contains(e.relatedTarget)) return;
+      li.classList.remove("drag-over-top", "drag-over-bottom");
+    });
+    li.addEventListener("drop", (e) => {
+      if (!calDayTaskDragState || calDayTaskDragState.taskId === t.id || calDayTaskDragState.nodeId !== node.id) return;
+      e.preventDefault();
+      const rect = li.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height / 2;
+      li.classList.remove("drag-over-top", "drag-over-bottom");
+      reorderCalDayTask(node, calDayTaskDragState.taskId, t.id, before);
+    });
+
+    const handle = document.createElement("span");
+    handle.className = "task-drag-handle";
+    handle.textContent = "⠿";
+    handle.title = `Drag to reorder within "${node.text || "(untitled)"}"`;
+    handle.draggable = true;
+    handle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
+    handle.addEventListener("dragstart", (e) => {
+      e.stopPropagation();
+      if (!requireSignIn()) { e.preventDefault(); return; }
+      calDayTaskDragState = { taskId: t.id, nodeId: node.id };
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
+      li.classList.add("task-dragging");
+    });
+    handle.addEventListener("dragend", () => {
+      li.classList.remove("task-dragging");
+      calDayTaskDragState = null;
+      calDayModalList.querySelectorAll(".task-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
+    });
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -8980,27 +9046,60 @@
       renderCalendar();
     });
 
-    const main = document.createElement("div");
-    main.className = "task-main";
-
-    const rowTop = document.createElement("div");
-    rowTop.className = "task-row-top";
-
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
 
-    const starsWrap = document.createElement("span");
-    starsWrap.className = "task-stars";
-    const starCount = getTaskStars(t);
-    for (let i = 0; i < Math.max(starCount, 1); i++) {
-      const s = document.createElement("span");
-      s.className = "task-star" + (i < starCount ? " filled" : "");
-      s.textContent = i < starCount ? "★" : "";
-      if (i < starCount) starsWrap.appendChild(s);
-    }
+    // "+" — open (and expand, if collapsed) this task's subtask panel.
+    const subtaskAddBtn = document.createElement("button");
+    subtaskAddBtn.type = "button";
+    subtaskAddBtn.className = "task-subtask-add-btn";
+    subtaskAddBtn.title = "Add a subtask";
+    subtaskAddBtn.textContent = "+";
+    subtaskAddBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      collapsedSubtaskIds.delete(t.id);
+      subtaskAddOpenFor.add(t.id);
+      renderCalDayModal();
+    });
 
+    // ★ priority — same 0-3 star cycle as the Tasks modal.
+    const stars = getTaskStars(t);
+    const star = document.createElement("button");
+    star.type = "button";
+    star.className = "task-star" + (stars > 0 ? " starred" : "");
+    star.textContent = stars > 0 ? "★".repeat(stars) : "☆";
+    star.title = stars > 0
+      ? `${stars} star${stars > 1 ? "s" : ""} — click to ${stars < 3 ? "add another" : "clear"}`
+      : "Star this task for priority";
+    star.addEventListener("click", (e) => {
+      e.stopPropagation();
+      pushUndo();
+      t.stars = stars >= 3 ? 0 : stars + 1;
+      t.starred = t.stars > 0;
+      persist();
+      renderCalDayModal();
+    });
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "task-delete";
+    del.title = "Delete task";
+    del.textContent = "×";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!requireSignIn()) return;
+      if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
+      pushUndo();
+      node.tasks = getNodeTasks(node).filter(x => x !== t);
+      persist();
+      renderCalDayModal();
+      renderCalendar();
+    });
+
+    // Which node this task lives on — a small hover-reveal pill (rather
+    // than always-on) so the row itself stays a clean, flat to-do line.
     const nodeBtn = document.createElement("button");
     nodeBtn.type = "button";
     nodeBtn.className = "task-source-node";
@@ -9013,29 +9112,272 @@
       focusNodeInCanvas(node.id);
     });
 
-    rowTop.appendChild(text);
-    if (starCount > 0) rowTop.appendChild(starsWrap);
-    rowTop.appendChild(nodeBtn);
-    main.appendChild(rowTop);
+    li.title = subExpanded
+      ? "Double-click to hide subtasks"
+      : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
+    li.addEventListener("dblclick", (e) => {
+      if (e.target.closest(".task-checkbox, .task-star, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-source-node")) return;
+      if (subExpanded) {
+        collapsedSubtaskIds.add(t.id);
+      } else {
+        collapsedSubtaskIds.delete(t.id);
+        if (!subProg.total) subtaskAddOpenFor.add(t.id);
+      }
+      renderCalDayModal();
+    });
 
-    if (subProg.total > 0) {
-      const mini = document.createElement("div");
-      mini.className = "task-progress-mini";
-      const fill = document.createElement("div");
-      fill.className = "task-progress-mini-fill";
-      fill.style.width = Math.round(subProg.pct * 100) + "%";
-      mini.appendChild(fill);
-      main.appendChild(mini);
-    }
-
+    li.appendChild(handle);
     li.appendChild(cb);
-    li.appendChild(main);
+    li.appendChild(text);
+    li.appendChild(subtaskAddBtn);
+    li.appendChild(star);
+    li.appendChild(del);
+    li.appendChild(nodeBtn);
     return li;
   }
+
+  function reorderCalDayTask(node, sourceTaskId, targetTaskId, before) {
+    if (sourceTaskId === targetTaskId) return;
+    const tasks = getNodeTasks(node).slice();
+    const fromIdx = tasks.findIndex(x => x.id === sourceTaskId);
+    if (fromIdx === -1) return;
+    const [moved] = tasks.splice(fromIdx, 1);
+    const toIdx = tasks.findIndex(x => x.id === targetTaskId);
+    pushUndo();
+    if (toIdx === -1) tasks.push(moved);
+    else tasks.splice(before ? toIdx : toIdx + 1, 0, moved);
+    node.tasks = tasks;
+    persist();
+    renderCalDayModal();
+  }
+
+  // Builds the same expanded subtask checklist panel as the Tasks
+  // modal (checkbox, drag handle, delete, add-subtask input), just
+  // re-rendering into the day popup's own list instead.
+  function renderCalDaySubtaskPanel(node, t) {
+    const wrap = document.createElement("li");
+    wrap.className = "subtask-panel";
+
+    const list = document.createElement("ul");
+    list.className = "subtask-list";
+
+    getTaskSubtasks(t).forEach((s) => {
+      const row = document.createElement("li");
+      row.className = "subtask-row" + (s.done ? " done" : "");
+
+      row.addEventListener("dragover", (e) => {
+        if (!calDaySubtaskDragState || calDaySubtaskDragState.taskId !== t.id || calDaySubtaskDragState.subtaskId === s.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        const rect = row.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        row.classList.toggle("drag-over-top", before);
+        row.classList.toggle("drag-over-bottom", !before);
+      });
+      row.addEventListener("dragleave", (e) => {
+        if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+        row.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+      row.addEventListener("drop", (e) => {
+        if (!calDaySubtaskDragState || calDaySubtaskDragState.taskId !== t.id || calDaySubtaskDragState.subtaskId === s.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = row.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        row.classList.remove("drag-over-top", "drag-over-bottom");
+        moveCalDaySubtask(t, calDaySubtaskDragState.subtaskId, s.id, before);
+      });
+
+      const shandle = document.createElement("span");
+      shandle.className = "task-drag-handle subtask-drag-handle";
+      shandle.textContent = "⠿";
+      shandle.title = "Drag to reorder";
+      shandle.draggable = true;
+      shandle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
+      shandle.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+        if (!requireSignIn()) { e.preventDefault(); return; }
+        calDaySubtaskDragState = { taskId: t.id, subtaskId: s.id };
+        e.dataTransfer.effectAllowed = "move";
+        try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
+        row.classList.add("task-dragging");
+      });
+      shandle.addEventListener("dragend", () => {
+        row.classList.remove("task-dragging");
+        calDaySubtaskDragState = null;
+        calDayModalList.querySelectorAll(".subtask-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
+      });
+
+      const scb = document.createElement("input");
+      scb.type = "checkbox";
+      scb.className = "subtask-checkbox";
+      scb.checked = !!s.done;
+      scb.addEventListener("click", (e) => e.stopPropagation());
+      scb.addEventListener("change", () => {
+        pushUndo();
+        s.done = scb.checked;
+        syncTaskDoneFromSubtasks(t);
+        persist();
+        renderCalDayModal();
+        renderCalendar();
+      });
+
+      const stext = document.createElement("span");
+      stext.className = "subtask-text";
+      stext.contentEditable = "false";
+      stext.spellcheck = false;
+      stext.textContent = s.text;
+      stext.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        stext.contentEditable = "true";
+        stext.focus();
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(stext);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+      stext.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); stext.blur(); }
+        else if (e.key === "Escape") { e.preventDefault(); stext.textContent = s.text; stext.blur(); }
+      });
+      stext.addEventListener("blur", () => {
+        const v = stext.textContent.trim();
+        if (v && v !== s.text) {
+          pushUndo();
+          s.text = v;
+          persist();
+        } else {
+          stext.textContent = s.text;
+        }
+        stext.contentEditable = "false";
+      });
+
+      const sdel = document.createElement("button");
+      sdel.type = "button";
+      sdel.className = "subtask-delete";
+      sdel.title = "Delete subtask";
+      sdel.textContent = "×";
+      sdel.addEventListener("click", () => {
+        if (!requireSignIn()) return;
+        if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
+        pushUndo();
+        t.subtasks = getTaskSubtasks(t).filter(x => x !== s);
+        syncTaskDoneFromSubtasks(t);
+        persist();
+        renderCalDayModal();
+        renderCalendar();
+      });
+
+      row.appendChild(shandle);
+      row.appendChild(scb);
+      row.appendChild(stext);
+      row.appendChild(sdel);
+      list.appendChild(row);
+    });
+
+    wrap.appendChild(list);
+
+    if (subtaskAddOpenFor.has(t.id)) {
+      const addRow = document.createElement("div");
+      addRow.className = "subtask-add-row";
+
+      const addInput = document.createElement("textarea");
+      addInput.rows = 1;
+      addInput.className = "subtask-new-input autosize-input";
+      addInput.placeholder = "Add a subtask and press Enter…";
+      addInput.spellcheck = false;
+      addInput.dataset.taskId = t.id;
+      addInput.addEventListener("click", (e) => e.stopPropagation());
+      addInput.addEventListener("input", () => autosizeTextarea(addInput));
+      addInput.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          const v = addInput.value.trim();
+          if (!v) return;
+          pushUndo();
+          if (!Array.isArray(t.subtasks)) t.subtasks = [];
+          t.subtasks.push({ id: uid(), text: v, done: false });
+          t.done = false;
+          persist();
+          renderCalDayModal();
+          requestAnimationFrame(() => {
+            const el = calDayModalList.querySelector(`.subtask-new-input[data-task-id="${t.id}"]`);
+            if (el) el.focus();
+          });
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          addInput.blur();
+        }
+      });
+      addInput.addEventListener("blur", () => {
+        if (!addInput.value.trim()) {
+          subtaskAddOpenFor.delete(t.id);
+          renderCalDayModal();
+        }
+      });
+      addRow.appendChild(addInput);
+      wrap.appendChild(addRow);
+      requestAnimationFrame(() => addInput.focus());
+    }
+
+    return wrap;
+  }
+
+  function moveCalDaySubtask(t, sourceSubtaskId, targetSubtaskId, before) {
+    if (sourceSubtaskId === targetSubtaskId) return;
+    const subs = getTaskSubtasks(t).slice();
+    const fromIdx = subs.findIndex(x => x.id === sourceSubtaskId);
+    if (fromIdx === -1) return;
+    const [moved] = subs.splice(fromIdx, 1);
+    const toIdx = targetSubtaskId ? subs.findIndex(x => x.id === targetSubtaskId) : -1;
+    pushUndo();
+    if (toIdx === -1) subs.push(moved);
+    else subs.splice(before ? toIdx : toIdx + 1, 0, moved);
+    t.subtasks = subs;
+    persist();
+    renderCalDayModal();
+  }
+
+  // "Add a task and press Enter…" — a quick-add for this day. New tasks
+  // don't have a node to live on yet in this cross-node view, so they're
+  // filed on the current map's root node (same place "drag markers onto
+  // another node" can move them out of afterward) with their due date
+  // stamped to the day the popup is open on.
+  function addTaskFromCalDayModal() {
+    if (!calDayModalDate || !state.current) return;
+    if (!requireSignIn()) return;
+    const val = calDayNewInput.value.trim();
+    if (!val) return;
+    const node = state.current.root;
+    pushUndo();
+    if (!Array.isArray(node.tasks)) node.tasks = [];
+    node.tasks = node.tasks.concat([{ id: uid(), text: val, done: false, stars: 0, due: calDayModalDate }]);
+    calDayNewInput.value = "";
+    autosizeTextarea(calDayNewInput);
+    persist();
+    renderCalDayModal();
+    renderCalendar();
+  }
+  calDayNewInput.addEventListener("input", () => autosizeTextarea(calDayNewInput));
+  calDayNewInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addTaskFromCalDayModal(); }
+    else if (e.key === "Escape") { e.preventDefault(); calDayNewInput.blur(); }
+  });
+  calDaySortBtn.addEventListener("click", () => {
+    calDaySortByStars = !calDaySortByStars;
+    calDaySortBtn.classList.toggle("active", calDaySortByStars);
+    renderCalDayModal();
+  });
+
   $("#cal-day-modal-close-btn").addEventListener("click", closeCalDayModal);
   calDayModalBackdrop.addEventListener("click", (e) => { if (e.target === calDayModalBackdrop) closeCalDayModal(); });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && calDayModalDate) closeCalDayModal();
+    if (e.key === "Escape" && calDayModalDate && document.activeElement !== calDayNewInput) closeCalDayModal();
   });
 
   /* ---------------- task note (single, plain-text, own popup) ---------------- */

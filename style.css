@@ -2944,45 +2944,93 @@ kbd{
 
 .today-task-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
 
-/* ---- Cross-node task row inside the day popup — same markup/classes
-   and look as the standalone Tasks app's row (checkbox, main column
-   with text + stars, optional subtask progress sliver, then a small
-   pill showing which node it lives on, since these tasks don't all
-   belong to one flat list the way they do in that app). ---- */
+/* ---- Add-a-task row + ★ Sort, sitting above the day's task list ---- */
+.day-modal-add-row{ display:flex; gap:8px; align-items:flex-end; margin-bottom:12px; }
+.day-modal-new-input{
+  flex:1; min-width:0; resize:none; max-height:110px; overflow-y:auto;
+  border:1px solid #e4e0d4; border-radius:9px; background:#faf9f5; color:#24231f;
+  font: inherit; font-size:14px; padding:8px 10px; line-height:1.35;
+}
+.day-modal-new-input:focus{ outline:none; border-color:#3b6ef0; background:#ffffff; }
+.day-modal-new-input::placeholder{ color:#a29d8c; }
+.day-modal-sort-btn{
+  flex:none; background:#faf9f5; color:#6f6b5e; font-size:11.5px; font-weight:600;
+  padding:8px 10px; border-radius:9px; border:1px solid #e4e0d4; cursor:pointer; white-space:nowrap;
+}
+.day-modal-sort-btn:hover{ color:#24231f; border-color:#3b6ef0; }
+.day-modal-sort-btn.active{ color:#3b6ef0; border-color:#3b6ef0; background:#eaf0ff; }
+.day-modal-sort-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+.day-modal-sort-btn:disabled:hover{ color:#6f6b5e; border-color:#e4e0d4; }
+
+/* ---- Cross-node task row inside the day popup — reuses the exact
+   .task-row markup/classes from the standalone Tasks app's own list
+   (drag handle, checkbox, text, "+" subtask trigger, ★ priority,
+   delete), plus a small node pill so a task can still be jumped to on
+   the canvas. The due date itself is left off entirely — the row is
+   already scoped to this one day, so repeating it would be noise. The
+   handle/star/subtask/delete/node-pill controls inherit the
+   show-on-hover behavior from the base .task-row rules; only the
+   checkbox is forced to stay always-visible here (see override below),
+   since a flat to-do list reads better with its boxes always in view. ---- */
 #cal-day-modal .task-row{
-  display:flex; align-items:flex-start; gap:8px;
-  background: #ffffff; border:1px solid #e4e0d4; border-radius: 12px;
+  gap:8px;
+  background: #ffffff; border:1px solid #e4e0d4; border-radius: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
-  padding: 10px 12px;
+  padding: 9px 10px;
 }
 #cal-day-modal .task-row.done .task-text{ text-decoration: line-through; color: #a29d8c; }
 #cal-day-modal .task-row.overdue .task-text{ color: #c0392b; }
+#cal-day-modal .task-drag-handle{ color:#c8c3b3; }
+#cal-day-modal .task-drag-handle:hover{ color:#6f6b5e; }
 #cal-day-modal .task-checkbox{
-  width:17px; height:17px; margin: 2px 0 0; flex:none; accent-color: #3b6ef0; cursor:pointer;
-  border-radius: 0; border: none; background: none; appearance: auto; -webkit-appearance: auto;
+  width:17px; height:17px; flex:none; accent-color: #3b6ef0; cursor:pointer;
+  border-radius: 0; border: 2px solid #c8c3b3; background: none; appearance: auto; -webkit-appearance: auto;
   transform:none;
 }
-#cal-day-modal .task-main{ flex:1; min-width:0; }
-#cal-day-modal .task-row-top{ display:flex; align-items:flex-start; gap:8px; }
+#cal-day-modal .task-checkbox:checked{ background-image:none; transform:none; }
 #cal-day-modal .task-text{
-  flex:1; min-width:0; font-size:14.5px; line-height:1.4; padding-top:1px;
-  word-break: break-word; white-space: pre-wrap; color:#24231f;
+  flex:1; min-width:0; font-size:14.5px; line-height:1.4;
+  word-break: break-word; white-space: pre-wrap; color:#24231f; padding:0;
 }
-#cal-day-modal .task-stars{ display:flex; gap:1px; flex:none; padding-top:1px; }
-#cal-day-modal .task-star{
-  font-size:14px; line-height:1; color: #d8d4c6;
-}
-#cal-day-modal .task-star.filled{ color: #e0a52c; }
-#cal-day-modal .task-progress-mini{
-  height:4px; border-radius:999px; background: #e4e0d4; margin-top:6px; overflow:hidden;
-}
-#cal-day-modal .task-progress-mini-fill{ height:100%; background: #3b6ef0; border-radius:999px; }
+#cal-day-modal .task-subtask-add-btn{ color:#a0a0a0; }
+#cal-day-modal .task-subtask-add-btn:hover{ color:#3b6ef0; background:#eaf0ff; }
+#cal-day-modal .task-star{ color:#d8d4c6; }
+#cal-day-modal .task-star:hover,
+#cal-day-modal .task-star.starred{ color: #e0a52c; }
+#cal-day-modal .task-delete{ color:#c8c3b3; }
+#cal-day-modal .task-delete:hover{ color:#c0392b; background:#fbeceb; }
 #cal-day-modal .task-source-node{
   flex:none; font-size:11px; color:#6f6b5e; border:1px solid #e4e0d4; border-radius:999px;
-  padding:2px 8px; cursor:pointer; white-space:nowrap; max-width:130px; overflow:hidden;
-  text-overflow:ellipsis; background:#ffffff; margin-top:1px;
+  padding:2px 8px; cursor:pointer; white-space:nowrap; max-width:120px; overflow:hidden;
+  text-overflow:ellipsis; background:#ffffff;
 }
 #cal-day-modal .task-source-node:hover{ color:#3b6ef0; border-color:#3b6ef0; background:#eaf0ff; }
+/* Keep the checkbox always visible here (the base rules hide it until
+   hover so a done task still reads as done); everything else keeps
+   the normal reveal-on-hover treatment from the base .task-row rules. */
+@media (any-hover: hover) and (any-pointer: fine){
+  #cal-day-modal .task-checkbox{ display: inline-block; }
+  #cal-day-modal .task-source-node{ opacity:0; transition: opacity .12s ease; }
+  #cal-day-modal .task-row:hover .task-source-node,
+  #cal-day-modal .task-row:focus-within .task-source-node{ opacity:1; }
+}
+#cal-day-modal .subtask-panel{ margin: -2px 0 0 30px; }
+#cal-day-modal .subtask-checkbox{ accent-color: #3b6ef0; }
+#cal-day-modal .subtask-drag-handle{ color:#c8c3b3; }
+#cal-day-modal .subtask-drag-handle:hover{ color:#6f6b5e; }
+#cal-day-modal .subtask-text{ color:#24231f; }
+#cal-day-modal .subtask-text:focus{ background:#f4f2ec; }
+#cal-day-modal .subtask-row.done .subtask-text{ color:#a29d8c; text-decoration: line-through; opacity:1; }
+#cal-day-modal .subtask-delete{ color:#c8c3b3; }
+#cal-day-modal .subtask-delete:hover{ color:#c0392b; background:#fbeceb; }
+#cal-day-modal .subtask-new-input{
+  background:#faf9f5; border:1px solid #e4e0d4; color:#24231f;
+}
+#cal-day-modal .subtask-new-input:focus{ border-color:#3b6ef0; background:#ffffff; }
+#cal-day-modal .task-row.drag-over-top::before,
+#cal-day-modal .task-row.drag-over-bottom::after,
+#cal-day-modal .subtask-row.drag-over-top::before,
+#cal-day-modal .subtask-row.drag-over-bottom::after{ background:#3b6ef0; }
 
 #cal-day-modal-empty-state.empty-state{
   text-align:center; color:#a29d8c; font-size:13.5px; margin-top:20px;
