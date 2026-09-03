@@ -1,1 +1,110 @@
-d
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Tasks</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<!-- BUMP_VERSION: bump this number every time you re-upload app.js or
+     style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
+     by their exact URL, so "app.js" and "app.js?v=2" count as completely
+     different files to them — bumping this forces everyone's browser to
+     fetch your new version instead of reusing an old cached one. -->
+<link rel="stylesheet" href="style.css?v=21">
+</head>
+<body>
+
+<div id="app">
+  <header id="top-bar">
+    <div id="top-bar-title">
+      <span id="title-icon">✓</span>
+      <h1>Tasks</h1>
+    </div>
+    <div id="top-bar-right">
+      <span id="sync-status" class="sync-status" title=""></span>
+      <button id="signin-btn" type="button" class="signin-btn">Sign in with Google</button>
+    </div>
+  </header>
+
+  <div id="auth-gate" class="auth-gate">
+    <div class="auth-gate-icon">🔒</div>
+    <p id="auth-gate-message" class="auth-gate-message">Sign in with Google to use this app.</p>
+    <button id="auth-gate-signin-btn" type="button" class="signin-btn">Sign in with Google</button>
+  </div>
+
+  <div id="app-content" class="hidden">
+    <div id="view-toggle" class="view-toggle">
+      <button id="view-list-btn" type="button" class="view-tab">☰ List</button>
+      <button id="view-calendar-btn" type="button" class="view-tab active">📅 Calendar</button>
+      <button id="view-today-btn" type="button" class="view-tab">☀ Today</button>
+    </div>
+
+    <div id="list-view" class="hidden">
+      <div id="progress-wrap">
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <span id="progress-label">0 / 0</span>
+      </div>
+
+      
+      <div id="add-task-row">
+        <textarea id="new-task-input" rows="1" class="autosize-input" placeholder="Add a task and press Enter…" spellcheck="false"></textarea>
+        <button id="sort-stars-btn" type="button" class="sort-stars-btn" title="Sort by priority (highest first)">★ Sort</button>
+      </div>
+
+      <ul id="task-list"></ul>
+
+      <div id="empty-state" class="empty-state hidden">No tasks yet — add one above.</div>
+    </div>
+
+    <div id="calendar-view" class="calendar-view">
+      <div id="calendar-header">
+        <button id="cal-prev-btn" type="button" class="cal-nav-btn" title="Previous month">‹</button>
+        <span id="cal-month-label"></span>
+        <button id="cal-today-btn" type="button" class="cal-today-btn">Today</button>
+        <button id="cal-next-btn" type="button" class="cal-nav-btn" title="Next month">›</button>
+      </div>
+      <div id="calendar-weekdays"></div>
+      <div id="calendar-grid"></div>
+    </div>
+
+    <div id="today-view" class="today-view hidden">
+      <div id="today-add-task-row" class="today-add-task-row">
+        <textarea id="today-new-task-input" rows="1" class="autosize-input" placeholder="Add a task for today and press Enter…" spellcheck="false"></textarea>
+        <button id="today-sort-stars-btn" type="button" class="sort-stars-btn" title="Sort by priority (highest first)">★ Sort</button>
+      </div>
+
+      <div id="today-overdue-section" class="today-section hidden">
+        <h2 class="today-section-title today-overdue-title">Overdue</h2>
+        <ul id="today-overdue-list" class="today-task-list"></ul>
+      </div>
+      <div class="today-section">
+        <h2 class="today-section-title" id="today-date-label">Today</h2>
+        <ul id="today-list" class="today-task-list"></ul>
+        <div id="today-empty-state" class="empty-state hidden">Nothing due today.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="day-modal-backdrop" class="day-modal-backdrop hidden">
+  <div id="day-modal" class="day-modal">
+    <div class="day-modal-header">
+      <h2 id="day-modal-title"></h2>
+      <button id="day-modal-close-btn" type="button" class="day-modal-close-btn" title="Close">×</button>
+    </div>
+    <div id="day-modal-add-row" class="today-add-task-row">
+      <textarea id="day-modal-new-task-input" rows="1" class="autosize-input" placeholder="Add a task and press Enter…" spellcheck="false"></textarea>
+      <button id="day-modal-sort-stars-btn" type="button" class="sort-stars-btn" title="Sort by priority (highest first)">★ Sort</button>
+    </div>
+    <ul id="day-modal-task-list" class="today-task-list"></ul>
+    <div id="day-modal-empty-state" class="empty-state hidden">No tasks for this day.</div>
+  </div>
+</div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="app.js?v=21"></script>
+</body>
+</html>
