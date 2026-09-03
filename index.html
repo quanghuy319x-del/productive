@@ -61,7 +61,6 @@
       <input type="file" id="file-import" accept=".json" hidden>
       <button id="btn-trash" class="btn-ghost" title="Trashed maps">🗑 Trash<span id="trash-count-badge" class="trash-count-badge hidden"></span></button>
       <button id="btn-tagbrowser" class="btn-ghost" title="Browse photos by tag">🏷 Tags</button>
-      <button id="btn-tasksapp" class="btn-ghost" title="Open the Tasks app">✓ Tasks</button>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -85,6 +84,7 @@
         <button id="zoom-reset" title="Reset view">Reset</button>
         <button id="zoom-in" title="Zoom in">+</button>
       </div>
+      <button id="btn-calendar" class="btn-ghost" title="Calendar — every task due date across this map">📅 Calendar</button>
       <button id="btn-auto-arrange" class="btn-ghost" title="Snap every node back to its automatic position (clears manual nudges that can overlap)">⤢ Auto-arrange</button>
       <button id="btn-theme" class="btn-ghost" title="Change background, connector and font colors">🎨 Theme</button>
       <button id="btn-delete-map" class="btn-ghost danger" title="Move this map to trash">Delete map</button>
@@ -172,20 +172,6 @@
 </div>
 
 <input type="file" id="node-image-input" accept="image/*" multiple hidden>
-
-<div id="tasksapp-modal" class="modal hidden">
-  <div class="modal-card tasksapp-modal-card">
-    <div class="modal-back-row">
-      <h2>Tasks</h2>
-      <span class="modal-back-row-gap"></span>
-      <button type="button" id="tasksapp-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
-    </div>
-    <!-- Loaded lazily (see app.js): src is only set the first time this
-         modal is opened, so the Tasks app's own Google sign-in / autosave
-         isn't doing work in the background on every Branchline page load. -->
-    <iframe id="tasksapp-frame" class="tasksapp-frame" title="Tasks" data-src="tasks/index.html"></iframe>
-  </div>
-</div>
 
 <div id="trash-modal" class="modal hidden">
   <div class="modal-card trash-modal-card">
@@ -365,6 +351,39 @@
   </div>
 </div>
 
+<!-- Calendar — a single month grid across every task (on every node) in
+     the current map that has a due date, mirroring the standalone Tasks
+     app's Calendar tab. -->
+<div id="calendar-modal" class="modal hidden">
+  <div class="modal-card calendar-modal-card">
+    <div class="modal-back-row">
+      <button type="button" id="calendar-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+      <h2>Calendar</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="calendar-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div id="calendar-header">
+      <button id="cal-prev-btn" type="button" class="cal-nav-btn" title="Previous month">‹</button>
+      <span id="cal-month-label"></span>
+      <button id="cal-today-btn" type="button" class="cal-today-btn">Today</button>
+      <button id="cal-next-btn" type="button" class="cal-nav-btn" title="Next month">›</button>
+    </div>
+    <div id="calendar-weekdays"></div>
+    <div id="calendar-grid"></div>
+  </div>
+</div>
+
+<div id="cal-day-modal-backdrop" class="day-modal-backdrop hidden">
+  <div id="cal-day-modal" class="day-modal">
+    <div class="day-modal-header">
+      <h2 id="cal-day-modal-title"></h2>
+      <button id="cal-day-modal-close-btn" type="button" class="day-modal-close-btn" title="Close">×</button>
+    </div>
+    <ul id="cal-day-modal-task-list" class="today-task-list"></ul>
+    <div id="cal-day-modal-empty-state" class="empty-state hidden">Nothing due this day.</div>
+  </div>
+</div>
+
 <div id="affirmation-quotes-modal" class="modal hidden">
   <div class="modal-card affirmation-quotes-modal-card">
     <h2>Affirmation lines</h2>
@@ -418,6 +437,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

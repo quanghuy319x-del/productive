@@ -57,6 +57,29 @@
 
   function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
+  /* ================= Date helpers (task due dates / Calendar) =================
+     Dates are stored as plain "YYYY-MM-DD" strings (local calendar day,
+     no time/timezone component) so a task's due date means the same
+     day everywhere it's viewed — same convention as the standalone
+     Tasks app's calendar. */
+  function toISODate(d) {
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, "0"), day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  function fromISODate(s) {
+    const parts = String(s || "").split("-").map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  function isSameDate(a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+  function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
   function luminance(hex) {
     const c = hex.replace("#", "");
     const r = parseInt(c.substr(0, 2), 16) / 255;
@@ -2485,6 +2508,11 @@
     state.redoStack = [];
     const v = m.view || { scale: 1, tx: 60, ty: 60 };
     state.scale = v.scale || 1; state.tx = v.tx || 60; state.ty = v.ty || 60;
+    // Belongs to whichever map was open before — without clearing it, the
+    // first render of the newly-opened map would "compensate" tx/ty against
+    // a stale bounding box from a completely different tree.
+    state.originX = undefined;
+    state.originY = undefined;
     titleInput.value = m.title || "";
     layoutSelect.value = state.current.layout || "mindmap";
     renderSidebar();
@@ -3205,6 +3233,16 @@
     const height = (bbox.maxY - bbox.minY) + pad * 2;
     const originX = -bbox.minX + pad;
     const originY = -bbox.minY + pad;
+    // The world's coordinate origin shifts whenever the tree's bounding box
+    // changes (e.g. collapsing/expanding a branch shrinks or grows it), even
+    // though the camera (tx/ty) itself didn't change. Left alone, that
+    // origin shift reads as the whole map sliding on screen. Counteract it
+    // by nudging tx/ty the opposite way, so whatever was on screen stays on
+    // screen.
+    if (state.originX !== undefined && state.originY !== undefined) {
+      state.tx -= (originX - state.originX) * state.scale;
+      state.ty -= (originY - state.originY) * state.scale;
+    }
     state.originX = originX;
     state.originY = originY;
 
@@ -3274,6 +3312,7 @@
     titleInput.value = state.current.title || "";
     updateLinkHint();
     applyHighlight();
+    applyTransform();
   }
 
   // Blurs every node/connector except a chosen node and its whole branch
@@ -5030,6 +5069,9 @@
       items.push(["Move to here", () => completeMoveTo(node.id)]);
     }
     items.push([node.struck ? "Remove strikethrough" : "Strikethrough", () => { pushUndo(); node.struck = !node.struck; renderAll(); persist(); }]);
+    if (node.children && node.children.length > 0) {
+      items.push([node.collapsed ? "Expand" : "Collapse", () => { pushUndo(); node.collapsed = !node.collapsed; renderAll(); persist(); }]);
+    }
     items.push(["Copy as outline", () => copyNodeBranchToClipboard(node)]);
     items.push([state.highlightId === node.id ? "Remove highlight" : "Highlight branch", () => setHighlight(node.id)]);
     if (node.ox || node.oy) {
@@ -5971,18 +6013,6 @@
   $("#btn-help").addEventListener("click", () => $("#help-modal").classList.remove("hidden"));
   $("#help-close").addEventListener("click", () => $("#help-modal").classList.add("hidden"));
   $("#help-modal").addEventListener("click", (e) => { if (e.target.id === "help-modal") e.currentTarget.classList.add("hidden"); });
-
-  $("#btn-tasksapp").addEventListener("click", () => {
-    const frame = $("#tasksapp-frame");
-    // Only point the iframe at tasks/index.html the first time it's
-    // opened, so its Google sign-in / autosave isn't running in the
-    // background on every Branchline page load — just once someone
-    // actually opens the Tasks panel.
-    if (!frame.getAttribute("src") && frame.dataset.src) frame.setAttribute("src", frame.dataset.src);
-    $("#tasksapp-modal").classList.remove("hidden");
-  });
-  $("#tasksapp-close").addEventListener("click", () => $("#tasksapp-modal").classList.add("hidden"));
-  $("#tasksapp-modal").addEventListener("click", (e) => { if (e.target.id === "tasksapp-modal") e.currentTarget.classList.add("hidden"); });
 
   $("#btn-export").addEventListener("click", async () => {
     if (!state.current) return;
@@ -8593,7 +8623,7 @@
         ? "Double-click to hide subtasks"
         : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
       li.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".task-checkbox, .task-star, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-note-btn, .task-text")) return;
+        if (e.target.closest(".task-checkbox, .task-star, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-note-btn, .task-due-btn, .task-text")) return;
         if (subExpanded) {
           collapsedSubtaskIds.add(t.id);
         } else {
@@ -8625,6 +8655,39 @@
       // than a node's notes (no title, no rich formatting, no multiples):
       // just one optional block of text, opened in its own small popup
       // (see openTaskNoteModal) rather than inline in the list.
+      // Due date — feeds the toolbar's 📅 Calendar month view. Click
+      // anywhere on the button to open a native date picker positioned
+      // right over it; picking a date (or clearing it) stamps t.due as
+      // a plain "YYYY-MM-DD" string, same convention as the standalone
+      // Tasks app.
+      const dueDate = t.due ? fromISODate(t.due) : null;
+      const isOverdue = !!(dueDate && !t.done && dueDate < startOfToday());
+      const dueBtn = document.createElement("span");
+      dueBtn.className = "task-due-btn" + (t.due ? " has-due" : "") + (isOverdue ? " overdue" : "");
+      dueBtn.title = t.due ? "Change or clear due date" : "Set a due date";
+      const dueIcon = document.createElement("span");
+      dueIcon.className = "task-due-icon";
+      dueIcon.textContent = "📅";
+      dueBtn.appendChild(dueIcon);
+      if (t.due) {
+        const dueLabel = document.createElement("span");
+        dueLabel.className = "task-due-label";
+        dueLabel.textContent = `${dueDate.getMonth() + 1}/${dueDate.getDate()}`;
+        dueBtn.appendChild(dueLabel);
+      }
+      const dueInput = document.createElement("input");
+      dueInput.type = "date";
+      dueInput.className = "task-due-input";
+      if (t.due) dueInput.value = t.due;
+      dueInput.addEventListener("click", (e) => e.stopPropagation());
+      dueInput.addEventListener("change", () => {
+        pushUndo();
+        t.due = dueInput.value || null;
+        persist();
+        renderTasksModal();
+      });
+      dueBtn.appendChild(dueInput);
+
       const noteBtn = document.createElement("button");
       noteBtn.type = "button";
       noteBtn.className = "task-note-btn" + (t.note ? " has-note" : "");
@@ -8653,6 +8716,7 @@
       li.appendChild(cb);
       li.appendChild(text);
       li.appendChild(subtaskAddBtn);
+      li.appendChild(dueBtn);
       li.appendChild(noteBtn);
       li.appendChild(star);
       li.appendChild(del);
@@ -8675,7 +8739,7 @@
     if (!val) return;
     pushUndo();
     if (!Array.isArray(node.tasks)) node.tasks = [];
-    node.tasks = node.tasks.concat([{ id: uid(), text: val, done: false, stars: 0 }]);
+    node.tasks = node.tasks.concat([{ id: uid(), text: val, done: false, stars: 0, due: null }]);
     tasksNewInput.value = "";
     autosizeTextarea(tasksNewInput);
     persist();
@@ -8714,6 +8778,232 @@
   document.addEventListener("keydown", (e) => {
     if (tasksModal.classList.contains("hidden")) return;
     if (e.key === "Escape" && document.activeElement !== tasksNewInput) closeTasksModal();
+  });
+
+  /* ---------------- calendar (📅 toolbar button) ----------------
+     A single month grid across every task, on every node, in the
+     current map that has a due date — the Calendar tab from the
+     standalone Tasks app, promoted into Branchline as a read-through
+     view over the same per-node task lists (nothing new is stored;
+     it just reads node.tasks[].due across the whole tree, including
+     inside collapsed branches). Tapping a day opens a popup with that
+     day's full due list; each row can be checked off and jumped to on
+     the canvas, same as tapping a task normally would. */
+  const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const MONTH_LABELS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+  const calendarModal = $("#calendar-modal");
+  const calMonthLabelEl = $("#cal-month-label");
+  const calWeekdaysEl = $("#calendar-weekdays");
+  const calGridEl = $("#calendar-grid");
+  const calPrevBtn = $("#cal-prev-btn");
+  const calNextBtn = $("#cal-next-btn");
+  const calTodayBtn = $("#cal-today-btn");
+  const calDayModalBackdrop = $("#cal-day-modal-backdrop");
+  const calDayModalTitle = $("#cal-day-modal-title");
+  const calDayModalList = $("#cal-day-modal-task-list");
+  const calDayModalEmpty = $("#cal-day-modal-empty-state");
+  let calCursor = new Date();
+  calCursor.setDate(1); // first of the currently-displayed month
+  let calDayModalDate = null; // "YYYY-MM-DD" of the day currently shown, or null when closed
+
+  // Every task on every node, anywhere in the tree — deliberately
+  // ignores node.collapsed (unlike the render walks) so a task due
+  // today still shows up on the calendar even if its node is tucked
+  // inside a collapsed branch.
+  function allTasksWithNodes() {
+    const out = [];
+    if (!state.current) return out;
+    (function walk(n) {
+      getNodeTasks(n).forEach(t => out.push({ task: t, node: n }));
+      (n.children || []).forEach(walk);
+    })(state.current.root);
+    return out;
+  }
+
+  function calendarBoxFontSize(count) {
+    const base = 13, min = 6.5, step = 0.35, freeSlots = 8;
+    const size = base - Math.max(0, count - freeSlots) * step;
+    return Math.max(min, size).toFixed(2) + "px";
+  }
+
+  // A task with 2+ subtasks gets broken into one small box per subtask
+  // (so each can be seen/ticked from the calendar); a task with 0-1
+  // subtasks stays a single box for the whole task.
+  function calendarDayItems(dayEntries) {
+    const items = [];
+    dayEntries.forEach(({ task: t, node }) => {
+      const subs = getTaskSubtasks(t);
+      if (subs.length >= 2) {
+        subs.forEach((s) => {
+          items.push({ kind: "subtask", task: t, subtask: s, node, done: !!s.done, label: `${t.text || "Untitled task"} — ${s.text || "Untitled subtask"}` });
+        });
+      } else {
+        items.push({ kind: "task", task: t, node, done: !!t.done, label: t.text || "Untitled task" });
+      }
+    });
+    return items;
+  }
+
+  function openCalendarModal() {
+    commitEditIfActive();
+    closeContextMenu();
+    calCursor = new Date();
+    calCursor.setDate(1);
+    renderCalendar();
+    calendarModal.classList.remove("hidden");
+  }
+  function closeCalendarModal() {
+    calendarModal.classList.add("hidden");
+  }
+
+  function renderCalendar() {
+    calMonthLabelEl.textContent = `${MONTH_LABELS[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
+
+    if (!calWeekdaysEl.childElementCount) {
+      WEEKDAY_LABELS.forEach((w) => {
+        const el = document.createElement("div");
+        el.className = "calendar-weekday";
+        el.textContent = w;
+        calWeekdaysEl.appendChild(el);
+      });
+    }
+
+    calGridEl.innerHTML = "";
+    const year = calCursor.getFullYear(), month = calCursor.getMonth();
+    const startWeekday = new Date(year, month, 1).getDay();
+    const gridStart = new Date(year, month, 1 - startWeekday);
+    const today = new Date();
+
+    const entriesByDate = {};
+    allTasksWithNodes().forEach((entry) => {
+      if (entry.task.due) (entriesByDate[entry.task.due] = entriesByDate[entry.task.due] || []).push(entry);
+    });
+
+    for (let i = 0; i < 42; i++) {
+      const cellDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      const iso = toISODate(cellDate);
+      const cell = document.createElement("div");
+      cell.className = "calendar-cell";
+      if (cellDate.getMonth() !== month) cell.classList.add("other-month");
+      if (isSameDate(cellDate, today)) cell.classList.add("today");
+
+      const dayHead = document.createElement("div");
+      dayHead.className = "calendar-day-head";
+
+      const dayNum = document.createElement("span");
+      dayNum.className = "calendar-day-num";
+      dayNum.textContent = cellDate.getDate();
+      dayHead.appendChild(dayNum);
+
+      const dayEntries = entriesByDate[iso] || [];
+      const dayItems = calendarDayItems(dayEntries);
+      if (dayItems.length) {
+        const doneCount = dayItems.filter((it) => it.done).length;
+        const counter = document.createElement("span");
+        counter.className = "calendar-day-counter" + (doneCount === dayItems.length ? " all-done" : "");
+        counter.textContent = `✓${doneCount}`;
+        counter.title = `${doneCount} of ${dayItems.length} done`;
+        dayHead.appendChild(counter);
+      }
+
+      cell.appendChild(dayHead);
+
+      const tasksWrap = document.createElement("div");
+      tasksWrap.className = "calendar-day-tasks";
+      tasksWrap.style.fontSize = calendarBoxFontSize(dayItems.length);
+      dayItems.forEach((it) => {
+        const box = document.createElement("span");
+        box.className = "calendar-task-box" + (it.done ? " done" : "") + (it.kind === "subtask" ? " calendar-subtask-box" : "");
+        box.textContent = it.done ? "☑" : "☐";
+        box.title = it.label || "Untitled task";
+        tasksWrap.appendChild(box);
+      });
+      cell.appendChild(tasksWrap);
+
+      cell.addEventListener("click", () => openCalDayModal(iso));
+      calGridEl.appendChild(cell);
+    }
+  }
+
+  calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });
+  calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });
+  calTodayBtn.addEventListener("click", () => { calCursor = new Date(); calCursor.setDate(1); renderCalendar(); });
+  $("#calendar-back").addEventListener("click", closeCalendarModal);
+  $("#calendar-close").addEventListener("click", closeCalendarModal);
+  calendarModal.addEventListener("click", (e) => { if (e.target === calendarModal) closeCalendarModal(); });
+  $("#btn-calendar").addEventListener("click", openCalendarModal);
+
+  /* ---- Day detail popup — a lightweight, read-through task row (check
+     off, jump to its node) rather than the full editor from the Tasks
+     modal; renaming/subtasks/etc. still happen there. ---- */
+  function openCalDayModal(iso) {
+    calDayModalDate = iso;
+    renderCalDayModal();
+    calDayModalBackdrop.classList.remove("hidden");
+  }
+  function closeCalDayModal() {
+    calDayModalDate = null;
+    calDayModalBackdrop.classList.add("hidden");
+  }
+  function renderCalDayModal() {
+    if (!calDayModalDate) return;
+    const d = fromISODate(calDayModalDate);
+    const today = new Date();
+    calDayModalTitle.textContent = isSameDate(d, today)
+      ? `Today · ${MONTH_LABELS[d.getMonth()]} ${d.getDate()}`
+      : `${MONTH_LABELS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+
+    const dayEntries = allTasksWithNodes().filter(e => e.task.due === calDayModalDate);
+    calDayModalList.innerHTML = "";
+    dayEntries.forEach(({ task: t, node }) => calDayModalList.appendChild(buildCalDayTaskRow(t, node)));
+    calDayModalEmpty.classList.toggle("hidden", dayEntries.length > 0);
+  }
+  function buildCalDayTaskRow(t, node) {
+    const li = document.createElement("li");
+    const subProg = taskSubtaskProgress(t);
+    li.className = "task-row" + (t.done ? " done" : "");
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "task-checkbox";
+    cb.checked = !!t.done;
+    cb.addEventListener("change", () => {
+      pushUndo();
+      t.done = cb.checked;
+      const subs = getTaskSubtasks(t);
+      if (subs.length) subs.forEach(s => { s.done = t.done; });
+      persist();
+      renderCalDayModal();
+      renderCalendar();
+    });
+
+    const text = document.createElement("span");
+    text.className = "task-text";
+    text.textContent = t.text || "Untitled task";
+    text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
+
+    const nodeBtn = document.createElement("button");
+    nodeBtn.type = "button";
+    nodeBtn.className = "task-source-node";
+    nodeBtn.title = "Jump to this node on the canvas";
+    nodeBtn.textContent = node.text || "(untitled)";
+    nodeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeCalDayModal();
+      closeCalendarModal();
+      focusNodeInCanvas(node.id);
+    });
+
+    li.appendChild(cb);
+    li.appendChild(text);
+    li.appendChild(nodeBtn);
+    return li;
+  }
+  $("#cal-day-modal-close-btn").addEventListener("click", closeCalDayModal);
+  calDayModalBackdrop.addEventListener("click", (e) => { if (e.target === calDayModalBackdrop) closeCalDayModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && calDayModalDate) closeCalDayModal();
   });
 
   /* ---------------- task note (single, plain-text, own popup) ---------------- */
