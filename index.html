@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+<!-- Discourages the browser from serving a stale cached copy of this page
+     itself. Real HTTP cache-control headers (which GitHub Pages/its CDN
+     set, and which meta tags can't override) still apply on top of this,
+     so this alone won't guarantee a fresh index.html — but combined with
+     the ?v= version below on app.js/style.css, it means even a cached
+     index.html still points at the right versioned files. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Bản đồ tư duy</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<!-- BUMP_VERSION: bump this number every time you re-upload app.js or
+     style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
+     by their exact URL, so "style.css" and "style.css?v=5" count as
+     completely different files to them — bumping this forces everyone's
+     browser to fetch your new version instead of reusing an old cached
+     one, no hard-refresh needed on their end. -->
+<link rel="stylesheet" href="style.css?v=8">
+</head>
+<body>
+<div id="app">
+
+  <button id="btn-toggle-sidebar" class="sidebar-toggle-btn" title="Show/hide sidebar" aria-label="Show/hide sidebar">☰</button>
+
+  <aside id="sidebar">
+    <div class="sidebar-head">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">Branchline</span>
+      </div>
+      <button id="btn-new-map" class="btn-primary" title="New mind map (N)">+ New map</button>
+    </div>
+
+    <div class="sidebar-section-label">Your maps</div>
+    <ul id="mindmap-list"></ul>
+    <p id="mindmap-list-signed-out" class="sidebar-signed-out-note hidden">Sign in with Google to see your maps.</p>
+
+    <div class="sidebar-folder">
+      <span id="folder-status" class="folder-status">Saving to browser storage only</span>
+      <button id="btn-connect-folder" class="btn-ghost small">Connect folder</button>
+    </div>
+
+    <div class="sidebar-folder">
+      <div class="drive-status-row">
+        <span id="online-indicator" class="online-dot" title="Online"></span>
+        <span id="drive-status" class="folder-status">Not synced to Google Drive</span>
+      </div>
+      <button id="btn-google-signin" class="btn-ghost small">Sign in with Google</button>
+    </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <div class="sidebar-foot">
+      <button id="btn-export" class="btn-ghost">Export .json</button>
+      <button id="btn-import" class="btn-ghost">Import .json</button>
+      <input type="file" id="file-import" accept=".json" hidden>
+      <button id="btn-trash" class="btn-ghost" title="Trashed maps">🗑 Trash<span id="trash-count-badge" class="trash-count-badge hidden"></span></button>
+      <button id="btn-tagbrowser" class="btn-ghost" title="Browse photos by tag">🏷 Tags</button>
+      <button id="btn-tasksapp" class="btn-ghost" title="Open the Tasks app">✓ Tasks</button>
+      <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div id="toolbar">
+      <input id="title-input" class="title-input" spellcheck="false" placeholder="Untitled map">
+      <div class="toolbar-gap"></div>
+      <span id="save-status" class="save-status">Saved</span>
+      <div class="undo-controls">
+        <button id="btn-undo" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" disabled>↶</button>
+        <button id="btn-redo" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo" disabled>↷</button>
+      </div>
+      <select id="layout-select" class="layout-select" title="Change how this map is laid out">
+        <option value="mindmap">Mindmap</option>
+        <option value="logic">Logic chart</option>
+        <option value="timeline">Timeline</option>
+      </select>
+      <div class="zoom-controls">
+        <button id="zoom-out" title="Zoom out">−</button>
+        <button id="zoom-reset" title="Reset view">Reset</button>
+        <button id="zoom-in" title="Zoom in">+</button>
+      </div>
+      <button id="btn-auto-arrange" class="btn-ghost" title="Snap every node back to its automatic position (clears manual nudges that can overlap)">⤢ Auto-arrange</button>
+      <button id="btn-theme" class="btn-ghost" title="Change background, connector and font colors">🎨 Theme</button>
+      <button id="btn-delete-map" class="btn-ghost danger" title="Move this map to trash">Delete map</button>
+    </div>
+
+    <div id="viewport">
+      <div id="world">
+        <svg id="lines-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="nodes-layer"></div>
+      </div>
+      <div id="empty-state" class="hidden">
+        <p>No mind maps yet.</p>
+        <button id="btn-empty-new" class="btn-primary">Create your first map</button>
+      </div>
+      <div id="signed-out-state" class="hidden">
+        <p>Sign in with Google to see your mind maps.</p>
+        <button id="btn-signed-out-signin" class="btn-primary">Sign in with Google</button>
+      </div>
+      <div id="node-fabs" class="hidden">
+        <button id="fab-add-child" class="node-fab" title="Add child node (Tab)">
+          <svg viewBox="0 0 57 23" xmlns="http://www.w3.org/2000/svg">
+            <rect x="3" y="9" width="7" height="5" fill="currentColor" stroke="none"></rect>
+            <line x1="19" y1="11.5" x2="25" y2="11.5" stroke-width="2"></line>
+            <rect x="24" y="3" width="30" height="17" rx="1.5" stroke-width="3"></rect>
+            <line x1="39" y1="8" x2="39" y2="15" stroke-width="2.5"></line>
+            <line x1="35" y1="11.5" x2="43" y2="11.5" stroke-width="2.5"></line>
+          </svg>
+        </button>
+        <button id="fab-add-sibling" class="node-fab" title="Add sibling node (Enter)">
+          <svg viewBox="0 0 49 36" xmlns="http://www.w3.org/2000/svg">
+            <rect x="17" y="3" width="6" height="4" fill="currentColor" stroke="none"></rect>
+            <path d="M10,5.5 L4.5,5.5 L4.5,24.5 L16,24.5" fill="none" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></path>
+            <rect x="15" y="15" width="31" height="18" rx="1.5" stroke-width="3"></rect>
+            <line x1="31" y1="20" x2="31" y2="28" stroke-width="2.5"></line>
+            <line x1="27" y1="24" x2="35" y2="24" stroke-width="2.5"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="hint-bar">
+      <span><kbd>Tab</kbd> add child</span>
+      <span><kbd>Enter</kbd> add sibling</span>
+      <span><kbd>F2</kbd> rename</span>
+      <span><kbd>Del</kbd> delete branch</span>
+      <span><kbd>Space</kbd> collapse</span>
+      <span>Drag a node to nudge it</span>
+      <span><kbd>⌘/Ctrl Z</kbd> undo</span>
+    </div>
+  </main>
+
+</div>
+
+<div id="help-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2>Keyboard shortcuts</h2>
+    <table>
+      <tr><td><kbd>Tab</kbd></td><td>Add a child to the selected node</td></tr>
+      <tr><td><kbd>Enter</kbd></td><td>Add a sibling after the selected node</td></tr>
+      <tr><td><kbd>Shift</kbd> + <kbd>Enter</kbd></td><td>New line while editing text</td></tr>
+      <tr><td><kbd>F2</kbd> / double‑click</td><td>Rename the selected node</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Stop editing</td></tr>
+      <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete the selected branch</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Collapse / expand children</td></tr>
+      <tr><td><kbd>Ctrl/⌘</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd></td><td>Strikethrough / un-strike the selected node</td></tr>
+      <tr><td>Arrow keys</td><td>Move selection between nodes</td></tr>
+      <tr><td><kbd>Ctrl/⌘</kbd> + <kbd>Z</kbd></td><td>Undo</td></tr>
+      <tr><td><kbd>Ctrl/⌘</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></td><td>Redo</td></tr>
+      <tr><td>Scroll / pinch</td><td>Zoom the canvas</td></tr>
+      <tr><td>Drag empty canvas</td><td>Pan the canvas</td></tr>
+      <tr><td>Drag a node</td><td>Nudge it away from the automatic layout (right‑click → Reset position to undo)</td></tr>
+      <tr><td>Auto-arrange</td><td>Toolbar button that clears every manual nudge in the map at once, in case branches have drifted into overlapping each other</td></tr>
+      <tr><td>Right‑click a node</td><td>More actions (color, collapse, strikethrough, delete, reset position, add URL)</td></tr>
+      <tr><td>Add URL…</td><td>Right-click a node, choose "Add URL…" (or press <kbd>Ctrl/⌘</kbd> + <kbd>K</kbd> with a node selected), then type or paste a web address. Repeat to attach more than one link. Nodes with a URL show a small 🔗 marker alongside any photo thumbnails — click it to open the link (or, with several, pick which one). Right-click the 🔗 marker itself to edit an existing link.</td></tr>
+      <tr><td>Add note…</td><td>Right-click a node and choose "Add note…" to attach a longer note — and you can attach more than one. Each note has an optional title field on its first line (<kbd>Enter</kbd> jumps from the title into the body) — the picker menus below use it, falling back to a preview of the body text if it's left blank. Nodes with notes show one small note-shaped marker per note, alongside any photo thumbnails. Click a marker to open that note; inside the editor use <kbd>Alt</kbd> + arrow keys to page between them, "+ New note" to start another, and 🗑 to delete the one on screen. Right-click any note marker for a quick list of every note on the node, each with its own ✕ to delete without opening the editor.</td></tr>
+      <tr><td>Tasks…</td><td>Right-click a node and choose "Add tasks…" to keep a checklist for it (e.g. today's to-dos). Nodes with tasks show a small ring marker with a fraction like "2/5" — its fill grows as you check tasks off, and a progress bar on the node fills the same way. Click the ⏱ next to any task to start a 1-minute focus timer for it — click "+1m" any time to add more, it keeps running even if you close the modal, chimes when time's up, and counts down right in the browser tab's title alongside the task name (e.g. "⏱ 0:42 · Water the plants") so you can see it from another tab.</td></tr>
+      <tr><td>Drag markers to another node</td><td>A node's note icon, link icon (both shown alongside its photo thumbnails), task ring/progress bar, or any individual photo thumbnail can all be dragged onto a different node to move that note, link, checklist, or photo over — hold <kbd>Alt</kbd>/<kbd>⌥</kbd> while dropping to copy instead of move. Each note marker drags just that one note. Dragging the "+N" photo badge moves the rest of that node's photos as a batch.</td></tr>
+      <tr><td>Add image to note</td><td>In the note editor, click the 🖼 button to pick a photo, or paste (Ctrl/⌘+V) or drag-and-drop an image straight into the note.</td></tr>
+      <tr><td>Add photo…</td><td>Right-click a node and choose "Add photo…" to attach one or more pictures to it (pick multiple files at once, or repeat to add more later). Nodes with photos show a small thumbnail with a count badge — click it to view full-size and step through them. With a node selected, you can also just paste (<kbd>Ctrl/⌘</kbd> + <kbd>V</kbd>) an image straight from your clipboard — handy right after taking a screenshot.</td></tr>
+      <tr><td>🏷 Tags (sidebar)</td><td>Opens a browser of every tag you've added to a photo, gathered from across the whole map. Tap a tag to see every photo carrying it, no matter which node it's on — tap a photo there to jump straight to its node (expanding any collapsed branch in the way) and open it full-size.</td></tr>
+      <tr><td>Crop / Add text on photo</td><td>Open a photo full-size, then use the ⛶ button to crop it, or the "Aa" button to add a text label. Each click on the photo places one label — drag it into place (or drag its small ⠿ handle at the top-left corner, which always moves it even mid-edit, so you never fight with text-caret placement), pick a color, drag the small dot on its corner to resize the text. Click "Aa" again to place another label; click elsewhere on the photo to just finish the current one. "Apply" bakes every label permanently into the photo.</td></tr>
+    </table>
+    <button id="help-close" class="btn-primary">Got it</button>
+  </div>
+</div>
+
+<input type="file" id="node-image-input" accept="image/*" multiple hidden>
+
+<div id="tasksapp-modal" class="modal hidden">
+  <div class="modal-card tasksapp-modal-card">
+    <div class="modal-back-row">
+      <h2>Tasks</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="tasksapp-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <!-- Loaded lazily (see app.js): src is only set the first time this
+         modal is opened, so the Tasks app's own Google sign-in / autosave
+         isn't doing work in the background on every Branchline page load. -->
+    <iframe id="tasksapp-frame" class="tasksapp-frame" title="Tasks" data-src="tasks/index.html"></iframe>
+  </div>
+</div>
+
+<div id="trash-modal" class="modal hidden">
+  <div class="modal-card trash-modal-card">
+    <h2>Trash</h2>
+    <p class="trash-hint">Deleted maps land here first. Restore one back to your list, or delete it forever to remove it for good.</p>
+    <ul id="trash-list" class="trash-list"></ul>
+    <div class="trash-modal-actions">
+      <button id="trash-empty-btn" class="btn-ghost danger">Empty trash</button>
+      <button id="trash-close" class="btn-primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="photo-modal" class="modal hidden">
+  <div class="modal-card photo-modal-card">
+    <button id="photo-modal-prev" class="photo-modal-nav photo-modal-prev hidden" title="Previous photo" aria-label="Previous photo">‹</button>
+    <img id="photo-modal-img" alt="Node photo">
+    <div id="photo-modal-tags" class="photo-modal-tags">
+      <div id="photo-modal-tag-chips" class="photo-modal-tag-chips"></div>
+      <div class="photo-modal-tag-input-wrap">
+        <input id="photo-modal-tag-input" class="photo-modal-tag-input" type="text" placeholder="Add tag…" maxlength="24" autocomplete="off" aria-label="Add a tag to this photo">
+        <ul id="photo-modal-tag-suggest" class="photo-modal-tag-suggest hidden"></ul>
+      </div>
+    </div>
+    <button id="photo-modal-next" class="photo-modal-nav photo-modal-next hidden" title="Next photo" aria-label="Next photo">›</button>
+    <span id="photo-modal-count" class="photo-modal-count hidden"></span>
+    <button id="photo-modal-goto" class="photo-modal-goto hidden" title="Go to this node on the map" aria-label="Go to this node on the map">Go to node →</button>
+    <button id="photo-modal-zoom-in" class="photo-modal-zoom photo-modal-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+    <button id="photo-modal-zoom-out" class="photo-modal-zoom photo-modal-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+    <button id="photo-modal-delete" class="photo-modal-delete" title="Delete this photo" aria-label="Delete this photo">🗑</button>
+    <button id="photo-modal-close" class="photo-modal-close" title="Close" aria-label="Close">✕</button>
+  </div>
+</div>
+
+<div id="tagbrowser-modal" class="modal hidden">
+  <div class="modal-card tagbrowser-modal-card">
+    <div id="tagbrowser-list-view">
+      <div class="modal-back-row">
+        <h2>Photo tags</h2>
+        <span class="modal-back-row-gap"></span>
+        <button type="button" id="tagbrowser-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+      </div>
+      <p class="tagbrowser-hint">Every tag you've added to a photo, gathered from across this whole map.</p>
+      <ul id="tagbrowser-tag-list" class="tagbrowser-tag-list"></ul>
+    </div>
+    <div id="tagbrowser-gallery-view" class="hidden">
+      <div class="modal-back-row">
+        <button type="button" id="tagbrowser-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+        <h2 id="tagbrowser-gallery-title">Tag</h2>
+        <span class="modal-back-row-gap"></span>
+        <button type="button" id="tagbrowser-gallery-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+      </div>
+      <div id="tagbrowser-gallery-grid" class="tagbrowser-gallery-grid"></div>
+    </div>
+  </div>
+</div>
+
+<div id="signin-required-modal" class="modal hidden">
+  <div class="modal-card signin-required-modal-card">
+    <h2>Sign in to edit</h2>
+    <p>This map is read-only until you sign in with Google. Editing, undo/redo, and adding tasks, notes, or photos all need a signed-in session.</p>
+    <div class="signin-required-actions">
+      <button id="signin-required-signin" class="btn-primary">Sign in with Google</button>
+      <button id="signin-required-cancel" class="btn-ghost">Not now</button>
+    </div>
+  </div>
+</div>
+
+<div id="ctx-menu" class="ctx-menu hidden"></div>
+
+<div id="theme-modal" class="modal hidden">
+  <div class="modal-card">
+    <h2>Appearance</h2>
+
+    <div class="theme-row">
+      <label for="theme-bg">Canvas background</label>
+      <input type="color" id="theme-bg" value="#12141a">
+      <button id="theme-bg-reset" class="btn-ghost small">Reset</button>
+    </div>
+
+    <div class="theme-row">
+      <label for="theme-connector-mode">Connector lines</label>
+      <select id="theme-connector-mode">
+        <option value="branch">Match branch colors</option>
+        <option value="custom">Custom color</option>
+      </select>
+      <input type="color" id="theme-connector-color" value="#7c9eff">
+    </div>
+
+    <div class="theme-row">
+      <label for="theme-font-mode">Font color</label>
+      <select id="theme-font-mode">
+        <option value="auto">Auto (readable)</option>
+        <option value="custom">Custom color</option>
+      </select>
+      <input type="color" id="theme-font-color" value="#f2f3f7">
+    </div>
+
+    <p class="theme-note">Connector lines always get a subtle halo so they stay readable against whatever background you pick.</p>
+
+    <button id="theme-close" class="btn-primary">Done</button>
+  </div>
+</div>
+
+<div id="note-modal" class="modal hidden">
+  <div class="modal-card note-modal-card">
+    <input id="note-title-input" class="note-title-input" spellcheck="false">
+    <div class="note-nav-row">
+      <span class="note-nav-gap"></span>
+      <button type="button" id="note-nav-add" class="note-nav-btn" title="Start a new note on this node">+ New note</button>
+      <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
+      <button type="button" id="note-nav-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div id="note-textarea" class="note-textarea" contenteditable="true" spellcheck="true" data-placeholder="Add a note for this node…"></div>
+    <div class="note-toolbar">
+      <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
+      <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
+      <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
+      <span class="note-tool-sep"></span>
+      <button type="button" id="note-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
+      <input type="file" id="note-image-input" accept="image/*" hidden>
+      <span class="note-tool-sep"></span>
+      <div class="note-color-picker">
+        <button type="button" id="note-tool-color" class="note-tool-btn note-color-trigger" title="Text color">
+          <span class="note-color-trigger-glyph">A</span>
+          <span id="note-color-trigger-swatch" class="note-color-trigger-swatch"></span>
+        </button>
+      </div>
+    </div>
+    <div id="note-resize-handle" class="note-resize-handle" title="Drag to resize"></div>
+  </div>
+  <div id="note-color-popover" class="note-color-popover hidden">
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#2b2a25" title="Default text">A</button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#b5504a" title="Red">A</button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#c98a3a" title="Orange">A</button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#5a8f5a" title="Green">A</button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#4a72b5" title="Blue">A</button>
+    <label class="note-tool-btn note-color-custom-wrap" title="Custom color">
+      <span>+</span>
+      <input type="color" id="note-color-custom" value="#2b2a25">
+    </label>
+  </div>
+</div>
+
+<div id="tasks-modal" class="modal hidden">
+  <div class="modal-card tasks-modal-card">
+    <div class="modal-back-row">
+      <button type="button" id="tasks-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+      <h2 id="tasks-modal-title">Tasks</h2>
+      <span id="tasks-focus-timer" class="tasks-focus-timer"></span>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="tasks-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div class="tasks-progress-row">
+      <div class="tasks-progress-bar-wrap">
+        <div id="tasks-progress-bar" class="tasks-progress-bar"></div>
+      </div>
+      <span id="tasks-progress-label" class="tasks-progress-label">No tasks yet</span>
+      <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by stars, highest first">★ Sort</button>
+    </div>
+    <ul id="tasks-list" class="tasks-list"></ul>
+    <div class="tasks-add-row">
+      <textarea id="tasks-new-input" class="tasks-new-input autosize-input" rows="1" placeholder="Add a task and press Enter…" spellcheck="false"></textarea>
+    </div>
+  </div>
+</div>
+
+<div id="task-note-modal" class="modal hidden">
+  <div class="modal-card task-note-modal-card">
+    <div class="task-note-modal-header">
+      <span id="task-note-modal-title" class="task-note-modal-title"></span>
+      <button type="button" id="task-note-newline-btn" class="task-note-modal-newline" title="Insert a new line">⏎</button>
+      <button type="button" id="task-note-delete-btn" class="task-note-modal-delete" title="Delete note">🗑</button>
+      <button type="button" id="task-note-close-btn" class="task-note-modal-close" title="Close" aria-label="Close">×</button>
+    </div>
+    <div id="task-note-textarea" class="task-note-modal-textarea" contenteditable="true" data-placeholder="Note…" spellcheck="true"></div>
+  </div>
+</div>
+
+<div id="affirmation-quotes-modal" class="modal hidden">
+  <div class="modal-card affirmation-quotes-modal-card">
+    <h2>Affirmation lines</h2>
+    <p class="affirmation-quotes-hint">A random line from this list is picked whenever you start a new Affirmation game round. Edit, remove, or add lines below.</p>
+    <ul id="affirmation-quotes-list" class="affirmation-quotes-list"></ul>
+    <div class="affirmation-quotes-add-row">
+      <input type="text" id="affirmation-quotes-new-input" class="tasks-new-input" placeholder="Add a new line and press Enter…" spellcheck="false">
+    </div>
+    <button id="affirmation-quotes-close" class="btn-primary">Done</button>
+  </div>
+</div>
+
+<div id="affirmation-modal" class="modal hidden">
+  <div class="modal-card affirmation-modal-card">
+    <div class="modal-back-row">
+      <button type="button" id="affirmation-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+      <h2>Type it out</h2>
+    </div>
+    <div class="tasks-progress-row">
+      <div class="tasks-progress-bar-wrap">
+        <div id="affirmation-progress-bar" class="tasks-progress-bar"></div>
+      </div>
+      <span id="affirmation-progress-label" class="tasks-progress-label">0 / 20</span>
+    </div>
+    <p id="affirmation-quote" class="affirmation-quote"></p>
+    <input type="text" id="affirmation-input" class="affirmation-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type the line above and press Enter…">
+    <p id="affirmation-feedback" class="affirmation-feedback"></p>
+  </div>
+</div>
+
+<div id="whack-modal" class="modal hidden">
+  <div class="modal-card whack-modal-card">
+    <div class="modal-back-row">
+      <button type="button" id="whack-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+      <h2>Whack-a-key</h2>
+    </div>
+    <div class="tasks-progress-row">
+      <div class="tasks-progress-bar-wrap">
+        <div id="whack-progress-bar" class="tasks-progress-bar"></div>
+      </div>
+      <span id="whack-progress-label" class="tasks-progress-label">0 / 15</span>
+    </div>
+    <div id="whack-stage" class="whack-stage" tabindex="0">
+      <span id="whack-letter" class="whack-letter">A</span>
+      <div class="whack-timer-track"><div id="whack-timer-bar" class="whack-timer-bar"></div></div>
+    </div>
+    <p id="whack-feedback" class="whack-feedback"></p>
+  </div>
+</div>
+
+<!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
+     sync when you bump one, just to avoid confusion; they don't have to
+     match technically, each file's version is independent. -->
+<script src="app.js?v=13"></script>
+</body>
+</html>

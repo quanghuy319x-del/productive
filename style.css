@@ -1,0 +1,2803 @@
+:root{
+  --bg: #12141a;
+  --panel: #181b23;
+  --panel-2: #1e222c;
+  --border: #2a2f3b;
+  --text: #e8e9ee;
+  --text-dim: #8a90a2;
+  --text-faint: #565c6d;
+  --accent: #7c9eff;
+  --accent-dim: #3a4666;
+  --accent-contrast: #0d1020;
+  --danger: #ff6b6b;
+  --root-fill: #0A0B24;
+  --root-text: #ffffff;
+  --scrollbar-thumb: rgba(140,145,160,0.35);
+  --radius: 10px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif;
+}
+
+*{ box-sizing: border-box; }
+
+html,body{
+  height:100%; margin:0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  overflow:hidden;
+}
+
+#app{
+  display:flex;
+  height:100vh;
+  height:100dvh; /* mobile browsers resize their chrome (address bar) as
+    you scroll, so 100vh can be taller than what's actually visible —
+    100dvh tracks the real visible viewport instead. Falls back to the
+    100vh line above on browsers that don't support dvh. */
+  width:100vw;
+}
+
+/* ---------------- Sidebar ---------------- */
+
+#sidebar{
+  width: 260px;
+  min-width:260px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display:flex;
+  flex-direction:column;
+  padding: 16px 12px;
+  transition: margin-left .18s ease;
+  /* The sidebar as a whole scrolls (rather than only the map list
+     internally) so that on a short/touch screen everything below the
+     fold — the folder/Drive sign-in row, export/import, shortcuts — is
+     always reachable with a drag, instead of being pushed off the
+     bottom with no way to get to it. */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#app.sidebar-hidden #sidebar{
+  margin-left: -260px; /* slides fully off-screen rather than display:none, so the transition animates */
+}
+
+.sidebar-toggle-btn{
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 50;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.sidebar-toggle-btn:hover{ background: var(--panel); }
+/* Once the sidebar is open, the button sits right at its edge instead of
+   floating over the map — out of the way, but still one tap to re-hide. */
+#app:not(.sidebar-hidden) .sidebar-toggle-btn{
+  left: 266px;
+}
+@media (max-width: 640px){
+  /* On a narrow/touch screen, keep the button pinned to the corner even
+     with the sidebar open, since 260px would push it awkwardly close to
+     map content on a small viewport. */
+  #app:not(.sidebar-hidden) .sidebar-toggle-btn{ left: 12px; }
+}
+
+.sidebar-head{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  margin-bottom: 18px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding: 0 4px;
+}
+.brand-mark{
+  color: var(--accent);
+  font-size: 15px;
+  transform: rotate(0deg);
+}
+.brand-name{
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-section-label{
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-faint);
+  padding: 4px 6px 8px;
+}
+
+#mindmap-list{
+  list-style:none;
+  margin:0; padding:0;
+  /* No separate inner scroll region here — the whole #sidebar scrolls
+     together now (see above), so a long map list just extends the
+     sidebar's scrollable content instead of trapping a nested
+     touch-scroll gesture inside a tiny box. */
+  flex: none;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+
+.map-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor:pointer;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+}
+.map-item:hover{
+  background: var(--panel-2);
+  color: var(--text);
+}
+.map-item.active{
+  background: var(--accent-dim);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.map-item .dot{
+  width:6px; height:6px; border-radius:50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.map-item.active .dot{ background: var(--accent); }
+.map-item .name{
+  flex:1;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size: 13.5px;
+}
+.map-item .meta{
+  font-size: 10.5px;
+  color: var(--text-faint);
+  flex: none;
+}
+.map-item .item-del{
+  flex:none;
+  opacity:0;
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius:4px;
+}
+.map-item:hover .item-del{ opacity:1; }
+.map-item .item-del:hover{ color: var(--danger); background: rgba(255,107,107,0.12); }
+
+.map-item .item-star{
+  flex:none;
+  opacity:0;
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius:4px;
+  line-height:1;
+}
+.map-item:hover .item-star{ opacity:1; }
+.map-item .item-star.favorited{ opacity:1; color:#f2c94c; }
+.map-item .item-star:hover{ color:#f2c94c; background: rgba(242,201,76,0.12); }
+
+.sidebar-folder{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding: 10px 4px;
+  border-top: 1px solid var(--border);
+}
+.folder-status{
+  font-size: 10.5px;
+  color: var(--text-faint);
+  line-height:1.4;
+}
+.sidebar-folder .btn-ghost{
+  align-self:flex-start;
+}
+.drive-status-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+/* Small connectivity "light" next to the Drive status line — green
+   while online, red while offline, matching the isOnline flag that
+   also gates editing (see requireSignIn/isEditingAllowed in app.js).
+   A subtle glow makes it read as a "light" rather than a flat dot. */
+.online-dot{
+  width:8px; height:8px;
+  border-radius:50%;
+  flex:none;
+  background:#5ee6a8;
+  box-shadow: 0 0 5px rgba(94,230,168,0.8);
+  transition: background .15s ease, box-shadow .15s ease;
+}
+.online-dot.offline{
+  background:#e2574c;
+  box-shadow: 0 0 5px rgba(226,87,76,0.8);
+}
+
+.sidebar-foot{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------------- Buttons ---------------- */
+
+button{
+  font-family: inherit;
+  cursor:pointer;
+  border:none;
+  outline:none;
+}
+button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.btn-primary{
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+.btn-primary:hover{ filter: brightness(1.08); }
+
+.btn-ghost{
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover{ color: var(--text); border-color: #3a4054; }
+.btn-ghost.danger:hover{ color: var(--danger); border-color: rgba(255,107,107,0.4); }
+.btn-ghost:disabled, .btn-primary:disabled{ opacity:0.4; cursor:not-allowed; }
+.btn-ghost:disabled:hover, .btn-primary:disabled:hover{ filter:none; color: var(--text-dim); border-color: var(--border); }
+
+/* ---------------- Main / toolbar ---------------- */
+
+#main{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  position:relative;
+}
+
+#toolbar{
+  height: 52px;
+  flex:none;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  transition: padding-left .18s ease;
+  /* On a narrow phone screen the full row (title, undo/redo, layout
+     picker, zoom controls, auto-arrange, theme, delete) doesn't fit and
+     was previously just overflowing silently past the right edge of the
+     screen with no way to reach it — auto-arrange/theme/delete-map would
+     effectively vanish. Letting the row scroll horizontally keeps every
+     button reachable with a swipe instead of some being invisible. This
+     is a no-op on wide/desktop screens since nothing overflows there. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#toolbar::-webkit-scrollbar{ display:none; }
+/* Prevent flex-shrink from squishing buttons/controls into illegible
+   slivers when space is tight — they keep their natural size and the
+   toolbar scrolls instead, same reasoning as the overflow-x above. */
+#toolbar > *{ flex-shrink:0; }
+/* Keep the floating sidebar-toggle button (fixed at the very top-left)
+   from ever sitting on top of the title input once the sidebar's out of
+   the way and #toolbar starts at the screen edge. */
+#app.sidebar-hidden #toolbar{
+  padding-left: 54px;
+}
+
+.title-input{
+  background:transparent;
+  border:none;
+  color:var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 6px 8px;
+  border-radius: 6px;
+  min-width: 120px;
+  max-width: 40vw;
+}
+.title-input:hover{ background: var(--panel-2); }
+.title-input:focus{ background: var(--panel-2); outline: none; }
+
+.toolbar-gap{ flex:1; }
+
+.save-status{
+  font-size: 11.5px;
+  color: var(--text-faint);
+  min-width: 70px;
+}
+.save-status.saving{ color: #e8c15a; }
+.save-status.saved{ color: #6fd08c; }
+
+.layout-select{
+  background: var(--panel-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 6px 8px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.layout-select:hover{ color: var(--text); }
+
+.zoom-controls{
+  display:flex;
+  align-items:center;
+  gap:2px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+}
+.zoom-controls button{
+  background:transparent;
+  color: var(--text-dim);
+  width: 28px; height: 26px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.zoom-controls button:hover{ background: var(--accent-dim); color: var(--text); }
+#zoom-reset{ width:auto; padding:0 10px; font-size:11px; }
+
+.undo-controls{
+  display:flex;
+  align-items:center;
+  gap:2px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+}
+.undo-controls button{
+  background:transparent;
+  color: var(--text-dim);
+  width: 28px; height: 26px;
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1;
+}
+.undo-controls button:hover:not(:disabled){ background: var(--accent-dim); color: var(--text); }
+.undo-controls button:disabled{ opacity: 0.35; cursor: default; }
+
+/* Floating add-child / add-sibling buttons, bottom-right of the canvas.
+   Mirror the Tab/Enter shortcuts for anyone who'd rather click than use
+   the keyboard (or is on a touch device without one). */
+#node-fabs.hidden{ display:none; }
+#node-fabs{
+  /* Fixed to the real browser viewport rather than absolute within
+     #viewport — #viewport's own box can already shrink for the keyboard
+     on browsers that resize dvh/layout for it, and staying absolute
+     inside that box would then stack our own --keyboard-inset offset on
+     top of a box that's already moved, overshooting. Anchoring directly
+     to the viewport means --keyboard-inset (measured against
+     window.innerHeight, which does NOT shift with dvh) is the one and
+     only source of the offset, however this particular browser handles
+     the keyboard layout-wise. */
+  position:fixed;
+  right:20px;
+  /* On a touch device with an on-screen keyboard open (e.g. mid-edit on
+     a node), the keyboard covers whatever's pinned to the bottom of the
+     screen without necessarily shrinking the page layout — so these get
+     pushed up by --keyboard-inset, a live keyboard-height estimate kept
+     in sync by JS (see the visualViewport listener), so they stay
+     tappable above the keyboard instead of hiding underneath it. */
+  bottom: calc(20px + var(--keyboard-inset, 0px));
+  transition: bottom .15s ease;
+  display:flex;
+  gap:10px;
+  z-index:50;
+}
+.node-fab{
+  width:44px; height:44px;
+  border-radius:50%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  cursor:pointer;
+}
+.node-fab svg{
+  width:26px; height:26px;
+  fill:none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.node-fab:hover{
+  background: var(--accent-dim);
+  color: var(--text);
+  border-color: var(--accent);
+}
+.node-fab:active{ transform: scale(0.94); }
+.node-fab.locked{
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.node-fab.locked:hover{
+  background: var(--panel-2);
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+/* ---------------- Canvas ---------------- */
+
+#viewport{
+  flex:1;
+  position:relative;
+  overflow:hidden;
+  background: var(--bg);
+  cursor: grab;
+  /* Hand every touch gesture inside the canvas (pan, pinch-zoom, node
+     drag) to our own pointer-event handlers instead of letting the
+     browser scroll or zoom the page with it. */
+  touch-action: none;
+}
+#viewport.panning{ cursor: grabbing; }
+
+#world{
+  position:absolute;
+  top:0; left:0;
+  transform-origin: 0 0;
+  /* will-change is toggled on/off from JS (see applyTransform) rather than
+     left on permanently — see the comment there for why. */
+}
+
+#lines-svg{
+  position:absolute;
+  top:0; left:0;
+  pointer-events:none;
+  overflow:visible;
+}
+
+#nodes-layer{
+  position:absolute;
+  top:0; left:0;
+}
+
+#empty-state{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  color: var(--text-dim);
+}
+#empty-state.hidden{ display:none; }
+
+#signed-out-state{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:14px;
+  color: var(--text-dim);
+  text-align:center;
+  padding: 0 24px;
+}
+#signed-out-state.hidden{ display:none; }
+
+.sidebar-signed-out-note{
+  color: var(--text-faint);
+  font-size:12.5px;
+  padding: 4px 14px 8px;
+  margin:0;
+}
+.sidebar-signed-out-note.hidden{ display:none; }
+
+/* While signed out, the canvas (nodes/lines) and the FABs are hidden in
+   favor of #signed-out-state's sign-in prompt — offline-cached map data
+   still exists locally, but per-node content shouldn't be visible/
+   editable until a Google session is confirmed. */
+body.signed-out #world,
+body.signed-out #node-fabs{ display:none !important; }
+body.signed-out #title-input{ visibility:hidden; }
+
+/* ---------------- Nodes ---------------- */
+
+.node{
+  position:absolute;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  white-space:pre-wrap;
+  overflow-wrap:break-word;
+  word-break:normal;
+  text-align:left;
+  overflow:visible;
+  padding: 8px 16px;
+  cursor:grab;
+  user-select:none;
+  border: 2px solid transparent;
+  transition: border-color .12s ease, filter .18s ease, opacity .18s ease;
+  font-size: 13.5px;
+  line-height: 1.3;
+  /* Let our own pointer handlers own single-finger drags on a node
+     instead of the browser trying to scroll/zoom the page with them. */
+  touch-action: none;
+}
+
+/* "Highlight branch" (node right-click menu) — everything outside the
+   chosen node's branch gets blurred and faded, so that part of the map
+   pops against the rest. Nodes stay clickable while dimmed (you can
+   still right-click one to switch the highlight to it), just visually
+   receded. See applyHighlight() in app.js. */
+.node.highlight-dim{
+  filter: blur(2.5px);
+  opacity: 0.32;
+}
+.node.highlight-focus{
+  z-index: 2;
+}
+.connector.highlight-dim{
+  filter: blur(2px);
+  opacity: 0.18;
+  transition: filter .18s ease, opacity .18s ease;
+}
+.connector.highlight-focus{
+  transition: filter .18s ease, opacity .18s ease;
+}
+
+.node.dragging{
+  cursor:grabbing;
+  z-index:5;
+  transition:none;
+  /* Hints the browser to promote this node (and, via the same class of
+     drag-time inline transform, its descendants) to its own compositor
+     layer up front. The live drag then just moves that already-painted
+     layer instead of repainting the node's contents on every frame — the
+     part that got expensive once a node was carrying a big photo strip. */
+  will-change: transform;
+}
+
+.node[contenteditable="true"]{
+  cursor:text;
+  user-select:text;
+  /* While actively editing, hand touch back to the browser so caret
+     placement, text selection, and the on-screen keyboard behave
+     normally instead of being eaten by the node's drag handling. */
+  touch-action: manipulation;
+}
+
+/* Selection ring: an outline sitting outside the box (not a border-color
+   change) so it stays visible no matter the node's own fill/border color —
+   e.g. a depth-1 node whose border is already the same hue as its fill. */
+.node.selected{
+  outline: 2.5px solid var(--sel-color, var(--accent));
+  outline-offset: 4px;
+}
+
+.node.struck{
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: currentColor;
+}
+
+.node.link-source{
+  box-shadow: 0 0 0 2px #e0b04a, 0 0 0 5px rgba(224,176,74,0.25);
+}
+
+.node.move-source{
+  box-shadow: 0 0 0 2px #4a8fe0, 0 0 0 5px rgba(74,143,224,0.25);
+}
+
+/* Glow uses filter: drop-shadow (not box-shadow) so it layers on top of
+   whatever depth-specific box-shadow the node already has, instead of
+   overriding it. It reads the same per-branch color variable the
+   selection ring uses, falling back to the theme accent for the root.
+   Three variants, picked from the right-click menu:
+   - soft:  slow, gentle breathing glow (default feel)
+   - fast:  the same breathing motion, sped up
+   - blink: a hard on/off flicker rather than a smooth fade, more like a
+            neon sign than a heartbeat */
+.node.glow-soft{
+  animation: node-glow-pulse 2.4s ease-in-out infinite;
+}
+.node.glow-fast{
+  animation: node-glow-pulse 0.7s ease-in-out infinite;
+}
+.node.glow-blink{
+  animation: node-glow-blink 0.9s steps(1, end) infinite;
+}
+@keyframes node-glow-pulse{
+  0%, 100% {
+    filter:
+      drop-shadow(0 0 5px var(--sel-color, var(--accent)))
+      drop-shadow(0 0 2px var(--sel-color, var(--accent)));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 16px var(--sel-color, var(--accent)))
+      drop-shadow(0 0 6px var(--sel-color, var(--accent)));
+  }
+}
+@keyframes node-glow-blink{
+  0%, 49% {
+    filter:
+      drop-shadow(0 0 18px var(--sel-color, var(--accent)))
+      drop-shadow(0 0 7px var(--sel-color, var(--accent)));
+  }
+  50%, 100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce){
+  .node.glow-soft, .node.glow-fast, .node.glow-blink{
+    animation: none;
+    filter:
+      drop-shadow(0 0 10px var(--sel-color, var(--accent)))
+      drop-shadow(0 0 4px var(--sel-color, var(--accent)));
+  }
+}
+
+.node.drop-target{
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(224,176,74,0.35);
+  transform: scale(1.04);
+}
+
+/* Highlight shown while a task ring / progress bar / photo strip dragged
+   from another node is hovering over this one as a drop target — a
+   dashed teal outline keeps it visually distinct from the solid gold
+   .drop-target used for reparenting a whole branch. */
+.node.marker-drop-target{
+  outline: 2px dashed #33b3f0 !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px rgba(51,179,240,0.25);
+  transform: scale(1.04);
+}
+
+#viewport.linking .node{ cursor: crosshair; }
+#viewport.linking{ cursor: crosshair; }
+#viewport.moving .node{ cursor: alias; }
+#viewport.moving{ cursor: alias; }
+
+.link-connector{
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Invisible wide stroke laid over a tree connector so a thin (or dotted,
+   level-3+) line is still easy to hover and right-click precisely, without
+   changing how the line actually looks. */
+.connector-hit{
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.node.depth-0{
+  background: linear-gradient(155deg, #14163f 0%, var(--root-fill) 65%);
+  color: var(--root-text);
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: 0.2px;
+  border-radius: 999px;
+  align-items:center;
+  text-align:center;
+  box-shadow:
+    0 10px 34px rgba(0,0,0,0.45),
+    0 0 0 4px rgba(245,162,92,0.14),
+    0 0 26px rgba(245,162,92,0.20);
+}
+.node.depth-1{
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.28);
+}
+
+.node.depth-2{
+  border-radius: 7px;
+  border-width: 1.5px;
+  border-style: dashed;
+  font-weight: 500;
+}
+
+.node.depth-3{
+  border-radius: 6px;
+  border-color: transparent !important;
+  font-weight: 400;
+  font-size: 12.5px;
+  box-shadow: none;
+}
+
+.node-badge{
+  position:absolute;
+  right: -7px; top: -7px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 10px;
+  font-weight:700;
+  min-width: 16px;
+  height:16px;
+  border-radius: 999px;
+  display:flex; align-items:center; justify-content:center;
+  padding: 0 3px;
+  pointer-events:none;
+}
+
+.node-marker-count{
+  position:absolute;
+  right: -4px; top: -4px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 8px;
+  font-weight:700;
+  min-width: 12px;
+  height:12px;
+  border-radius: 999px;
+  display:flex; align-items:center; justify-content:center;
+  padding: 0 2px;
+  pointer-events:none;
+  line-height:1;
+}
+.node-progress-row,
+.node-photo-strip,
+.node-photo-thumb{ cursor: grab; }
+.node-progress-row.marker-dragging,
+.node-photo-strip.marker-dragging,
+.node-photo-thumb.marker-dragging{
+  opacity: .4;
+  cursor: grabbing;
+}
+
+/* Sits in normal flow below the text, inside the node's own box (see
+   .node's flex-direction:column and the matching height/width reserved
+   for it in computeNodeBox), rather than floating outside the frame or
+   overlapping the label. flex-wrap (not a fixed grid) so the strip's
+   width shrinks to fit however many cells there actually are, wrapping
+   to a new row only past 5. Note and link markers render as the first
+   cells here (see renderNode), ahead of any photo thumbnails, so every
+   attachment indicator for a node lives in one grouped strip. */
+.node-photo-strip{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+  align-content:flex-start;
+  gap: 2px;
+  max-width: 53px; /* 5 * 9px + 4 * 2px gap */
+  margin-top: 5px;
+  flex: none;
+}
+.node-photo-thumb{
+  position: relative;
+  width: 9px; height:9px;
+  border-radius: 3px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--panel);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  cursor:pointer;
+  pointer-events:auto;
+  flex: none;
+}
+.node-photo-thumb:hover{ border-color: var(--accent); transform: scale(1.15); }
+.node-photo-more{
+  display:flex; align-items:center; justify-content:center;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 5px;
+  font-weight:700;
+}
+
+/* Note + link cells share the .node-photo-thumb box (same size, border,
+   shadow) but hold an icon/glyph instead of a background-image. Both
+   opt back out of that framing (no border/background/shadow) since
+   their icons are now full-color illustrations that already read
+   clearly on their own — a frame/tint around them just looked like an
+   unwanted box. */
+.node-note-marker,
+.node-url-marker{
+  position:relative;
+  display:flex; align-items:center; justify-content:center;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text-dim);
+  line-height:1;
+}
+.node-url-marker{
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.node-note-marker:hover,
+.node-url-marker:hover{ background: transparent; border-color: transparent; box-shadow: none; transform: scale(1.15); }
+.node-note-marker svg{ width: 100%; height:100%; }
+.node-url-marker svg{ width: 100%; height:100%; }
+.node-url-marker{ font-size: 6px; }
+.node-photo-strip.large .node-url-marker{ font-size: 11px; }
+
+
+/* Affirmation-completion cell gets its own green tint, same pattern as
+   the note icon's warm tint, so a completed round reads clearly at a
+   glance among the other strip cells. */
+.node-affirmation-marker{
+  background: rgba(94, 230, 168, 0.18);
+  border-color: rgba(94, 230, 168, 0.4);
+  color: #5ee6a8;
+}
+.node-affirmation-marker:hover{
+  background: rgba(94, 230, 168, 0.32);
+  color: #8af0c0;
+}
+.node-affirmation-marker svg{ width: 70%; height:70%; }
+
+/* Whack-a-key cell gets a violet tint, same background/border/color
+   recipe as the note and affirmation cells above so every marker type
+   reads consistently at a glance. */
+.node-whack-marker{
+  background: rgba(180, 148, 255, 0.18);
+  border-color: rgba(180, 148, 255, 0.4);
+  color: #b494ff;
+}
+.node-whack-marker:hover{
+  background: rgba(180, 148, 255, 0.32);
+  color: #cdb8ff;
+}
+.node-whack-marker svg{ width: 70%; height:70%; }
+
+/* Fewer than 6 cells always fit in a single row (max-width caps it at
+   5 columns), so there's room to show them noticeably bigger instead of
+   at the same small size a full row uses. */
+.node-photo-strip.large{
+  gap: 3px;
+  max-width: 103px; /* 5 * 18px + 4 * 3px gap */
+}
+.node-photo-strip.large .node-photo-thumb{
+  width: 18px; height:18px;
+  border-radius: 5px;
+}
+.node-photo-strip.large .node-photo-more{
+  font-size: 8px;
+}
+
+/* Bold task-progress bar + percentage, rendered in normal flow below the
+   text/photos (see renderNode) so the box always fully encloses them.
+   Fills left-to-right as tasks get checked off in the tasks modal, and
+   the whole row doubles as a click target to reopen that modal. */
+.node-progress-row{
+  display:flex;
+  align-items:center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  cursor:pointer;
+  pointer-events:auto;
+  flex: none;
+}
+.node-progress-track{
+  display:block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(127,127,127,0.25);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+  overflow:hidden;
+}
+.node-progress-fill{
+  display:block;
+  height:100%;
+  background: linear-gradient(90deg, #5ee6a8, #33b3f0);
+  box-shadow: 0 0 7px rgba(51,179,240,0.6);
+  border-radius: 999px;
+  transition: width .18s ease;
+}
+.node-progress-fill.done{
+  background: linear-gradient(90deg, #ffd76a, #f5a25c);
+  box-shadow: 0 0 8px rgba(245,162,92,0.7);
+}
+.node-progress-pct{
+  flex: none;
+  font-size: 11px;
+  font-weight: 800;
+  color: #33b3f0;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.node-progress-pct.done{ color: #f5a25c; }
+
+/* Used on level-1 nodes instead of plain colored text: a small dark chip
+   behind the percentage so it stays readable sitting directly on an
+   arbitrary, possibly light, branch color. */
+.node-progress-pct-chip{
+  color: #ffffff;
+  background: rgba(0,0,0,0.38);
+  padding: 1px 6px;
+  border-radius: 999px;
+  line-height: 1.5;
+}
+
+.node-collapse{
+  position:absolute;
+  right: -9px; top: 50%;
+  transform: translateY(-50%);
+  width: 16px; height:16px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1.5px solid var(--text-dim);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  color: var(--text-dim);
+  font-size: 10px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  z-index:2;
+  /* Hidden until the node is hovered (or selected, so keyboard/touch
+     users without a hover state can still find and use it) — see
+     .node:hover / .node.selected below. */
+  opacity: 0;
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+.node:hover .node-collapse,
+.node.selected .node-collapse{
+  opacity: 1;
+  pointer-events: auto;
+}
+.node-collapse:hover{ border-color: var(--accent); color: var(--accent); }
+
+/* ---------------- Context menu ---------------- */
+
+.app-toast{
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 10px);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.app-toast.show{
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.ctx-menu{
+  position:fixed;
+  z-index: 50;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 6px;
+  min-width: 190px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  /* A node with photos, notes, tasks, links, and the branch-color swatch
+     grid can produce a long menu. On a mouse/desktop screen there's
+     almost always plenty of room, so this default cap is generous —
+     tall enough that the menu shows every option without needing its
+     own internal scroll on any normal monitor. positionContextMenu() in
+     app.js still keeps the menu on-screen either way; the touch-device
+     override below (a small phone screen genuinely can run out of room)
+     is what the internal scroll is really for. */
+  max-height: min(92vh, 900px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.ctx-menu.hidden{ display:none; }
+@media (pointer: coarse){
+  .ctx-menu{ max-height: min(72vh, 520px); }
+}
+.ctx-item{
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  border-radius: 6px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.ctx-item:hover{ background: var(--accent-dim); }
+.ctx-item.danger{ color: var(--danger); }
+.ctx-item-label{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  min-width:0;
+  flex:1 1 auto;
+}
+.ctx-item-link-icon{
+  display:inline-flex;
+  width:14px; height:14px;
+  flex:none;
+  vertical-align:-3px;
+}
+.ctx-item-link-icon svg{ width:100%; height:100%; }
+.ctx-item-remove{
+  flex:none;
+  margin-left:8px;
+  width:18px; height:18px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:5px;
+  color: var(--text-faint);
+  font-size:11px;
+}
+.ctx-item-remove:hover{ background: rgba(220,80,80,0.18); color: var(--danger); }
+.ctx-item-rename:hover{ background: var(--accent-dim); color: var(--text); }
+.ctx-item-header{
+  cursor:default;
+}
+.ctx-item-header .ctx-item-label{
+  color: var(--text-faint);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.ctx-item-header:hover{ background: transparent; }
+.ctx-item-add{
+  flex:none;
+  margin-left:8px;
+  width:18px; height:18px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:5px;
+  color: var(--text-faint);
+  font-size:14px;
+  line-height:1;
+  cursor:pointer;
+}
+.ctx-item-add:hover{ background: var(--accent-dim); color: var(--accent); }
+.ctx-sep{ height:1px; background:var(--border); margin: 5px 2px; }
+.ctx-swatches{ display:flex; gap:6px; padding: 6px 8px; flex-wrap:wrap; }
+.ctx-swatch{
+  width:18px;height:18px;border-radius:50%;
+  cursor:pointer; border: 2px solid transparent;
+}
+.ctx-swatch.active{ border-color: var(--text); }
+.ctx-glow-options{ display:flex; gap:6px; padding: 6px 8px 8px; flex-wrap:wrap; }
+.ctx-glow-opt{
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.ctx-glow-opt:hover{ border-color: var(--accent); color: var(--text); }
+.ctx-glow-opt.active{
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-dim);
+}
+.ctx-distance-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding: 2px 10px 8px;
+}
+.ctx-distance-input{
+  width: 70px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 8px;
+}
+.ctx-distance-input:focus{ outline:none; border-color: var(--accent); }
+.ctx-distance-unit{ font-size:12px; color: var(--text-faint); }
+.ctx-style-row{
+  display:flex;
+  gap:6px;
+  padding: 2px 10px 8px;
+}
+.ctx-style-btn{
+  flex:1;
+  text-align:center;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor:pointer;
+}
+.ctx-style-btn:hover{ background: var(--accent-dim); }
+.ctx-style-btn.active{ border-color: var(--accent); color: var(--accent); }
+
+/* ---------------- Hint bar ---------------- */
+
+#hint-bar{
+  flex:none;
+  display:flex;
+  gap: 18px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+/* These are keyboard shortcuts (Tab, Enter, F2, Del, Space, Ctrl/Cmd+Z) —
+   meaningless on a touch device with no physical keyboard, and on a phone
+   it was cramped into a single unreadable row that also crowded the
+   floating node-fab buttons right above it. Just hide it entirely where
+   the primary input is touch. */
+@media (pointer: coarse){
+  #hint-bar{ display:none; }
+}
+kbd{
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-family: inherit;
+}
+
+/* ---------------- Modal ---------------- */
+
+.modal{
+  position:fixed; inset:0;
+  background: rgba(8,9,13,0.6);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  display:flex; align-items:center; justify-content:center;
+  z-index: 100;
+  /* On a touch device with the on-screen keyboard open, the page's meta
+     viewport is set to overlays-content, so the keyboard sits on top of
+     this fixed, full-height layer instead of shrinking it — a centered
+     modal (like the tasks list, with its "add a task" box at the very
+     bottom) can end up with its bottom edge, input and all, hidden
+     underneath the keyboard. Padding the bottom of the centering flexbox
+     by the live --keyboard-inset (kept in sync by the visualViewport
+     listener) shifts the centered card up by roughly half that amount,
+     which is enough to pull the add-task input back above the keyboard.
+     Comes out to 0 with no keyboard open, so this is a no-op otherwise. */
+  padding-bottom: var(--keyboard-inset, 0px);
+  box-sizing: border-box;
+}
+.modal.hidden{ display:none; }
+.modal-card{
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px 26px;
+  width: 420px;
+  max-width: 90vw;
+}
+.modal-card h2{
+  margin: 0 0 14px;
+  font-size: 16px;
+}
+.modal-back-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin: 0 0 14px;
+}
+.modal-back-row h2{ margin:0; }
+.modal-back-row-gap{ flex:1; }
+.tasksapp-modal-card{
+  /* Sized to comfortably host a full page (the standalone Tasks app),
+     not just a form/list like the other modals — wide and tall, with
+     the iframe itself filling whatever's left after the header. */
+  width: 720px;
+  max-width: 94vw;
+  height: 86vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 14px;
+}
+.tasksapp-modal-card .modal-back-row{ margin-bottom: 10px; }
+.tasksapp-frame{
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+@media (max-width: 640px){
+  .tasksapp-modal-card{ width: 100vw; height: 100dvh; max-width: 100vw; border-radius: 0; }
+}
+.tasks-focus-timer{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  margin-left: auto;
+}
+.modal-back-btn{
+  flex: none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height:1;
+  cursor:pointer;
+  transition: border-color .12s ease, color .12s ease, background .12s ease, transform .12s ease;
+}
+.modal-back-btn:hover{
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(255,255,255,0.07);
+  transform: translateX(-2px);
+}
+.modal-back-btn:active{ transform: translateX(-1px) scale(0.94); }
+.modal-card table{ width:100%; border-collapse: collapse; }
+.modal-card td{
+  padding: 6px 4px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.modal-card td:first-child{ white-space:nowrap; color: var(--text); }
+.modal-card .btn-primary{ margin-top:16px; width:100%; }
+
+.signin-required-modal-card p{
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.signin-required-actions{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.signin-required-actions .btn-primary{ margin-top:0; }
+.signin-required-actions .btn-ghost{ width:100%; }
+
+/* ---- Note modal: simple paper/monospace card, like a plain text memo ---- */
+.note-modal-card{
+  --paper-bg: #fbfaf5;
+  --paper-border: #ddd8c8;
+  --paper-text: #2b2a25;
+  --paper-text-dim: #8a8676;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-bg);
+  border: 1px solid var(--paper-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+  width: 760px;
+  min-width: 420px;
+  max-width: 96vw;
+  height: 560px;
+  min-height: 320px;
+  max-height: 92vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 20px 24px 12px;
+  font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+}
+
+/* Pager + add/delete row for a node's (possibly several) notes — sits
+   above the textarea, styled to match the paper card rather than the
+   app's dark-theme .btn-ghost buttons. */
+.note-title-input{
+  flex: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--paper-border);
+  color: var(--paper-text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 2px 2px 8px;
+  margin-bottom: 8px;
+}
+.note-title-input::placeholder{ color: var(--paper-text-dim); font-weight:600; }
+.note-title-input:focus{ outline: none; border-bottom-color: var(--paper-text-dim); }
+.note-nav-row{
+  flex: none;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:8px;
+}
+.note-nav-gap{ flex:1; }
+.note-nav-btn{
+  height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  padding:0 9px;
+  border-radius:5px;
+  border:1px solid var(--paper-border);
+  background:#ffffff;
+  color: var(--paper-text-dim);
+  font-family: inherit;
+  font-size:11px;
+  font-weight:600;
+  cursor:pointer;
+}
+.note-nav-btn:hover{ border-color: var(--paper-text-dim); background:#f2f0e6; color: var(--paper-text); }
+.note-nav-btn-danger:hover{ color:#b5504a; border-color:#b5504a; }
+
+.note-toolbar{
+  flex: none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  margin-top:8px;
+  flex-wrap:wrap;
+}
+.note-tool-sep{
+  width:1px;
+  align-self:stretch;
+  background: var(--paper-border);
+  margin: 0 2px;
+}
+.note-tool-btn{
+  width: 22px;
+  height: 22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius: 5px;
+  border: 1px solid var(--paper-border);
+  background: #ffffff;
+  color: var(--paper-text);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight:600;
+  line-height:1;
+  cursor:pointer;
+  padding:0;
+}
+.note-tool-btn:hover{ border-color: var(--paper-text-dim); background:#f2f0e6; }
+.note-tool-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+.note-tool-btn:disabled:hover{ border-color: var(--paper-border); background:#ffffff; }
+.note-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
+.note-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
+.note-color-swatch[data-color="#b5504a"]{ color:#b5504a; }
+.note-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
+.note-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
+.note-color-swatch[data-color="#4a72b5"]{ color:#4a72b5; }
+.note-color-custom-wrap{ position:relative; overflow:hidden; color: var(--paper-text-dim); }
+.note-color-custom-wrap input[type="color"]{
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  opacity:0; cursor:pointer; border:none; padding:0;
+}
+
+/* Single "font color" trigger button + popover, replacing the row of
+   5-6 separate swatch buttons that used to sit inline in the toolbar. */
+.note-color-picker{ position:relative; display:inline-flex; }
+.note-color-trigger{ position:relative; flex-direction:column; gap:0; }
+.note-color-trigger-glyph{ line-height:1; }
+.note-color-trigger-swatch{
+  position:absolute;
+  left:4px; right:4px; bottom:3px;
+  height:2.5px;
+  border-radius:2px;
+  background: var(--sw-current, #2b2a25);
+}
+.note-color-popover{
+  /* Positioned via JS (top/left set in px) relative to the viewport, not
+     the toolbar button, so it can never be clipped by note-modal-card's
+     overflow:hidden — it lives outside that card in the DOM now. */
+  position:fixed;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  padding:5px;
+  background:#ffffff;
+  border:1px solid var(--paper-border);
+  border-radius:8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+  z-index: 10001;
+}
+.note-color-popover.hidden{ display:none; }
+
+.note-textarea{
+  width:100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--paper-text);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 4px 2px;
+  resize: none;
+  white-space: pre-wrap;
+  outline: none;
+}
+.note-textarea:empty::before{
+  content: attr(data-placeholder);
+  color: var(--paper-text-dim);
+}
+.note-textarea div{ min-height: 1.7em; }
+.note-textarea .note-line-checked,
+.note-textarea.note-line-checked{ text-decoration: line-through; }
+.note-textarea img{
+  display:block;
+  max-width: 100%;
+  max-height: 340px;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--paper-border);
+  margin: 4px 0;
+}
+.note-textarea.drag-over{
+  outline: 2px dashed var(--paper-text-dim);
+  outline-offset: -6px;
+  border-radius: 6px;
+}
+
+.note-modal-card *:focus,
+.note-modal-card *:focus-visible{
+  outline: none;
+  box-shadow: none;
+}
+
+
+.note-resize-handle{
+  position:absolute;
+  right:0; bottom:0;
+  width:14px; height:14px;
+  cursor: nwse-resize;
+  z-index: 6;
+  touch-action: none;
+  /* three diagonal stripes, like a classic resize grip */
+  background:
+    linear-gradient(135deg, transparent 0 43%, var(--paper-text-dim) 43% 50%, transparent 50% 100%),
+    linear-gradient(135deg, transparent 0 63%, var(--paper-text-dim) 63% 70%, transparent 70% 100%),
+    linear-gradient(135deg, transparent 0 83%, var(--paper-text-dim) 83% 90%, transparent 90% 100%);
+  opacity: 0.55;
+  border-bottom-right-radius: 7px;
+}
+.note-resize-handle:hover{ opacity: 0.9; }
+
+/* ---- Tasks modal: per-node checklist with a progress readout ---- */
+.tasks-modal-card{
+  display:flex;
+  flex-direction:column;
+  /* Cap the whole card too, not just the list — otherwise a short
+     browser window would still clip the "Done" button off the bottom
+     once the list itself is tall enough to show ~20 tasks. */
+  max-height: 90vh;
+  overflow-y:auto;
+  /* Wider than the default modal-card so a task's controls (checkbox,
+     text, timer, subtask toggle, etc.) have room to sit on one line. */
+  width: 480px;
+  max-width: 94vw;
+}
+.tasks-progress-row{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.tasks-progress-bar-wrap{
+  flex: 1 1 auto;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+  overflow:hidden;
+}
+.tasks-progress-bar{
+  height:100%;
+  width:0%;
+  background: linear-gradient(90deg, #5ee6a8, #33b3f0);
+  box-shadow: 0 0 8px rgba(51,179,240,0.6);
+  border-radius: 999px;
+  transition: width .18s ease;
+}
+.tasks-progress-bar.done{
+  background: linear-gradient(90deg, #ffd76a, #f5a25c);
+  box-shadow: 0 0 9px rgba(245,162,92,0.7);
+}
+.tasks-progress-bar.wrong{
+  background: var(--danger);
+  box-shadow: none;
+  transition: width .08s linear;
+}
+.tasks-progress-label{
+  flex: none;
+  font-size: 15px;
+  color: var(--text-dim);
+  white-space:nowrap;
+}
+.tasks-sort-stars-btn{
+  flex: none;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tasks-sort-stars-btn:hover{ color: var(--text); border-color: #3a4054; }
+.tasks-sort-stars-btn:active{ transform: scale(0.96); }
+.tasks-sort-stars-btn:disabled{ opacity: 0.4; cursor: not-allowed; }
+.tasks-sort-stars-btn:disabled:hover{ color: var(--text-dim); border-color: var(--border); }
+.tasks-list{
+  list-style:none;
+  margin:0 0 12px;
+  padding:0;
+  /* No cap here — the list grows to fit however many tasks there are, so
+     they're all visible at once without an inner scrollbar. The card
+     itself (.tasks-modal-card) is the thing that scrolls, and only if the
+     whole modal ends up taller than the browser window. */
+  column-count: 1;
+}
+.tasks-list .task-row{
+  margin: 0 0 6px;
+  /* Never let a single task row itself be split across the column
+     break. */
+  break-inside: avoid;
+}
+.tasks-list .task-row.has-open-subtasks{
+  /* Keep an expanded task glued to its subtask panel right below it,
+     rather than letting the column break land between them. */
+  break-after: avoid-column;
+}
+.tasks-list .subtask-panel{
+  margin: 0 0 6px;
+  break-inside: avoid;
+  break-before: avoid-column;
+}
+@media (any-hover: hover) and (any-pointer: fine){
+  /* PC/desktop (a real mouse/trackpad is available): lay tasks out in
+     2 columns so a long list doesn't force a tall, narrow scroll.
+     Touch-only devices stay single-column (see column-count:1 above).
+     Uses any-hover/any-pointer rather than hover/pointer — those only
+     test the *primary* input, so a touchscreen laptop that also has a
+     mouse would otherwise report pointer:coarse and never get the
+     2-column layout even though it has a mouse plugged in. */
+  .tasks-list{
+    column-count: 2;
+    column-gap: 12px;
+  }
+  .tasks-modal-card{
+    /* Wide enough for two task columns side by side. */
+    width: 760px;
+  }
+}
+.task-row{
+  display:flex;
+  align-items:center;
+  gap: 9px;
+  position: relative;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.task-drag-handle{
+  flex:none;
+  width:14px;
+  text-align:center;
+  color: var(--text-faint);
+  font-size: 19.5px;
+  line-height:1;
+  cursor: grab;
+  user-select:none;
+}
+.task-drag-handle:hover{ color: var(--text-dim); }
+.task-row.task-dragging{ opacity: .4; }
+.task-row.task-dragging .task-drag-handle{ cursor: grabbing; }
+/* Thin highlighted line above/below a row shows exactly where a dragged
+   task will land, instead of just guessing from a whole-row highlight. */
+.task-row.drag-over-top::before,
+.task-row.drag-over-bottom::after{
+  content:"";
+  position:absolute;
+  left:0; right:0;
+  height:2px;
+  background: #33b3f0;
+  border-radius:1px;
+}
+.task-row.drag-over-top::before{ top:0; }
+.task-row.drag-over-bottom::after{ bottom:0; }
+/* Whole-row highlight for dragging a subtask onto a *different* task (as
+   opposed to the top/bottom line used when reordering tasks themselves) —
+   there's no "position" to show, just "drop it into this task". */
+.task-row.subtask-drop-target{
+  box-shadow: inset 0 0 0 2px #33b3f0;
+  border-radius: 6px;
+}
+.task-checkbox{
+  flex:none;
+  width:16px; height:16px;
+  cursor:pointer;
+  accent-color: #33b3f0;
+  /* Custom appearance so the checked state can be this app's own red
+     checkmark icon instead of the browser's plain native checkmark.
+     Unchecked stays a plain bordered box; only :checked swaps in the
+     icon below, and its background stays transparent so no box is
+     drawn behind the check. */
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  border-radius: 4px;
+  border: 2px solid var(--text-faint);
+  background: transparent;
+}
+.task-checkbox:checked{
+  /* Exact match to the app's task-check-icon.svg / favicon style: a
+     slightly rotated black rounded-square frame with a red checkmark
+     whose top stroke deliberately overshoots past the frame's edge
+     (not fully contained inside the box). Scaled up 1.5x via transform
+     (not width/height) so it reads bigger without shifting the row's
+     layout — .task-row has no overflow:hidden, so the enlarged icon is
+     free to spill past the checkbox's own 16x16 box. */
+  border-color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg transform='rotate(-9 20 21)'%3E%3Crect x='6' y='9' width='24' height='24' rx='1.5' fill='none' stroke='%231c1c1c' stroke-width='3.2' stroke-linejoin='round'/%3E%3Cpath d='M9.5 22 L16.5 29 L19.3 26 L13.3 20 Z M16.5 29 L30.5 4.5 L27.3 3.6 L14.6 25.3 Z' fill='%23dc2626'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transform: scale(1.5);
+  transform-origin: center;
+}
+.task-star{
+  flex:none;
+  border:none;
+  background:none;
+  padding:0;
+  min-width:18px;
+  font-size: 15px;
+  letter-spacing: -1px;
+  line-height:1;
+  color: var(--text-faint);
+  cursor:pointer;
+}
+.task-star:hover{ color: #f5c14b; }
+.task-star.starred{ color: #f5c14b; }
+/* Hide the checkbox, drag handle, star, subtask-add, note, and delete
+   buttons until the row is hovered/focused, but only on devices that
+   actually have a mouse/trackpad available — on touch-only devices,
+   there's no hover state to reveal them with, so they just stay
+   visible there instead of becoming unreachable. Uses any-hover /
+   any-pointer rather than hover/pointer since those only test the
+   *primary* input — a touchscreen laptop that also has a mouse would
+   otherwise never match and never get the reveal-on-hover behavior.
+   The checkbox uses display:none (not opacity) so it takes no space
+   and doesn't leave an empty clickable gap while hidden; a checked
+   checkbox stays visible regardless, so a done task still reads as
+   done at a glance without hovering. Subtask checkboxes
+   (.subtask-checkbox) are a separate rule below and are untouched. */
+@media (any-hover: hover) and (any-pointer: fine) {
+  .task-checkbox{ display: none; }
+  .task-checkbox:checked{ display: inline-block; }
+  .task-drag-handle{ opacity: 0; transition: opacity .12s ease; }
+  .task-star{ opacity: 0; transition: opacity .12s ease; }
+  .task-star.starred{ opacity: 1; }
+  .task-delete{ opacity: 0; transition: opacity .12s ease; }
+  .task-subtask-add-btn{ opacity: 0; transition: opacity .12s ease; }
+  .task-note-btn{ opacity: 0; transition: opacity .12s ease; }
+  .task-note-btn.has-note{ opacity: 1; }
+  .task-row:hover .task-drag-handle,
+  .task-row:focus-within .task-drag-handle,
+  .task-row:hover .task-star,
+  .task-row:focus-within .task-star,
+  .task-row:hover .task-delete,
+  .task-row:focus-within .task-delete,
+  .task-row:hover .task-subtask-add-btn,
+  .task-row:focus-within .task-subtask-add-btn,
+  .task-row:hover .task-note-btn,
+  .task-row:focus-within .task-note-btn{ opacity: 1; }
+  .task-row:hover .task-checkbox,
+  .task-row:focus-within .task-checkbox{ display: inline-block; }
+}
+.task-text{
+  flex: 1 1 auto;
+  min-width:0;
+  font-size: 15px;
+  color: var(--text);
+  outline:none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  overflow-wrap:anywhere;
+}
+.task-text:focus{ background: var(--panel-2); }
+.task-row.done .task-text{
+  color: var(--text-faint);
+}
+
+/* Every task row (not subtask rows) gets this soft fill by default now,
+   so .has-open-subtasks no longer needs to add its own — it's kept as a
+   marker class in case something else wants to key off it later. */
+.task-row.has-open-subtasks{}
+
+.task-timer{
+  flex: none;
+  display:flex;
+  align-items:center;
+  gap: 4px;
+}
+.task-timer-btn{
+  flex:none;
+  width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  font-size:19.5px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:5px;
+}
+.task-timer-start:hover{ color: #33b3f0; background: var(--panel-2); }
+.task-timer-btn:hover{ background: var(--panel-2); }
+.task-timer-stop:hover{ color: var(--danger, #d16a6a); }
+.task-timer-extend{
+  width:auto;
+  padding: 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.task-timer-extend:hover{ color: #33b3f0; }
+.task-timer-time{
+  flex:none;
+  min-width: 34px;
+  text-align:right;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+  font-weight: 800;
+  color: #33b3f0;
+}
+.task-timer-time.paused{ color: var(--text-dim); }
+.task-subtask-add-btn{
+  flex:none;
+  width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  font-size:22.5px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:5px;
+}
+.task-subtask-add-btn:hover{ color: var(--text); background: var(--panel-2); }
+
+.task-note-btn{
+  flex:none;
+  width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  cursor:pointer;
+  border-radius:5px;
+  padding:0;
+}
+.task-note-btn svg{ width:15px; height:15px; }
+.task-note-btn:hover{ color: var(--text); background: var(--panel-2); }
+.task-note-btn.has-note{ color: #33b3f0; }
+
+/* ---- Task note: its own small popup, styled like the node note's paper
+   card but far simpler (no title, no toolbar, no multiples) ---- */
+.task-note-modal-card{
+  --paper-bg: #fbfaf5;
+  --paper-border: #ddd8c8;
+  --paper-text: #2b2a25;
+  --paper-text-dim: #8a8676;
+  display:flex;
+  flex-direction:column;
+  background: var(--paper-bg);
+  border: 1px solid var(--paper-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+  width: 480px;
+  max-width: 92vw;
+  height: 360px;
+  max-height: 80vh;
+  box-sizing: border-box;
+  padding: 16px 18px 18px;
+  font-family: "SFMono-Regular", "Menlo", "Consolas", "Liberation Mono", monospace;
+}
+.task-note-modal-header{
+  flex:none;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:10px;
+  padding-bottom:8px;
+  border-bottom: 1px solid var(--paper-border);
+}
+.task-note-modal-title{
+  flex:1 1 auto;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size: 13.5px;
+  font-weight:700;
+  color: var(--paper-text);
+}
+.task-note-modal-delete,
+.task-note-modal-close,
+.task-note-modal-newline{
+  flex:none;
+  width:24px; height:24px;
+  display:flex; align-items:center; justify-content:center;
+  border:none;
+  background:transparent;
+  color: var(--paper-text-dim);
+  font-size:14px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:5px;
+}
+.task-note-modal-close{ font-size:20px; }
+.task-note-modal-newline{ font-size:16px; }
+.task-note-modal-delete:hover{ color:#b5504a; background:#f2f0e6; }
+.task-note-modal-close:hover{ color: var(--paper-text); background:#f2f0e6; }
+.task-note-modal-newline:hover{ color: var(--paper-text); background:#f2f0e6; }
+.task-note-modal-card *:focus,
+.task-note-modal-card *:focus-visible{
+  outline: none;
+  box-shadow: none;
+}
+.task-note-modal-textarea{
+  flex:1 1 auto;
+  width:100%;
+  min-height:0;
+  overflow-y:auto;
+  resize:none;
+  font: inherit;
+  font-size: 13.5px;
+  line-height:1.5;
+  color: var(--paper-text);
+  background: transparent;
+  border:none;
+  outline:none;
+  padding:0;
+  white-space: pre-wrap;
+}
+.task-note-modal-textarea:empty::before{
+  content: attr(data-placeholder);
+  color: var(--paper-text-dim);
+}
+.task-note-modal-textarea div{ min-height: 1.5em; }
+
+
+.task-timer-done-label{
+  flex:none;
+  font-size: 15px;
+  font-weight: 700;
+  color: #5a8f5a;
+  white-space:nowrap;
+}
+
+.task-delete{
+  flex:none;
+  width:20px; height:20px;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  font-size:24px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:4px;
+}
+.task-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel-2); }
+.tasks-add-row{ margin-bottom: 4px; display:flex; gap:8px; align-items:flex-end; }
+.tasks-new-input{
+  flex: 1 1 auto;
+  min-width:0;
+  box-sizing:border-box;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 11px;
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--text);
+  outline:none;
+}
+.tasks-new-input:focus{ border-color: var(--accent); }
+.tasks-affirmation-add{ flex:none; white-space:nowrap; align-self:flex-end; }
+/* Auto-growing textareas used for "add a task/subtask" — they start at
+   one line and expand in height (via JS reading scrollHeight) as the
+   person types a longer entry, so the whole paragraph stays visible
+   instead of scrolling sideways in a single line; past ~8 lines they
+   scroll instead of growing forever. */
+.autosize-input{
+  resize:none;
+  overflow-y:auto;
+  max-height: 168px;
+  min-height: 36px;
+  overflow-wrap:anywhere;
+}
+
+/* Subtasks — a small nested checklist on a single task. Opened/closed by
+   double-clicking the task row itself (see the row's dblclick handler);
+   there is no separate expand button. Left padding here is trimmed down
+   to the task row's own 2px so the drag handle and checkbox below line
+   up in the same columns as the task row's (task row: 2px padding, then
+   handle/gap/checkbox — matched exactly by the subtask row below). */
+.subtask-panel{
+  list-style:none;
+  padding: 2px 4px 8px 2px;
+}
+.subtask-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+}
+.subtask-row{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding: 4px 2px;
+  position: relative;
+}
+.subtask-drag-handle{
+  width:14px;
+  font-size: 19.5px;
+  visibility: hidden;
+}
+.subtask-checkbox{
+  flex:none;
+  width:14px; height:14px;
+  cursor:pointer;
+  accent-color: #33b3f0;
+  /* Stays out of the way until you hover the row — including once it's
+     checked, since the subtask's own faded/muted text already marks it
+     as done at a glance (see .subtask-row.done .subtask-text below). */
+  visibility: hidden;
+}
+.subtask-row:hover .subtask-checkbox{
+  visibility: visible;
+}
+.subtask-row:hover .subtask-drag-handle{ visibility: visible; }
+/* Same drop-line convention as the task list above, scoped to this one
+   task's own subtask list — a subtask only ever reorders within it. */
+.subtask-row.drag-over-top::before,
+.subtask-row.drag-over-bottom::after{
+  content:"";
+  position:absolute;
+  left:0; right:0;
+  height:2px;
+  background: #33b3f0;
+  border-radius:1px;
+}
+.subtask-row.drag-over-top::before{ top:0; }
+.subtask-row.drag-over-bottom::after{ bottom:0; }
+.subtask-row.task-dragging{ opacity:.4; }
+.subtask-text{
+  flex:1 1 auto;
+  min-width:0;
+  font-size: 15px;
+  color: var(--text-dim);
+  outline:none;
+  padding: 1px 4px;
+  border-radius: 4px;
+  overflow-wrap:anywhere;
+  cursor: pointer;
+}
+.subtask-text[contenteditable="true"]{ cursor: text; }
+.subtask-text:focus{ background: var(--panel-2); }
+.subtask-row.done .subtask-text{
+  color: var(--text-faint);
+  opacity: 0.55;
+}
+.subtask-copy{
+  flex:none;
+  width:18px; height:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  font-size:13px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:4px;
+  visibility: hidden;
+}
+.subtask-row:hover .subtask-copy{ visibility: visible; }
+.subtask-copy:hover{ color: var(--text); background: var(--panel-2); }
+.subtask-copy.copied{ color: #33b3f0; visibility: visible; }
+.subtask-delete{
+  flex:none;
+  width:18px; height:18px;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  font-size:21px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:4px;
+  visibility: hidden;
+}
+.subtask-row:hover .subtask-delete{ visibility: visible; }
+.subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel-2); }
+.subtask-add-row{ margin-top:2px; }
+.subtask-new-input{
+  width:100%;
+  box-sizing:border-box;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  font-size: 15px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--text);
+  outline:none;
+}
+.subtask-new-input.autosize-input{ min-height: 30px; max-height: 140px; }
+.subtask-new-input:focus{ border-color: var(--accent); }
+.subtask-add-btn{
+  width:24px; height:24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--border);
+  border-radius:6px;
+  background: var(--panel-2);
+  color: var(--text-faint);
+  font-size:21px;
+  line-height:1;
+  cursor:pointer;
+}
+.subtask-add-btn:hover{ color: var(--text); border-color: var(--accent); background: var(--panel); }
+
+/* ============================================================
+   Tasks modal — simple flat black & white theme. Scoped to
+   #tasks-modal only, so the rest of the app keeps its usual
+   dark/colorful look. Plain white background, black text and
+   borders, no gradients, textures, or color accents. */
+#tasks-modal .modal-card{
+  background: #ffffff;
+  color: #5a5a5a;
+  border: 1px solid #5a5a5a;
+}
+#tasks-modal .modal-back-btn{
+  background: #ffffff;
+  color: #5a5a5a;
+  border: 1px solid #5a5a5a;
+}
+#tasks-modal .modal-back-btn:hover{ background: #f0f0f0; }
+#tasks-modal #tasks-modal-title{ color: #5a5a5a; }
+#tasks-modal .tasks-progress-bar-wrap{
+  background: #eeeeee;
+  border: 1px solid #5a5a5a;
+  box-shadow: none;
+}
+#tasks-modal .tasks-progress-bar{
+  background: #5a5a5a;
+  box-shadow: none;
+}
+#tasks-modal .tasks-progress-bar.done{ background: #5a5a5a; }
+#tasks-modal .tasks-progress-label{ color: #444444; }
+#tasks-modal .tasks-sort-stars-btn{
+  background: #ffffff;
+  color: #5a5a5a;
+  border: 1px solid #5a5a5a;
+}
+#tasks-modal .tasks-sort-stars-btn:hover{ background: #f0f0f0; }
+#tasks-modal .tasks-sort-stars-btn:disabled{ opacity: 0.4; }
+#tasks-modal .task-row{ background: #f7f7f7; border-radius: 6px; }
+#tasks-modal .task-drag-handle{ color: #bbbbbb; }
+#tasks-modal .task-drag-handle:hover{ color: #5a5a5a; }
+#tasks-modal .task-checkbox{ accent-color: #5a5a5a; }
+#tasks-modal .subtask-checkbox{ accent-color: #5a5a5a; }
+#tasks-modal .task-star{ color: #bbbbbb; }
+#tasks-modal .task-star:hover,
+#tasks-modal .task-star.starred{ color: #f5c14b; }
+#tasks-modal .task-text{ color: #000000; }
+#tasks-modal .task-text:focus{ background: #f2f2f2; }
+#tasks-modal .task-row.done .task-text{ color: #c2c2c2; }
+#tasks-modal .task-row.has-open-subtasks{}
+#tasks-modal .task-timer-btn{ color: #444444; }
+#tasks-modal .task-timer-btn:hover{ background: #f0f0f0; }
+#tasks-modal .task-timer-extend{ color: #444444; }
+#tasks-modal .task-timer-time{ color: #5a5a5a; }
+#tasks-modal .task-timer-time.paused{ color: #a0a0a0; }
+#tasks-modal .task-timer-done-label{ color: #5a5a5a; }
+#tasks-modal .task-subtask-add-btn{ color: #a0a0a0; }
+#tasks-modal .task-subtask-add-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .task-note-btn{ color: #a0a0a0; }
+#tasks-modal .task-note-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .task-note-btn.has-note{ color: #33b3f0; }
+#tasks-modal .task-delete{ color: #bbbbbb; }
+#tasks-modal .task-delete:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .tasks-new-input,
+#tasks-modal .subtask-new-input{
+  background: #ffffff;
+  border: 1px solid #c9c9c9;
+  color: #5a5a5a;
+}
+#tasks-modal .tasks-new-input:focus,
+#tasks-modal .subtask-new-input:focus{ border-color: #5a5a5a; }
+#tasks-modal .subtask-drag-handle{ color: #bbbbbb; }
+#tasks-modal .subtask-drag-handle:hover{ color: #5a5a5a; }
+#tasks-modal .subtask-text{ color: #000000; }
+#tasks-modal .subtask-text:focus{ background: #f2f2f2; }
+#tasks-modal .subtask-row.done .subtask-text{ color: #c2c2c2; opacity: 0.6; }
+#tasks-modal .subtask-copy{ color: #bbbbbb; }
+#tasks-modal .subtask-copy:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .subtask-copy.copied{ color: #33b3f0; }
+#tasks-modal .subtask-delete{ color: #bbbbbb; }
+#tasks-modal .subtask-delete:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .subtask-add-btn{
+  background: #ffffff;
+  border: 1px solid #c9c9c9;
+  color: #a0a0a0;
+}
+#tasks-modal .subtask-add-btn:hover{ color: #5a5a5a; border-color: #5a5a5a; background: #f2f2f2; }
+#tasks-modal .task-row.drag-over-top::before,
+#tasks-modal .task-row.drag-over-bottom::after,
+#tasks-modal .subtask-row.drag-over-top::before,
+#tasks-modal .subtask-row.drag-over-bottom::after{ background: #5a5a5a; }
+#tasks-modal .task-row.subtask-drop-target{ box-shadow: inset 0 0 0 2px #5a5a5a; }
+
+
+/* ---- Affirmation typing game modal ---- */
+.affirmation-modal-card{ max-width: 440px; }
+.affirmation-quote{
+  margin: 4px 0 14px;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text);
+}
+.affirmation-input{
+  width:100%;
+  box-sizing:border-box;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text);
+  outline:none;
+}
+.affirmation-input:focus{ border-color: var(--accent); }
+.affirmation-input.shake{
+  border-color: var(--danger);
+  animation: affirmation-shake .3s ease;
+}
+.affirmation-input:disabled{ opacity:0.6; }
+@keyframes affirmation-shake{
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+.affirmation-feedback{
+  min-height: 16px;
+  margin: 8px 2px 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.affirmation-feedback.ok{ color: #5a8f5a; }
+.affirmation-feedback.bad{ color: var(--danger); }
+
+/* ---- Whack-a-key game modal ---- */
+.whack-modal-card{ max-width: 400px; }
+.whack-stage{
+  margin: 4px 0 10px;
+  height: 160px;
+  border-radius: 10px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  outline:none;
+}
+.whack-letter{
+  font-size: 56px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 2px;
+}
+.whack-letter.shake{
+  animation: affirmation-shake .3s ease;
+  color: var(--danger);
+}
+.whack-timer-track{
+  width: 70%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow:hidden;
+}
+.whack-timer-bar{
+  height:100%;
+  width:100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width linear;
+}
+.whack-timer-bar.urgent{ background: var(--danger); }
+.whack-feedback{
+  min-height: 16px;
+  margin: 8px 2px 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align:center;
+}
+.whack-feedback.ok{ color: #5a8f5a; }
+.whack-feedback.bad{ color: var(--danger); }
+
+/* ---- Affirmation lines manager modal ---- */
+.affirmation-quotes-modal-card{ max-width: 480px; }
+.affirmation-quotes-hint{
+  margin: -4px 0 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.affirmation-quotes-list{
+  list-style:none;
+  margin: 0 0 12px;
+  padding: 0;
+  max-height: min(420px, 50vh);
+  overflow-y: auto;
+}
+.affirmation-quote-row{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.affirmation-quote-row:last-child{ border-bottom:none; }
+.affirmation-quote-row-input{
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text);
+  outline:none;
+}
+.affirmation-quote-row-input:focus{ border-color: var(--accent); }
+.affirmation-quote-row-delete{
+  flex:none;
+  width:22px; height:22px;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  font-size:16px;
+  line-height:1;
+  cursor:pointer;
+  border-radius:4px;
+}
+.affirmation-quote-row-delete:hover{ color: var(--danger); background: var(--panel-2); }
+.affirmation-quotes-empty{
+  padding: 10px 2px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+.affirmation-quotes-add-row{ margin-bottom: 4px; }
+
+.trash-count-badge{
+  display:inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.trash-hint{
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.trash-list{
+  list-style:none;
+  margin: 0 0 14px;
+  padding: 0;
+  max-height: min(420px, 50vh);
+  overflow-y: auto;
+}
+.trash-row{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.trash-row:last-child{ border-bottom:none; }
+.trash-row-text{
+  flex: 1 1 auto;
+  min-width: 0;
+  display:flex;
+  flex-direction:column;
+  gap: 2px;
+}
+.trash-row-name{
+  font-size: 13px;
+  color: var(--text);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.trash-row-meta{
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.trash-row-actions{
+  flex:none;
+  display:flex;
+  gap: 4px;
+}
+.trash-row-restore, .trash-row-delete{
+  flex:none;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+.trash-row-restore:hover{ color: var(--accent); border-color: var(--accent); }
+.trash-row-delete:hover{ color: var(--danger); border-color: rgba(255,107,107,0.4); }
+.trash-empty{
+  padding: 10px 2px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+.trash-modal-actions{
+  display:flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.trash-modal-actions .btn-primary{ margin-top:0; flex:1; }
+.trash-modal-actions .btn-ghost{ flex:none; }
+
+#tagbrowser-list-view.hidden, #tagbrowser-gallery-view.hidden{ display:none; }
+.tagbrowser-modal-card{
+  width: 480px;
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.tagbrowser-hint{
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.tagbrowser-tag-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+}
+.tagbrowser-tag-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 4px;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+  border-radius: 6px;
+  transition: background .12s ease;
+}
+.tagbrowser-tag-row:last-child{ border-bottom:none; }
+.tagbrowser-tag-row:hover{ background: var(--panel-2); }
+.tagbrowser-tag-thumb{
+  flex:none;
+  width:36px; height:36px;
+  border-radius:6px;
+  object-fit:cover;
+  border:1px solid var(--border);
+  background: var(--panel-2);
+}
+.tagbrowser-tag-name{
+  flex:1 1 auto;
+  min-width:0;
+  font-size:13px;
+  color: var(--text);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.tagbrowser-tag-count{
+  flex:none;
+  font-size: 10.5px;
+  font-weight:600;
+  color: var(--text);
+  background: var(--accent-dim);
+  border-radius: 8px;
+  padding: 1px 7px;
+}
+.tagbrowser-tag-chevron{
+  flex:none;
+  color: var(--text-faint);
+  font-size: 15px;
+}
+.tagbrowser-empty{
+  padding: 10px 2px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+.tagbrowser-gallery-grid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.tagbrowser-gallery-item{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  cursor:pointer;
+  border-radius: 8px;
+  padding: 5px;
+  transition: background .12s ease;
+}
+.tagbrowser-gallery-item:hover{ background: var(--panel-2); }
+.tagbrowser-gallery-thumb{
+  width:100%;
+  aspect-ratio: 1 / 1;
+  object-fit:cover;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background: var(--panel-2);
+}
+.tagbrowser-gallery-label{
+  font-size: 10.5px;
+  color: var(--text-dim);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:center;
+}
+
+.theme-row{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+.theme-row:last-of-type{ border-bottom:none; }
+.theme-row label{
+  flex:1;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.theme-row select{
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 5px 6px;
+  font-family: inherit;
+}
+.theme-row input[type="color"]{
+  width: 30px; height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  padding: 0;
+  cursor:pointer;
+}
+.theme-row input[type="color"]:disabled{ opacity:0.35; cursor:not-allowed; }
+.btn-ghost.small{ font-size: 10.5px; padding: 5px 8px; }
+.theme-note{
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin: 12px 0 0;
+  line-height: 1.5;
+}
+
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-thumb{ background: var(--scrollbar-thumb); border-radius: 6px; }
+::-webkit-scrollbar-track{ background: transparent; }
+
+/* ---- Photo lightbox: full-size viewer for a node's attached photo ---- */
+.photo-modal-card{
+  position: relative;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  width: auto;
+  max-width: 92vw;
+  display:flex;
+  flex-direction: column;
+  align-items:center;
+  justify-content:center;
+  gap: 10px;
+}
+.photo-modal-card img{
+  display:block;
+  max-width: 92vw;
+  max-height: 88vh;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+  transform-origin: 50% 50%;
+  touch-action: none;
+}
+.photo-modal-card img.zoomed{ cursor: grab; }
+.photo-modal-card img.zoomed.panning{ cursor: grabbing; }
+.photo-modal-close{
+  /* Fixed relative to the viewport using the same 92vw/88vh box the
+     photo itself is capped to (see .photo-modal-card / img above) —
+     so this sits right at that box's corner, close to the photo,
+     without ever moving between photos (it doesn't read any actual
+     image's real rendered size, just the shared viewport-relative cap). */
+  position: fixed;
+  top: calc(6vh - 16px); right: calc(4vw - 16px);
+  width:30px; height:30px;
+  border-radius:50%;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  z-index: 101;
+}
+.photo-modal-close:hover{ border-color: var(--accent); color: var(--accent); }
+
+.photo-modal-nav{
+  /* Fixed the same way as .photo-modal-close above — anchored to the
+     shared 92vw photo cap, not to any individual photo's real size. */
+  position: fixed;
+  top:50%; transform: translateY(-50%);
+  width:44px; height:44px;
+  border-radius:50%;
+  background: rgba(8,9,13,0.55);
+  border: 1.5px solid rgba(255,255,255,0.25);
+  color: #fff;
+  font-size:22px;
+  line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  z-index: 101;
+}
+.photo-modal-nav:hover{ background: rgba(8,9,13,0.8); border-color: var(--accent); }
+.photo-modal-nav.hidden{ display:none; }
+.photo-modal-prev{ left: calc(4vw - 22px); }
+.photo-modal-next{ right: calc(4vw - 22px); }
+
+.photo-modal-count{
+  /* Fixed the same way (see .photo-modal-close) — bottom edge of the
+     shared 88vh photo cap, centered horizontally. */
+  position: fixed;
+  bottom: calc(6vh - 16px); left:50%;
+  transform: translateX(-50%);
+  background: rgba(8,9,13,0.7);
+  color:#fff;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  z-index: 101;
+}
+.photo-modal-count.hidden{ display:none; }
+
+.photo-modal-delete{
+  position: fixed;
+  top: calc(6vh - 16px); right: calc(4vw + 28px);
+  width:30px; height:30px;
+  border-radius:50%;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font-size:13px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  z-index: 101;
+}
+.photo-modal-delete:hover{ border-color: var(--danger); color: var(--danger); }
+
+.photo-modal-zoom{
+  /* Fixed the same way as .photo-modal-close — anchored to the shared
+     92vw/88vh photo cap, stacked in the bottom-right corner. */
+  position: fixed;
+  right: calc(4vw - 16px);
+  width:30px; height:30px;
+  border-radius:50%;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font-size:16px;
+  font-weight:700;
+  line-height:1;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  z-index: 101;
+}
+.photo-modal-zoom:hover{ border-color: var(--accent); color: var(--accent); }
+.photo-modal-zoom-in{ bottom: calc(6vh + 30px); }
+.photo-modal-zoom-out{ bottom: calc(6vh - 16px); }
+
+.photo-modal-goto{
+  /* Fixed the same way (see .photo-modal-close) — bottom edge of the
+     shared 88vh photo cap, opposite corner from the zoom stack. Only
+     shown when the modal was opened from the tag browser. */
+  position: fixed;
+  bottom: calc(6vh - 16px); left: calc(4vw - 16px);
+  background: rgba(8,9,13,0.7);
+  color:#fff;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  z-index: 101;
+}
+.photo-modal-goto:hover{ border-color: var(--accent); color: var(--accent); }
+.photo-modal-goto.hidden{ display:none; }
+
+/* ---- Photo tagging (in the lightbox/preview) ---- */
+.photo-modal-tags{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  max-width: 92vw;
+  padding: 0 4px;
+}
+.photo-modal-tag-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  color:#fff;
+  font-size:12px;
+  line-height:1.4;
+  padding: 4px 8px 4px 11px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.photo-modal-tag-chip-remove{
+  background:none;
+  border:none;
+  color: rgba(255,255,255,0.65);
+  cursor:pointer;
+  font-size:13px;
+  line-height:1;
+  padding:0;
+  display:flex;
+}
+.photo-modal-tag-chip-remove:hover{ color:#fff; }
+.photo-modal-tag-input{
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.25);
+  color:#fff;
+  font-size:12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  outline:none;
+  width: 96px;
+  transition: width 0.15s ease, border-color 0.15s ease;
+}
+.photo-modal-tag-input::placeholder{ color: rgba(255,255,255,0.5); }
+.photo-modal-tag-input:focus{ border-color: var(--accent); width: 150px; }
+
+.photo-modal-tag-input-wrap{ position:relative; display:inline-flex; }
+.photo-modal-tag-suggest{
+  position:absolute;
+  top: calc(100% + 5px);
+  left:0;
+  min-width: 150px;
+  max-width: 220px;
+  margin:0;
+  padding: 4px;
+  list-style:none;
+  background: rgba(20,22,30,0.97);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  max-height: 168px;
+  overflow-y:auto;
+  z-index: 20;
+}
+.photo-modal-tag-suggest.hidden{ display:none; }
+.photo-modal-tag-suggest li{
+  padding: 6px 10px;
+  font-size:12px;
+  color:#fff;
+  border-radius:6px;
+  cursor:pointer;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.photo-modal-tag-suggest li:hover,
+.photo-modal-tag-suggest li.active{ background: rgba(255,255,255,0.16); }
+
+.bl-text-box{ }
+.bl-text-box-active{ outline: 1.5px dashed rgba(255,255,255,0.55); outline-offset: 3px; border-radius: 3px; }
+
+#photo-modal-text.bl-text-armed{ border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 2px rgba(124,158,255,0.25); }
+
+/* ---- Photo notes (badge on the 📝 button in the lightbox — the editor
+   itself reuses the node note-modal styles below) ---- */
+.photo-modal-comment-badge{
+  position:absolute;
+  top:-4px; right:-4px;
+  min-width:15px; height:15px;
+  padding: 0 3px;
+  border-radius:999px;
+  background: var(--accent);
+  color:#fff;
+  font-size:9.5px;
+  font-weight:700;
+  line-height:1;
+  display:flex; align-items:center; justify-content:center;
+}
+.photo-modal-comment-badge.hidden{ display:none; }
+
