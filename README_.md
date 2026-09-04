@@ -120,6 +120,17 @@ only see files it created itself — never your other Drive files.
   rename, remove, or add lines to the pool itself; edits are saved to
   the browser's local database and apply the next time you add an
   Affirmation task, on any map.
+- **Per-node countdown timer** — right-click a node and choose "Add
+  timer…" (or click its ⏱ badge once it has time logged) to open a
+  countdown for that node: "Start" begins a 5‑minute countdown with
+  pause/resume, "+1m" to stack on more time, and a chime when it hits
+  zero. The node's total only grows for time the countdown was actually
+  running (not while paused), and updates live — both in the popup and
+  as the small "⏱ 45m" badge on the node itself — so it reflects time
+  actually spent, not just time scheduled. A "log +1m to the total"
+  link is still there for adding time after the fact without running
+  the countdown live. The countdown keeps running in the background
+  even if you close the popup or switch nodes/maps.
 - **Photos from the clipboard** — with a node selected, paste
   (`Ctrl`/`Cmd` + `V`) an image straight from your clipboard to attach it
   as a photo — no need to save a screenshot to disk first and go through

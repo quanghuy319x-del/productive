@@ -2416,6 +2416,53 @@ kbd{
   font-size: 11px;
   color: var(--text-dim);
 }
+.timer-total-display{ margin-bottom: 2px; }
+.timer-total-caption{
+  margin: 0 0 18px;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.timer-countdown-row.hidden, .timer-done-label.hidden{ display:none; }
+.timer-countdown-row{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 14px;
+  margin: 0 0 18px;
+}
+.timer-countdown-display{
+  font-variant-numeric: tabular-nums;
+  font-size: 34px;
+  font-weight: 800;
+  color: #33b3f0;
+  min-width: 92px;
+  text-align: right;
+}
+.timer-countdown-btns{ display:flex; align-items:center; gap: 6px; }
+.timer-countdown-btns .task-timer-btn{ width:34px; height:34px; font-size: 22px; background: var(--panel-2); }
+.timer-countdown-btns .task-timer-extend{ width:auto; font-size:16px; }
+.timer-done-label{
+  margin: 0 0 18px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #33b3f0;
+}
+.timer-start-row{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.timer-manual-add-btn{
+  border:none;
+  background:transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor:pointer;
+  padding: 2px;
+}
 
 /* ---- Affirmation lines manager modal ---- */
 .affirmation-quotes-modal-card{ max-width: 480px; }

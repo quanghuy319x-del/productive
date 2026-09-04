@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <div id="app">
@@ -450,14 +450,31 @@
     </div>
     <p id="timer-node-label" class="timer-node-label"></p>
     <p id="timer-total-display" class="timer-total-display">0m</p>
-    <button type="button" id="timer-add-btn" class="timer-add-btn">+1m</button>
-    <p class="timer-hint">Tap +1m each time you spend a minute on this — the total shows right on the node.</p>
+    <p class="timer-total-caption">total actually played</p>
+
+    <div id="timer-countdown-row" class="timer-countdown-row hidden">
+      <span id="timer-countdown-display" class="timer-countdown-display">5:00</span>
+      <div class="timer-countdown-btns">
+        <button type="button" id="timer-pause-btn" class="task-timer-btn" title="Pause">⏸</button>
+        <button type="button" id="timer-stop-btn" class="task-timer-btn task-timer-stop" title="Stop timer">■</button>
+        <button type="button" id="timer-extend-btn" class="task-timer-btn task-timer-extend" title="Add 1 more minute">+1m</button>
+      </div>
+    </div>
+
+    <p id="timer-done-label" class="timer-done-label hidden">✓ Session done — total updated</p>
+
+    <div id="timer-start-row" class="timer-start-row">
+      <button type="button" id="timer-start-btn" class="timer-add-btn">▶ Start 5‑min timer</button>
+      <button type="button" id="timer-add-btn" class="timer-manual-add-btn">or just log +1m to the total</button>
+    </div>
+
+    <p class="timer-hint">Start the timer and it counts down while you work — the total above only grows for time it's actually running, and updates live on the node too.</p>
   </div>
 </div>
 
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>

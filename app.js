@@ -10252,21 +10252,41 @@
   });
 
   /* ---------------- node timer ("time played") ---------------- */
-  // A manual per-node stopwatch total — no countdown, no alarm, just a
-  // running tally in whole minutes that grows by tapping "+1m" in the
-  // popup each time you spend a minute on whatever the node represents.
-  // Stored as node.timePlayedSec (seconds, always a multiple of 60 since
-  // it's only ever stacked in 1-minute steps), shown live on the node
-  // itself as a small "⏱ 45m" badge (see renderNode) and saved with the
-  // map like everything else.
-  const TIMER_STEP_SEC = 60; // what one "+1m" tap adds
+  // A per-node countdown timer. Start it and it ticks down like a normal
+  // countdown (pause/resume, "+1m" to stack on more time, chimes when it
+  // hits zero) — but the number that actually matters is the *total*
+  // stored on the node (node.timePlayedSec): every second the countdown
+  // is genuinely running (not paused) adds one second to that total, so
+  // it reflects time actually played/worked, not just time scheduled.
+  // That total is shown live both here and as the small "⏱ 45m" badge on
+  // the node itself (see renderNode), and is saved with the map like
+  // everything else. A manual "+1m to the total" fallback stays available
+  // for logging time after the fact without running the countdown live.
+  const TIMER_STEP_SEC = 60; // what the manual "+1m to total" link adds
+  const NODE_TIMER_DEFAULT_SEC = 5 * 60; // default countdown length when starting fresh
+  const NODE_TIMER_EXTEND_SEC = 60; // added per "+1m" click while running
 
   const timerModal = $("#timer-modal");
   const timerNodeLabel = $("#timer-node-label");
   const timerTotalDisplay = $("#timer-total-display");
   const timerAddBtn = $("#timer-add-btn");
   const timerResetBtn = $("#timer-reset-btn");
+  const timerStartRow = $("#timer-start-row");
+  const timerStartBtn = $("#timer-start-btn");
+  const timerCountdownRow = $("#timer-countdown-row");
+  const timerCountdownDisplay = $("#timer-countdown-display");
+  const timerPauseBtn = $("#timer-pause-btn");
+  const timerStopBtn = $("#timer-stop-btn");
+  const timerExtendBtn = $("#timer-extend-btn");
+  const timerDoneLabel = $("#timer-done-label");
   let timerEditingId = null;
+
+  // Only one node countdown can run at a time (mirrors the per-task focus
+  // timer) but, like that one, it keeps running via setInterval even if
+  // this modal is closed or a different node/map is opened, so switching
+  // away doesn't quietly cancel a session that's in progress.
+  let nodeTimer = null; // { nodeId, remaining, duration, paused, intervalId }
+  let nodeTimerJustCompleted = null; // nodeId, shown briefly in the modal after a session finishes
 
   function getNodeTimePlayed(node) {
     return (node && typeof node.timePlayedSec === "number" && node.timePlayedSec > 0) ? node.timePlayedSec : 0;
@@ -10304,7 +10324,131 @@
     const total = getNodeTimePlayed(node);
     timerTotalDisplay.textContent = formatTimePlayed(total);
     timerResetBtn.style.visibility = total ? "visible" : "hidden";
+
+    const runningHere = nodeTimer && nodeTimer.nodeId === timerEditingId;
+    timerCountdownRow.classList.toggle("hidden", !runningHere);
+    timerDoneLabel.classList.toggle("hidden", nodeTimerJustCompleted !== timerEditingId);
+    timerStartRow.style.display = (runningHere || nodeTimerJustCompleted === timerEditingId) ? "none" : "flex";
+
+    if (runningHere) {
+      timerCountdownDisplay.textContent = formatFocusTime(nodeTimer.remaining);
+      timerCountdownDisplay.classList.toggle("paused", nodeTimer.paused);
+      timerPauseBtn.textContent = nodeTimer.paused ? "▶" : "⏸";
+      timerPauseBtn.title = nodeTimer.paused ? "Resume" : "Pause";
+    }
   }
+
+  // Cheap live update used on every tick: pushes the new total straight
+  // into the node's badge on the canvas (and this modal, if open for the
+  // same node) without a full renderAll() — a per-second re-layout of the
+  // whole map would be wasteful, especially on a large mind map.
+  function updateNodeTimerLiveUI(nodeId) {
+    const node = findNode(nodeId);
+    if (!node) return;
+    const total = getNodeTimePlayed(node);
+    const badgeLabel = nodesLayer.querySelector(`.node[data-id="${nodeId}"] .node-timer-badge span`);
+    if (badgeLabel) {
+      badgeLabel.textContent = formatTimePlayed(total);
+      badgeLabel.parentElement.title = `${formatTimePlayed(total)} logged — click to add more`;
+    } else if (total && node.id !== state.editingId) {
+      // The badge doesn't exist yet (this node had no logged time before
+      // the countdown started) — a one-time full render creates it, and
+      // subsequent ticks go back to the cheap path above.
+      renderAll();
+    }
+    if (timerEditingId === nodeId && !timerModal.classList.contains("hidden")) {
+      timerTotalDisplay.textContent = formatTimePlayed(total);
+      timerResetBtn.style.visibility = total ? "visible" : "hidden";
+    }
+  }
+
+  function startNodeTimer(nodeId, durationSec = NODE_TIMER_DEFAULT_SEC) {
+    const node = findNode(nodeId);
+    if (!node) return;
+    stopNodeTimerInterval();
+    stopFocusChime();
+    nodeTimerJustCompleted = null;
+    pushUndo();
+    nodeTimer = {
+      nodeId,
+      remaining: durationSec,
+      duration: durationSec,
+      paused: false,
+      intervalId: setInterval(nodeTimerTick, 1000),
+    };
+    renderTimerModal();
+  }
+
+  function nodeTimerTick() {
+    if (!nodeTimer || nodeTimer.paused) return;
+    nodeTimer.remaining--;
+    const node = findNode(nodeTimer.nodeId);
+    if (node) {
+      node.timePlayedSec = getNodeTimePlayed(node) + 1;
+      persist();
+      updateNodeTimerLiveUI(nodeTimer.nodeId);
+    }
+    if (nodeTimer.remaining <= 0) {
+      nodeTimerComplete();
+      return;
+    }
+    if (timerEditingId === nodeTimer.nodeId) renderTimerModal();
+  }
+
+  function toggleNodeTimerPause() {
+    if (!nodeTimer) return;
+    nodeTimer.paused = !nodeTimer.paused;
+    renderTimerModal();
+  }
+
+  function extendNodeTimer(seconds) {
+    if (!nodeTimer) return;
+    nodeTimer.remaining += seconds;
+    nodeTimer.duration += seconds;
+    renderTimerModal();
+  }
+
+  // Clears the interval only — used internally before starting a new
+  // countdown, without touching the "just completed" flash state.
+  function stopNodeTimerInterval() {
+    if (nodeTimer && nodeTimer.intervalId) clearInterval(nodeTimer.intervalId);
+    nodeTimer = null;
+  }
+
+  function stopNodeTimer() {
+    const prev = nodeTimer;
+    stopNodeTimerInterval();
+    if (prev) {
+      persist();
+      updateNodeTimerLiveUI(prev.nodeId);
+      if (timerEditingId === prev.nodeId) renderTimerModal();
+    }
+  }
+
+  function nodeTimerComplete() {
+    const finished = nodeTimer;
+    stopNodeTimerInterval();
+    if (!finished) return;
+    persist();
+    updateNodeTimerLiveUI(finished.nodeId);
+    startFocusChime();
+    nodeTimerJustCompleted = finished.nodeId;
+    if (timerEditingId === finished.nodeId) renderTimerModal();
+    setTimeout(() => {
+      if (nodeTimerJustCompleted === finished.nodeId) {
+        nodeTimerJustCompleted = null;
+        if (timerEditingId === finished.nodeId) renderTimerModal();
+      }
+    }, 4000);
+  }
+
+  timerStartBtn.addEventListener("click", () => {
+    if (!timerEditingId) return;
+    startNodeTimer(timerEditingId);
+  });
+  timerPauseBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleNodeTimerPause(); });
+  timerStopBtn.addEventListener("click", (e) => { e.stopPropagation(); stopNodeTimer(); });
+  timerExtendBtn.addEventListener("click", (e) => { e.stopPropagation(); extendNodeTimer(NODE_TIMER_EXTEND_SEC); });
 
   timerAddBtn.addEventListener("click", () => {
     const node = findNode(timerEditingId);
@@ -10313,6 +10457,7 @@
     node.timePlayedSec = getNodeTimePlayed(node) + TIMER_STEP_SEC;
     persist();
     renderTimerModal();
+    updateNodeTimerLiveUI(timerEditingId);
   });
 
   timerResetBtn.addEventListener("click", () => {
@@ -10322,6 +10467,7 @@
     node.timePlayedSec = 0;
     persist();
     renderTimerModal();
+    updateNodeTimerLiveUI(timerEditingId);
   });
 
   $("#timer-back").addEventListener("click", closeTimerModal);
