@@ -2158,6 +2158,13 @@
   const nodeFabs = $("#node-fabs");
   const ctxMenu = $("#ctx-menu");
 
+  // Fixed reference point for the root node's title-marquee animation
+  // delay (see renderNode) — set once, here, when the script first
+  // loads, rather than per-render, so the "how far into its cycle is
+  // this animation" calculation stays anchored to the same moment in
+  // time across every rebuild for as long as the page stays open.
+  const rootTitleMarqueeEpoch = Date.now();
+
   // Every open*ContextMenu function below starts by wiping and rebuilding
   // the menu's contents (it's one reused element for every kind of
   // right-click/long-press menu in the app).
@@ -4197,20 +4204,25 @@
     div.style.caretColor = caretColorFor(effectiveBg);
 
     // The root node's title scrolls the same way the toolbar's quote
-    // banner does (see "toolbar quote banner" above) rather than just
-    // wrapping/clipping — it tends to run long above the live clock
-    // block below it, and centering + wrapping ate into that space.
-    // Only while NOT actively editing: mid-edit, div stays a plain
-    // contentEditable text node exactly like every other node, so
+    // banner does in spirit (see "toolbar quote banner" above) rather
+    // than just wrapping/clipping — it tends to run long above the live
+    // clock block below it, and centering + wrapping ate into that
+    // space. Built as a CSS animation (see .node-title-marquee-track)
+    // rather than a native <marquee> — see that CSS comment for why —
+    // with the animation-delay set below so a freshly recreated track
+    // (any renderAll() rebuilds every node from scratch) resumes
+    // mid-cycle instead of visibly snapping back to its starting
+    // position. Only while NOT actively editing: mid-edit, div stays a
+    // plain contentEditable text node exactly like every other node, so
     // typing, caret placement, and autosizeEditingBox keep working
     // unchanged.
     if (depth === 0 && node.id !== state.editingId) {
-      const titleMarquee = document.createElement("marquee");
+      const titleMarquee = document.createElement("span");
       titleMarquee.className = "node-title-marquee";
-      titleMarquee.setAttribute("behavior", "scroll");
-      titleMarquee.setAttribute("direction", "left");
-      titleMarquee.setAttribute("scrollamount", "4");
-      titleMarquee.textContent = node.text || "(untitled)";
+      const titleTrack = document.createElement("span");
+      titleTrack.className = "node-title-marquee-track";
+      titleTrack.textContent = node.text || "(untitled)";
+      titleMarquee.appendChild(titleTrack);
       div.appendChild(titleMarquee);
     } else {
       div.textContent = node.text || (node.id === state.editingId ? "" : "(untitled)");
@@ -4654,6 +4666,31 @@
     div.addEventListener("keydown", (e) => nodeKeydown(e, node, div));
 
     nodesLayer.appendChild(div);
+
+    // Now that the title track is actually in the document, measure how
+    // far it needs to travel (its own rendered width already includes
+    // the container-width padding-left from .node-title-marquee-track —
+    // see that CSS — so scrollWidth is exactly the container+text
+    // distance the animation's translateX(-100%) covers) and pick a
+    // duration proportional to that distance so longer titles scroll at
+    // roughly the same reading speed as short ones instead of all
+    // taking the same fixed time. The negative animation-delay, set
+    // from elapsed real time against the fixed rootTitleMarqueeEpoch, is
+    // what makes a freshly recreated track (every renderAll() rebuilds
+    // this from scratch) pick up mid-cycle instead of visibly resetting
+    // to the start on every re-render (selecting a node, dragging,
+    // editing elsewhere, etc.).
+    if (depth === 0 && node.id !== state.editingId) {
+      const track = div.querySelector(".node-title-marquee-track");
+      if (track) {
+        const distancePx = track.scrollWidth;
+        const PX_PER_SECOND = 55;
+        const durationSec = Math.max(4, distancePx / PX_PER_SECOND);
+        track.style.animationDuration = durationSec + "s";
+        const elapsedSec = ((Date.now() - rootTitleMarqueeEpoch) / 1000) % durationSec;
+        track.style.animationDelay = (-elapsedSec) + "s";
+      }
+    }
 
     if (node.id === state.editingId) {
       // Focus synchronously, not via requestAnimationFrame — the div is

@@ -958,29 +958,50 @@ body.signed-out #title-input{ visibility:hidden; }
    whatever that's set to; the secondary lines fade out a bit via
    opacity so the time stays the clear focal point. */
 /* Root node title, scrolling the same way the toolbar's quote banner
-   does (see .toolbar-quote-banner / #quote-banner-marquee) instead of
-   wrapping/clipping — same reasoning: a long title has less room here
-   now that the live clock sits right below it. currentColor so it
-   keeps matching whatever the root's text color is (custom font color,
-   custom root color, etc.) exactly as the plain text node it replaces
-   did. Swapped out for a plain contentEditable text node while the
-   title is actively being edited (see renderNode) so typing/caret
-   placement work exactly like every other node. */
+   does in spirit (see .toolbar-quote-banner / #quote-banner-marquee)
+   but built as a plain CSS animation rather than a native <marquee> —
+   the native element was both getting stuck partway across (its own
+   scroll-distance math doesn't play well inside this absolutely
+   positioned flex layout) and restarting from scratch on every re-render,
+   since a full renderAll() rebuilds every node's DOM from scratch and a
+   freshly-created <marquee> always begins its internal counter at zero.
+   This version fixes both:
+     - .node-title-marquee-track's padding-left:100% starts it fully to
+       the right of the container (a percentage on `padding` is relative
+       to the *container's* width); animating transform:translateX(-100%)
+       (a percentage on `transform` is relative to the *element's own*
+       width, which the padding just inflated to container+text) shifts
+       it left by exactly that container+text distance, landing it
+       fully off the left edge — a full, guaranteed right-border-to-
+       left-border traversal every cycle, whatever the text length.
+     - renderNode gives the track a negative animation-delay computed
+       from real elapsed time against a fixed epoch (rootTitleMarqueeEpoch),
+       so a freshly recreated element resumes mid-cycle instead of
+       visibly snapping back to the start.
+   Swapped out for a plain contentEditable text node while the title is
+   actively being edited (see renderNode) so typing/caret placement work
+   exactly like every other node. */
 .node-title-marquee{
   display:block;
   width:100%;
+  overflow:hidden;
+  white-space:nowrap;
+  position:relative;
+}
+.node-title-marquee-track{
+  display:inline-block;
+  white-space:nowrap;
+  padding-left:100%;
   color: inherit;
   font: inherit;
   letter-spacing: inherit;
-  /* .node (the parent) sets white-space:pre-wrap for normal node text,
-     which was cascading down here and making the title wrap onto
-     multiple lines instead of scrolling as one line — nowrap +
-     overflow:hidden keeps it a single line that runs the full width
-     of the box, from its right inner edge to its left inner edge,
-     clipped to stay inside the node instead of spilling past it. */
-  white-space: nowrap;
-  overflow: hidden;
-  text-align: left;
+  animation-name: node-title-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes node-title-scroll{
+  from{ transform: translateX(0); }
+  to{ transform: translateX(-100%); }
 }
 .node-clock-block{
   display:flex;
