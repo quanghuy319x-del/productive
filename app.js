@@ -1471,6 +1471,22 @@
     return getNodeNotes(node).length > 0;
   }
 
+  // A task's notes use the exact same rich, multi-entry note editor as a
+  // node's own notes (see getNodeNotes above and openNoteModal below) —
+  // title, rich text, multiple notes with paging, all of it — just scoped
+  // to one task instead of the whole node. Reads either the old single
+  // plain/HTML `note` string (from before this existed) or the new
+  // `notes` array, same fallback shape as getNodeNotes.
+  function getTaskNotes(t) {
+    if (!t) return [];
+    if (Array.isArray(t.notes) && t.notes.length) return t.notes;
+    if (t.note && t.note.trim()) return [{ id: uid(), title: "", html: t.note }];
+    return [];
+  }
+  function taskHasNotes(t) {
+    return getTaskNotes(t).length > 0;
+  }
+
   // Short label for a note, for the menus below — its title if it has
   // one, otherwise a plain-text preview of the body.
   function notePreviewText(n) {
@@ -4295,6 +4311,10 @@
 
     const nodeUrls = getNodeUrls(node);
     const nodeNotes = getNodeNotes(node);
+    // Tasks with their own note(s) surface a note marker on the node too,
+    // same icon as a node's own notes, so a note tucked away inside a
+    // task's checklist isn't invisible from the mindmap itself.
+    const tasksWithNotes = getNodeTasks(node).filter(taskHasNotes);
     const affirmationWins = nodeAffirmationWins(node);
     const taskProg = nodeTaskProgress(node);
 
@@ -4306,7 +4326,7 @@
     // attachment/status indicator for a node lives in one place, all at
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
-    const stripIconCount = nodeNotes.length + nodeUrls.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0);
+    const stripIconCount = nodeNotes.length + nodeUrls.length + tasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
@@ -4364,6 +4384,30 @@
           openNoteManageMenu(node.id, e.clientX, e.clientY);
         });
         strip.appendChild(noteIcon);
+      });
+
+      // Same note icon again, one per task that has notes on it — click
+      // opens that task's own note editor directly (the exact same rich
+      // editor as above, just scoped to the task; see openNoteModal).
+      // Not draggable: unlike a node's own notes, a task's notes stay
+      // with the task, not the node, so they don't make sense to drag
+      // onto another node on their own.
+      tasksWithNotes.forEach((t) => {
+        const taskNoteIcon = document.createElement("span");
+        taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker";
+        taskNoteIcon.innerHTML = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
+        const preview = notePreviewText(getTaskNotes(t)[0] || {});
+        taskNoteIcon.title = `Task "${t.text || "(untitled task)"}" — ${preview}`;
+        taskNoteIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openNoteModal(node.id, undefined, null, t.id);
+        });
+        taskNoteIcon.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openTasksModal(node.id);
+        });
+        strip.appendChild(taskNoteIcon);
       });
 
       // One icon per link (instead of a single icon plus a count/chooser
@@ -7880,6 +7924,10 @@
   // editor — the rich text, title, paging, add/delete — behaves
   // identically either way; only load/save need to know which.
   let noteEditingPhotoId = null;
+  // Same idea, but scoped to one task on the node instead (its notes
+  // live in that task's own `notes` array — see getTaskNotes). Mutually
+  // exclusive with noteEditingPhotoId; at most one of the two is set.
+  let noteEditingTaskId = null;
   let noteSaveTimer = null;
   let noteIsResizing = false;
   // A node can now hold several notes. While the modal is open,
@@ -7978,18 +8026,22 @@
   }
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
-  // on that node instead — same editor either way, just a different
-  // backing list (see noteEditingPhotoId above). `index` picks which
+  // on that node, or (with `taskId`) for one task on that node instead —
+  // same editor in all three cases, just a different backing list (see
+  // noteEditingPhotoId/noteEditingTaskId above). `index` picks which
   // existing note to show: omit it to land on the last (most recently
   // added) one, or pass notes.length (or any out-of-range index) to
   // start a brand-new blank note instead of an existing one.
-  function openNoteModal(nodeId, index, photoId) {
+  function openNoteModal(nodeId, index, photoId, taskId) {
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
     noteEditingId = nodeId;
     noteEditingPhotoId = photoId || null;
-    const existing = noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node);
+    noteEditingTaskId = taskId || null;
+    const existing = noteEditingTaskId
+      ? getTaskNotes(getNodeTasks(node).find(x => x.id === noteEditingTaskId))
+      : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
     noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html }));
     const wantsNew = index != null && index >= noteWorkingList.length;
     if (!noteWorkingList.length || wantsNew) {
@@ -8010,9 +8062,17 @@
     const node = findNode(noteEditingId);
     const current = noteWorkingList[noteActiveIndex];
     noteTitleInput.value = current.title || "";
-    noteTextarea.dataset.placeholder = noteEditingPhotoId
-      ? "Note on this photo…"
-      : `Note for "${node ? (node.text || "(untitled)") : ""}"…`;
+    if (noteEditingTaskId) {
+      const t = node && getNodeTasks(node).find(x => x.id === noteEditingTaskId);
+      noteTextarea.dataset.placeholder = `Note for task "${t ? (t.text || "(untitled task)") : ""}"…`;
+      noteNavAdd.title = "Start a new note on this task";
+    } else if (noteEditingPhotoId) {
+      noteTextarea.dataset.placeholder = "Note on this photo…";
+      noteNavAdd.title = "Start a new note on this photo";
+    } else {
+      noteTextarea.dataset.placeholder = `Note for "${node ? (node.text || "(untitled)") : ""}"…`;
+      noteNavAdd.title = "Start a new note on this node";
+    }
     noteTextarea.innerHTML = noteHtmlFromRaw(current.html);
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
@@ -8072,6 +8132,7 @@
     flushNoteAutosave();
     noteEditingId = null;
     noteEditingPhotoId = null;
+    noteEditingTaskId = null;
     noteWorkingList = [];
     noteActiveIndex = 0;
     noteModal.classList.add("hidden");
@@ -8108,6 +8169,21 @@
     if (!node) return;
     captureActiveNote();
     const cleaned = noteWorkingList.filter(n => (n.title && n.title.trim()) || (n.html && n.html.trim()));
+    if (noteEditingTaskId) {
+      const t = getNodeTasks(node).find(x => x.id === noteEditingTaskId);
+      if (!t) return;
+      const before = JSON.stringify(getTaskNotes(t));
+      const after = JSON.stringify(cleaned);
+      if (before !== after) {
+        pushUndo();
+        t.notes = cleaned;
+        t.note = "";
+        renderAll();
+        persist();
+        if (!tasksModal.classList.contains("hidden")) renderTasksModal();
+      }
+      return;
+    }
     if (noteEditingPhotoId) {
       const before = JSON.stringify(getPhotoNotes(node, noteEditingPhotoId));
       const after = JSON.stringify(cleaned);
@@ -9304,10 +9380,6 @@
         renderTasksModal();
       });
 
-      // Single plain-text note on the task — deliberately much simpler
-      // than a node's notes (no title, no rich formatting, no multiples):
-      // just one optional block of text, opened in its own small popup
-      // (see openTaskNoteModal) rather than inline in the list.
       // Due date — feeds the toolbar's 📅 Calendar month view. Click
       // anywhere on the button to open a native date picker positioned
       // right over it; picking a date (or clearing it) stamps t.due as
@@ -9341,15 +9413,20 @@
       });
       dueBtn.appendChild(dueInput);
 
+      // A task's note(s) now use the exact same rich, multi-entry note
+      // editor as a node's own notes (title, rich text, multiple notes
+      // with paging) — see openNoteModal/getTaskNotes — just opened from
+      // this one button instead of a strip of per-note icons.
       const noteBtn = document.createElement("button");
       noteBtn.type = "button";
-      noteBtn.className = "task-note-btn" + (t.note ? " has-note" : "");
-      noteBtn.title = t.note ? "Edit note" : "Add note";
+      const taskNotes = getTaskNotes(t);
+      noteBtn.className = "task-note-btn" + (taskNotes.length ? " has-note" : "");
+      noteBtn.title = taskNotes.length ? `Notes (${taskNotes.length})` : "Add note";
       noteBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg>';
       noteBtn.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       noteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openTaskNoteModal(node.id, t.id);
+        openNoteModal(node.id, undefined, null, t.id);
       });
 
       const del = document.createElement("button");
@@ -10032,137 +10109,6 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && calDayModalDate && document.activeElement !== calDayNewInput) closeCalDayModal();
   });
-
-  /* ---------------- task note (single, plain-text, own popup) ---------------- */
-  // A task's note is deliberately much simpler than a node's notes — just
-  // one optional block of plain text — but opens the same way, in its own
-  // small popup window layered on top of the tasks modal, rather than
-  // inline in the list.
-  const taskNoteModal = $("#task-note-modal");
-  const taskNoteModalTitle = $("#task-note-modal-title");
-  const taskNoteTextarea = $("#task-note-textarea");
-  const taskNoteDeleteBtn = $("#task-note-delete-btn");
-  const taskNoteCloseBtn = $("#task-note-close-btn");
-  const taskNoteNewlineBtn = $("#task-note-newline-btn");
-  let taskNoteEditingNodeId = null;
-  let taskNoteEditingTaskId = null;
-
-  function currentTaskNoteTask() {
-    const node = findNode(taskNoteEditingNodeId);
-    if (!node) return null;
-    return getNodeTasks(node).find(x => x.id === taskNoteEditingTaskId) || null;
-  }
-
-  function openTaskNoteModal(nodeId, taskId) {
-    const node = findNode(nodeId);
-    const t = node && getNodeTasks(node).find(x => x.id === taskId);
-    if (!t) return;
-    taskNoteEditingNodeId = nodeId;
-    taskNoteEditingTaskId = taskId;
-    taskNoteModalTitle.textContent = t.text || "(untitled task)";
-    // t.note is stored as HTML (one <div> per line), same as per-node
-    // notes; noteHtmlFromRaw upgrades old plain-text notes on first open,
-    // and re-syncing ordinal colors picks up numbered lines saved before
-    // this coloring existed.
-    taskNoteTextarea.innerHTML = noteHtmlFromRaw(t.note || "");
-    noteSyncAllOrderedColors(taskNoteTextarea);
-    noteAutoColorParagraphs(taskNoteTextarea);
-    taskNoteDeleteBtn.style.display = t.note ? "" : "none";
-    taskNoteModal.classList.remove("hidden");
-    requestAnimationFrame(() => taskNoteTextarea.focus());
-  }
-
-  function saveTaskNote() {
-    const t = currentTaskNoteTask();
-    if (!t) return;
-    const isEmpty = !taskNoteTextarea.textContent.trim();
-    const html = isEmpty ? undefined : taskNoteTextarea.innerHTML;
-    if (html !== (t.note || undefined)) {
-      pushUndo();
-      t.note = html;
-      persist();
-    }
-    taskNoteDeleteBtn.style.display = t.note ? "" : "none";
-  }
-
-  function closeTaskNoteModal() {
-    saveTaskNote();
-    taskNoteModal.classList.add("hidden");
-    taskNoteEditingNodeId = null;
-    taskNoteEditingTaskId = null;
-    // The note icon's filled/empty state and title may have changed.
-    if (!tasksModal.classList.contains("hidden")) renderTasksModal();
-  }
-
-  // Same "1." -> "2." auto-continue as noteHandleEnter, including the
-  // per-number color cycling (noteSetOrderedLineColor / NOTE_OL_COLORS),
-  // just scoped to this smaller contenteditable instead of the rich
-  // per-node note editor. Enter on a numbered line inserts the next
-  // number in its own color; Enter on an empty numbered line (just the
-  // prefix, no text after it) clears the prefix instead of numbering
-  // forever.
-  function taskNoteHandleEnter() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
-    const lineDiv = noteCurrentLine(taskNoteTextarea);
-    const lineText = (lineDiv || taskNoteTextarea).textContent;
-    const numMatch = lineText.match(/^(\d+)\.\s+/);
-    if (!numMatch) return false;
-    const rest = lineText.slice(numMatch[0].length);
-    if (rest.trim() === "") {
-      if (lineDiv) lineDiv.textContent = "";
-      placeCaretAtEnd(lineDiv || taskNoteTextarea);
-      return true;
-    }
-    const newDiv = document.createElement("div");
-    newDiv.textContent = `${parseInt(numMatch[1], 10) + 1}. `;
-    noteSetOrderedLineColor(newDiv);
-    if (lineDiv && lineDiv.parentNode) {
-      lineDiv.parentNode.insertBefore(newDiv, lineDiv.nextSibling);
-    } else {
-      taskNoteTextarea.appendChild(newDiv);
-    }
-    placeCaretAtEnd(newDiv);
-    return true;
-  }
-
-  // Button equivalent of pressing Shift+Enter (or just Enter, when it's not
-  // continuing a numbered line) in the note editor — for phones, where
-  // there's no keyboard shortcut to reach for and the on-screen keyboard's
-  // own return key is already spoken for. Keeps the caret exactly where it
-  // was by having the button steal focus back to the textarea first.
-  function insertTaskNoteNewLine() {
-    taskNoteTextarea.focus();
-    if (taskNoteHandleEnter()) return; // numbered-line continuation already added the new line
-    document.execCommand("insertParagraph");
-  }
-
-  taskNoteTextarea.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Escape") { e.preventDefault(); closeTaskNoteModal(); return; }
-    if (e.key === "Enter" && !e.shiftKey) {
-      if (taskNoteHandleEnter()) e.preventDefault();
-    }
-  });
-  taskNoteTextarea.addEventListener("input", () => noteAutoColorParagraphs(taskNoteTextarea));
-  // Prevent the button click from stealing focus away from the textarea
-  // before it fires — losing focus first would also lose the caret
-  // position insertTaskNoteNewLine() needs to insert the line in the
-  // right spot.
-  taskNoteNewlineBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  taskNoteNewlineBtn.addEventListener("click", insertTaskNoteNewLine);
-  taskNoteCloseBtn.addEventListener("click", closeTaskNoteModal);
-  taskNoteDeleteBtn.addEventListener("click", () => {
-    const t = currentTaskNoteTask();
-    if (!t) return;
-    pushUndo();
-    t.note = undefined;
-    taskNoteTextarea.innerHTML = "";
-    persist();
-    taskNoteDeleteBtn.style.display = "none";
-    taskNoteTextarea.focus();
-  });
-  taskNoteModal.addEventListener("click", (e) => { if (e.target === taskNoteModal) closeTaskNoteModal(); });
 
   /* ---------------- affirmation typing game ---------------- */
   // A lightweight typing-practice task: pick a random line, and the task

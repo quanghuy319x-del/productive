@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=22">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 <div id="app">
@@ -356,18 +356,6 @@
   </div>
 </div>
 
-<div id="task-note-modal" class="modal hidden">
-  <div class="modal-card task-note-modal-card">
-    <div class="task-note-modal-header">
-      <span id="task-note-modal-title" class="task-note-modal-title"></span>
-      <button type="button" id="task-note-newline-btn" class="task-note-modal-newline" title="Insert a new line">⏎</button>
-      <button type="button" id="task-note-delete-btn" class="task-note-modal-delete" title="Delete note">🗑</button>
-      <button type="button" id="task-note-close-btn" class="task-note-modal-close" title="Close" aria-label="Close">×</button>
-    </div>
-    <div id="task-note-textarea" class="task-note-modal-textarea" contenteditable="true" data-placeholder="Note…" spellcheck="true"></div>
-  </div>
-</div>
-
 <!-- Calendar — a single month grid across every task (on every node) in
      the current map that has a due date, mirroring the standalone Tasks
      app's Calendar tab. -->
@@ -469,6 +457,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

@@ -94,7 +94,15 @@ only see files it created itself — never your other Drive files.
   to-dos). A small ring marker next to the node fills in — and turns
   into a checkmark at 100% — as you check items off, and a progress bar
   under the node's text does the same, so progress is visible right on
-  the mindmap without opening anything. Click the ⏱ next to any task to
+  the mindmap without opening anything. Click the 📝 note button on any
+  task to open the exact same rich note editor a node's own notes use —
+  title, rich text, checklists, numbered lists, images, multiple notes
+  per task with `Alt`+Left/Right to page between them, "+ New note" to
+  add another, 🗑 to delete the one on screen. If a task has any notes,
+  a note marker appears on the node itself too (right alongside its own
+  notes/photos/links), so a note tucked away inside a task's checklist
+  is still visible from the mindmap — click that marker to jump straight
+  into that task's note. Click the ⏱ next to any task to
   start a 1-minute focus timer for it — click "+1m" any time to stack on
   more, it keeps running in the background even if you close the modal,
   chimes when time's up, and counts down right in the browser tab's
