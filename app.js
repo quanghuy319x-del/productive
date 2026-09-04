@@ -1757,28 +1757,6 @@
     return (s || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
   }
 
-  // ---- Whack-a-key game ----
-  // A random letter flashes; hit that exact key before the timer runs out.
-  // Mirrors the affirmation game's forgiving structure — a miss just shows
-  // a new letter rather than resetting progress. node.whack = {wins, best},
-  // where `best` is the fastest average reaction ms across a completed
-  // round's hits.
-  function getNodeWhack(node) {
-    return (node && node.whack) ? node.whack : null;
-  }
-  function nodeWhackWins(node) {
-    const w = getNodeWhack(node);
-    return w ? (w.wins || 0) : 0;
-  }
-  function nodeWhackBest(node) {
-    const w = getNodeWhack(node);
-    return w && typeof w.best === "number" ? w.best : null;
-  }
-  const WHACK_TARGET = 15;
-  const WHACK_TIME_LIMIT_MS = 1500;
-  const WHACK_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-
   // Bare host/paths ("example.com") still work as a link this way — without
   // a scheme, clicking would otherwise try to load it as a path relative to
   // this local file instead of a real web address.
@@ -3356,9 +3334,13 @@
     // of floating outside the frame or overlapping the label. Matches the
     // sizing renderNode/CSS actually use so the box always fully encloses it.
     const nodeImages = getNodeImages(node);
-    const stripIconCountForBox = getNodeNotes(node).length + (getNodeUrls(node).length ? 1 : 0) + (nodeAffirmationWins(node) ? 1 : 0) + (nodeWhackWins(node) ? 1 : 0);
-    let stripW = 0, stripH = 0;
-    if (stripIconCountForBox || nodeImages.length) {
+    const stripIconCountForBox = getNodeNotes(node).length + (getNodeUrls(node).length ? 1 : 0) + (nodeAffirmationWins(node) ? 1 : 0);
+    // The "time played" pill (see renderNode/openTimerModal) is now a
+    // trailing cell of this same strip rather than its own block below,
+    // so its room gets reserved here too.
+    const timePlayedForBox = getNodeTimePlayed(node);
+    let stripW = 0, stripH = 0, timerBadgeMinW = 0;
+    if (stripIconCountForBox || nodeImages.length || timePlayedForBox) {
       // Past 10 photos, collapse down to a single cover thumbnail with a
       // count badge (see renderNode) instead of a wall of thumbnails, so
       // a node with dozens of photos still reads as one compact cell.
@@ -3369,9 +3351,19 @@
       const thumb = large ? 18 : 9;
       const gap = large ? 3 : 2;
       const cols = Math.min(itemCount, 5);
-      const rows = Math.ceil(itemCount / 5);
+      const rows = itemCount ? Math.ceil(itemCount / 5) : 0;
       stripW = cols * thumb + (cols - 1) * gap;
-      stripH = 5 /* margin-top */ + rows * thumb + (rows - 1) * gap;
+      stripH = 5 /* margin-top */ + rows * thumb + Math.max(rows - 1, 0) * gap;
+      if (timePlayedForBox) {
+        // The pill's label ("45m", "1h 20m") is variable-width and
+        // usually wider than a single icon cell, so it's likeliest to
+        // land on its own line within the strip rather than squeeze onto
+        // the icon row — reserve an extra row for that (harmless if it
+        // actually does fit alongside the icons; the box just ends up a
+        // touch taller than strictly needed).
+        timerBadgeMinW = 50 + padX;
+        stripH += (itemCount ? gap : 0) + 18 /* pill height */;
+      }
     }
 
     // Reserve room for the task-progress bar + percentage label, which
@@ -3386,16 +3378,6 @@
       barMinW = 56 /* track */ + 6 /* gap */ + 30 /* "100%" label */ + padX;
     }
 
-    // Reserve room for the "time played" badge (see renderNode/
-    // openTimerModal) — a single small pill, so a fixed height/min-width
-    // is enough rather than the strip's column math above.
-    const timePlayedForBox = getNodeTimePlayed(node);
-    let timerBadgeH = 0, timerBadgeMinW = 0;
-    if (timePlayedForBox) {
-      timerBadgeH = 5 /* margin-top */ + 18 /* pill height */;
-      timerBadgeMinW = 50 + padX;
-    }
-
     // Reserve room for the root node's live clock block (current time,
     // UTC/US/UK world clocks, weekday+date, lunar date — see
     // renderNode). Fixed dimensions since, unlike the text above, its
@@ -3406,7 +3388,7 @@
     const clockH = depth === 0 ? ROOT_CLOCK_H : 0;
 
     node._w = Math.max(w, stripW + padX, barMinW, timerBadgeMinW, clockW);
-    node._h = h + stripH + barH + timerBadgeH + clockH;
+    node._h = h + stripH + barH + clockH;
     node._lines = lines;
     return { w: node._w, h: node._h };
   }
@@ -4325,18 +4307,21 @@
     const nodeUrls = getNodeUrls(node);
     const nodeNotes = getNodeNotes(node);
     const affirmationWins = nodeAffirmationWins(node);
-    const whackWins = nodeWhackWins(node);
     const taskProg = nodeTaskProgress(node);
 
     const nodeImages = getNodeImages(node);
-    // Note, link, and affirmation/whack-completion markers all render
-    // inline as cells of this same strip, right alongside the photo
-    // thumbnails, instead of floating outside the node — so every
-    // attachment/status indicator for a node lives in one place. Only the
-    // task-progress bar (see below) stays separate, since it's a
-    // full-width row rather than a small square cell.
-    const stripIconCount = nodeNotes.length + nodeUrls.length + (affirmationWins ? 1 : 0) + (whackWins ? 1 : 0);
-    if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
+    const timePlayed = getNodeTimePlayed(node);
+    // Note, link, and affirmation-completion markers all render inline as
+    // cells of this same strip, right alongside the photo thumbnails,
+    // instead of floating outside the node — so every attachment/status
+    // indicator for a node lives in one place. The "time played" pill
+    // (see below) joins this same strip too, as a trailing flex item — it
+    // just wraps onto its own line within the strip when the icon row is
+    // already full, rather than sitting in a fully separate block
+    // underneath. Only the task-progress bar stays separate, since it's a
+    // full-width row rather than a small cell.
+    const stripIconCount = nodeNotes.length + nodeUrls.length + (affirmationWins ? 1 : 0);
+    if ((stripIconCount || nodeImages.length || timePlayed) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
       // would — "large" only kicks in when everything still fits in one
@@ -4351,6 +4336,13 @@
       strip.className = "node-photo-strip" + (large ? " large" : "");
       strip.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       strip.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+      // With no icon/photo cells at all — a node whose only marker is the
+      // time-played pill — there's nothing to pin a fixed column width
+      // to below, so let the strip size itself to the pill instead.
+      if (!itemCount) {
+        strip.style.width = "auto";
+        strip.style.maxWidth = "none";
+      }
       if (nodeImages.length) {
         // Dragging the strip's own background (not a specific icon/thumb,
         // which each have their own drag handlers) moves every photo at
@@ -4369,7 +4361,15 @@
       const thumbPx = large ? 18 : 9;
       const gapPx = large ? 3 : 2;
       const cols = Math.min(itemCount, 5);
-      strip.style.width = (cols * thumbPx + (cols - 1) * gapPx) + "px";
+      if (itemCount) {
+        let pinnedW = cols * thumbPx + (cols - 1) * gapPx;
+        // The time-played pill (appended below) is a variable-width label
+        // rather than a fixed-size cell, and is usually wider than the
+        // icon columns above pin — widen the strip to fit it (and let it
+        // wrap onto its own line) rather than clipping/overflowing.
+        if (timePlayed) pinnedW = Math.max(pinnedW, 50);
+        strip.style.width = pinnedW + "px";
+      }
 
       // One icon per note (instead of a single icon plus a count badge),
       // same cell size/box as a photo thumbnail — each is independently
@@ -4446,25 +4446,6 @@
         strip.appendChild(affIcon);
       }
 
-      if (whackWins) {
-        const wBest = nodeWhackBest(node);
-        const whackIcon = document.createElement("span");
-        whackIcon.className = "node-photo-thumb node-whack-marker";
-        whackIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10h.01M12 10h.01M16 10h.01M9 14h6"/></svg>';
-        whackIcon.title = `Whack-a-key game — ${whackWins} round${whackWins === 1 ? "" : "s"} completed, best avg ${wBest != null ? wBest + "ms" : "—"}. Click to play again.`;
-        whackIcon.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openWhackGame(node.id);
-        });
-        if (whackWins > 1) {
-          const whackCount = document.createElement("span");
-          whackCount.className = "node-marker-count";
-          whackCount.textContent = String(whackWins);
-          whackIcon.appendChild(whackCount);
-        }
-        strip.appendChild(whackIcon);
-      }
-
       for (let i = 0; i < shownCount; i++) {
         const thumb = document.createElement("span");
         thumb.className = "node-photo-thumb";
@@ -4505,6 +4486,25 @@
         }
         strip.appendChild(thumb);
       }
+
+      if (timePlayed) {
+        // Same pill as before, just now a trailing cell of the shared
+        // strip (see comment above) instead of its own block underneath —
+        // it sits right alongside the note/link/photo icons and only
+        // drops to a second line within the strip if that row is full.
+        const tbadge = document.createElement("span");
+        tbadge.className = "node-timer-badge node-timer-badge-in-strip";
+        tbadge.title = `${formatTimePlayed(timePlayed)} logged — click to add more`;
+        tbadge.addEventListener("mousedown", (e) => { e.stopPropagation(); });
+        tbadge.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+        tbadge.addEventListener("click", (e) => { e.stopPropagation(); openTimerModal(node.id); });
+        tbadge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>';
+        const tlabel = document.createElement("span");
+        tlabel.textContent = formatTimePlayed(timePlayed);
+        tbadge.appendChild(tlabel);
+        strip.appendChild(tbadge);
+      }
+
       div.appendChild(strip);
     }
 
@@ -4553,21 +4553,6 @@
       row.appendChild(track);
       row.appendChild(pctLabel);
       div.appendChild(row);
-    }
-
-    const timePlayed = getNodeTimePlayed(node);
-    if (timePlayed && node.id !== state.editingId) {
-      const tbadge = document.createElement("span");
-      tbadge.className = "node-timer-badge";
-      tbadge.title = `${formatTimePlayed(timePlayed)} logged — click to add more`;
-      tbadge.addEventListener("mousedown", (e) => { e.stopPropagation(); });
-      tbadge.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
-      tbadge.addEventListener("click", (e) => { e.stopPropagation(); openTimerModal(node.id); });
-      tbadge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>';
-      const tlabel = document.createElement("span");
-      tlabel.textContent = formatTimePlayed(timePlayed);
-      tbadge.appendChild(tlabel);
-      div.appendChild(tbadge);
     }
 
     function beginNodeDrag(e) {
@@ -5669,20 +5654,6 @@
       editItem.appendChild(editLabel);
       editItem.addEventListener("click", () => { closeContextMenu(); openAffirmationQuotesModal(); });
       ctxMenu.appendChild(editItem);
-    }
-
-    // Whack-a-key game — same grouped-section pattern as the affirmation
-    // game above.
-    {
-      const wWins = nodeWhackWins(node);
-      const whackItem = document.createElement("div");
-      whackItem.className = "ctx-item";
-      const whackLabel = document.createElement("span");
-      whackLabel.className = "ctx-item-label";
-      whackLabel.textContent = wWins ? `⌨ Whack-a-key game (✓ ${wWins})` : "⌨ Whack-a-key game";
-      whackItem.appendChild(whackLabel);
-      whackItem.addEventListener("click", () => { closeContextMenu(); openWhackGame(node.id); });
-      ctxMenu.appendChild(whackItem);
     }
 
     // Glow effect picker — several intensities/speeds rather than a plain
@@ -10364,142 +10335,6 @@
   });
   $("#affirmation-back").addEventListener("click", closeAffirmationGame);
   affirmationModal.addEventListener("click", (e) => { if (e.target === affirmationModal) closeAffirmationGame(); });
-
-  /* ---------------- whack-a-key game ---------------- */
-  // A random letter flashes; press that exact key before the timer runs
-  // out. Mirrors the affirmation game's forgiving structure — a wrong key
-  // just asks you to try the same letter again, and a timeout simply moves
-  // to a new letter without losing progress. node.whack = {wins, best,
-  // hits, timeSum} — hits/timeSum describe the round in progress (so
-  // closing mid-round and coming back resumes it), wins/best describe
-  // completed rounds (best = fastest average ms across a round's hits).
-
-  const whackModal = $("#whack-modal");
-  const whackStage = $("#whack-stage");
-  const whackLetterEl = $("#whack-letter");
-  const whackTimerBar = $("#whack-timer-bar");
-  const whackFeedback = $("#whack-feedback");
-  const whackProgressBar = $("#whack-progress-bar");
-  const whackProgressLabel = $("#whack-progress-label");
-  let whackNodeId = null;
-  let whackCurrentLetter = null;
-  let whackToken = 0;
-  let whackTimeoutHandle = null;
-  let whackRoundStartAt = 0;
-
-  function getWhackNode() { return findNode(whackNodeId); }
-
-  function openWhackGame(nodeId) {
-    const node = findNode(nodeId);
-    if (!node) return;
-    if (!node.whack) node.whack = { wins: 0, best: null, hits: 0, timeSum: 0 };
-    whackNodeId = nodeId;
-    whackFeedback.textContent = "";
-    whackFeedback.className = "whack-feedback";
-    startWhackRound();
-    whackModal.classList.remove("hidden");
-    requestAnimationFrame(() => whackStage.focus());
-  }
-  function closeWhackGame() {
-    clearTimeout(whackTimeoutHandle);
-    whackToken++;
-    whackModal.classList.add("hidden");
-    whackNodeId = null;
-    renderAll();
-  }
-  function renderWhackProgress() {
-    const w = getNodeWhack(getWhackNode());
-    const hits = w ? (w.hits || 0) : 0;
-    whackProgressBar.style.width = Math.round((hits / WHACK_TARGET) * 100) + "%";
-    whackProgressLabel.textContent = `${hits} / ${WHACK_TARGET}`;
-  }
-  function startWhackRound() {
-    const node = getWhackNode();
-    if (!node) return;
-    clearTimeout(whackTimeoutHandle);
-    whackToken++;
-    const myToken = whackToken;
-    let next = whackCurrentLetter;
-    while (next === whackCurrentLetter) {
-      next = WHACK_LETTERS[Math.floor(Math.random() * WHACK_LETTERS.length)];
-    }
-    whackCurrentLetter = next;
-    whackLetterEl.textContent = whackCurrentLetter;
-    whackRoundStartAt = performance.now();
-    renderWhackProgress();
-    // Visual-only countdown bar — the actual timeout below is what decides
-    // a miss, this just gives an at-a-glance sense of urgency.
-    whackTimerBar.style.transition = "none";
-    whackTimerBar.style.width = "100%";
-    whackTimerBar.classList.remove("urgent");
-    void whackTimerBar.offsetWidth;
-    whackTimerBar.style.transition = `width ${WHACK_TIME_LIMIT_MS}ms linear`;
-    whackTimerBar.style.width = "0%";
-    whackTimerBar.classList.add("urgent");
-    whackTimeoutHandle = setTimeout(() => handleWhackTimeout(myToken), WHACK_TIME_LIMIT_MS);
-  }
-  function handleWhackTimeout(token) {
-    if (token !== whackToken) return; // stale — a key was already pressed
-    whackFeedback.textContent = "Too slow! →";
-    whackFeedback.className = "whack-feedback bad";
-    startWhackRound();
-  }
-  function handleWhackKey(key) {
-    if (!whackNodeId || !whackCurrentLetter) return;
-    const node = getWhackNode();
-    const w = getNodeWhack(node);
-    if (!w) return;
-    if (key.toUpperCase() === whackCurrentLetter) {
-      clearTimeout(whackTimeoutHandle);
-      const ms = Math.round(performance.now() - whackRoundStartAt);
-      w.hits = (w.hits || 0) + 1;
-      w.timeSum = (w.timeSum || 0) + ms;
-      if (w.hits >= WHACK_TARGET) {
-        const avg = Math.round(w.timeSum / w.hits);
-        w.wins = (w.wins || 0) + 1;
-        w.best = w.best == null ? avg : Math.min(w.best, avg);
-        w.hits = 0;
-        w.timeSum = 0;
-        persist();
-        renderAll();
-        whackFeedback.textContent = `🎉 Round complete! Avg ${avg}ms`;
-        whackFeedback.className = "whack-feedback ok";
-        renderWhackProgress();
-        clearTimeout(whackTimeoutHandle);
-        whackToken++; // stop the current timer without starting a new round
-        whackCurrentLetter = null;
-        whackLetterEl.textContent = "🎉";
-        whackTimerBar.style.transition = "none";
-        whackTimerBar.style.width = "0%";
-      } else {
-        persist();
-        whackFeedback.textContent = `✓ ${ms}ms`;
-        whackFeedback.className = "whack-feedback ok";
-        startWhackRound();
-      }
-    } else {
-      whackFeedback.textContent = "Not quite — try again";
-      whackFeedback.className = "whack-feedback bad";
-      whackLetterEl.classList.remove("shake");
-      void whackLetterEl.offsetWidth;
-      whackLetterEl.classList.add("shake");
-    }
-  }
-  whackStage.addEventListener("click", () => {
-    // A finished round leaves the stage idle with no active letter —
-    // clicking starts a fresh one, same as re-opening from the marker.
-    if (!whackCurrentLetter) startWhackRound();
-  });
-  $("#whack-back").addEventListener("click", closeWhackGame);
-  whackModal.addEventListener("click", (e) => { if (e.target === whackModal) closeWhackGame(); });
-  document.addEventListener("keydown", (e) => {
-    if (whackModal.classList.contains("hidden")) return;
-    if (e.key === "Escape") { closeWhackGame(); return; }
-    if (!/^[a-zA-Z]$/.test(e.key)) return;
-    e.preventDefault();
-    e.stopPropagation();
-    handleWhackKey(e.key);
-  });
 
   /* ---------------- node timer ("time played") ---------------- */
   // A per-node countdown timer. Start it and it ticks down like a normal

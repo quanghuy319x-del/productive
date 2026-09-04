@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
 <div id="app">
@@ -435,26 +435,6 @@
   </div>
 </div>
 
-<div id="whack-modal" class="modal hidden">
-  <div class="modal-card whack-modal-card">
-    <div class="modal-back-row">
-      <button type="button" id="whack-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
-      <h2>Whack-a-key</h2>
-    </div>
-    <div class="tasks-progress-row">
-      <div class="tasks-progress-bar-wrap">
-        <div id="whack-progress-bar" class="tasks-progress-bar"></div>
-      </div>
-      <span id="whack-progress-label" class="tasks-progress-label">0 / 15</span>
-    </div>
-    <div id="whack-stage" class="whack-stage" tabindex="0">
-      <span id="whack-letter" class="whack-letter">A</span>
-      <div class="whack-timer-track"><div id="whack-timer-bar" class="whack-timer-bar"></div></div>
-    </div>
-    <p id="whack-feedback" class="whack-feedback"></p>
-  </div>
-</div>
-
 <div id="timer-modal" class="modal hidden">
   <div class="modal-card timer-modal-card">
     <div class="modal-back-row">
@@ -489,6 +469,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=31"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

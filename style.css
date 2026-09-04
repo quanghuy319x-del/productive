@@ -905,20 +905,6 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-affirmation-marker svg{ width: 70%; height:70%; }
 
-/* Whack-a-key cell gets a violet tint, same background/border/color
-   recipe as the note and affirmation cells above so every marker type
-   reads consistently at a glance. */
-.node-whack-marker{
-  background: rgba(180, 148, 255, 0.18);
-  border-color: rgba(180, 148, 255, 0.4);
-  color: #b494ff;
-}
-.node-whack-marker:hover{
-  background: rgba(180, 148, 255, 0.32);
-  color: #cdb8ff;
-}
-.node-whack-marker svg{ width: 70%; height:70%; }
-
 /* Manual "time played" total — a per-node running total built up by
    tapping "+1m" in the timer modal (see openTimerModal in app.js). It's
    its own small pill rather than a cell in the note/link/photo strip
@@ -947,6 +933,13 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-timer-badge:hover{ background: rgba(245, 162, 92, 0.3); }
 .node-timer-badge svg{ width: 11px; height: 11px; flex: none; }
+
+/* When the pill is a trailing cell of the shared note/link/photo strip
+   (see renderNode) instead of its own block, the strip's own margin-top
+   already provides the spacing above the whole group — an extra
+   margin-top on the pill itself would just add a gap only when it wraps
+   onto its own line within the strip, which looked inconsistent. */
+.node-timer-badge-in-strip{ margin-top: 0; }
 
 /* Root node's live clock — current time, UTC/US/UK world clocks, the
    Vietnamese weekday+date, and the lunar date, all rendered in normal
@@ -2412,56 +2405,6 @@ kbd{
 }
 .affirmation-feedback.ok{ color: #5a8f5a; }
 .affirmation-feedback.bad{ color: var(--danger); }
-
-/* ---- Whack-a-key game modal ---- */
-.whack-modal-card{ max-width: 400px; }
-.whack-stage{
-  margin: 4px 0 10px;
-  height: 160px;
-  border-radius: 10px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap: 14px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  outline:none;
-}
-.whack-letter{
-  font-size: 56px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: 2px;
-}
-.whack-letter.shake{
-  animation: affirmation-shake .3s ease;
-  color: var(--danger);
-}
-.whack-timer-track{
-  width: 70%;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--border);
-  overflow:hidden;
-}
-.whack-timer-bar{
-  height:100%;
-  width:100%;
-  background: var(--accent);
-  border-radius: 999px;
-  transition: width linear;
-}
-.whack-timer-bar.urgent{ background: var(--danger); }
-.whack-feedback{
-  min-height: 16px;
-  margin: 8px 2px 2px;
-  font-size: 12px;
-  color: var(--text-dim);
-  text-align:center;
-}
-.whack-feedback.ok{ color: #5a8f5a; }
-.whack-feedback.bad{ color: var(--danger); }
 
 /* ---- Node timer modal (manual "+1m" running total) ---- */
 .timer-modal-card{ max-width: 360px; text-align: center; }
