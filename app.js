@@ -2239,6 +2239,190 @@
     if (document.visibilityState === "visible") updateSaveStatusLabel();
   });
 
+  /* ---------------- root node live clock ---------------- */
+  // The central/root node doubles as a small live clock: current local
+  // time, UTC/US(NY)/UK world clocks, the Vietnamese weekday+date, and
+  // the lunar date — ported from the standalone clock.html widget this
+  // app started life alongside. The block itself is built once per
+  // render (see renderNode), then this ticker just walks back in and
+  // refreshes its text every second — cheap DOM writes, no renderAll —
+  // so nothing about the map's actual data (or undo history) is touched
+  // just because a second went by.
+
+  const ROOT_CLOCK_CAN = ["Giáp","Ất","Bính","Đinh","Mậu","Kỷ","Canh","Tân","Nhâm","Quý"];
+  const ROOT_CLOCK_CHI = ["Tý","Sửu","Dần","Mão","Thìn","Tỵ","Ngọ","Mùi","Thân","Dậu","Tuất","Hợi"];
+
+  function rcINT(d) { return Math.floor(d); }
+
+  function rcJdFromDate(dd, mm, yy) {
+    const a = rcINT((14 - mm) / 12);
+    const y = yy + 4800 - a;
+    const m = mm + 12 * a - 3;
+    let jd = dd + rcINT((153 * m + 2) / 5) + 365 * y + rcINT(y / 4) - rcINT(y / 100) + rcINT(y / 400) - 32045;
+    if (jd < 2299161) jd = dd + rcINT((153 * m + 2) / 5) + 365 * y + rcINT(y / 4) - 32083;
+    return jd;
+  }
+
+  function rcGetNewMoonDay(k, timeZone) {
+    const T = k / 1236.85;
+    const T2 = T * T;
+    const T3 = T2 * T;
+    const dr = Math.PI / 180;
+    let Jd1 = 2415020.75933 + 29.53058868 * k + 0.0001178 * T2 - 0.000000155 * T3;
+    Jd1 += 0.00033 * Math.sin((166.56 + 132.87 * T - 0.009173 * T2) * dr);
+    const M = 359.2242 + 29.10535608 * k - 0.0000333 * T2 - 0.00000347 * T3;
+    const Mpr = 306.0253 + 385.81691806 * k + 0.0107306 * T2 + 0.00001236 * T3;
+    const F = 21.2964 + 390.67050646 * k - 0.0016528 * T2 - 0.00000239 * T3;
+    let C1 = (0.1734 - 0.000393 * T) * Math.sin(M * dr) + 0.0021 * Math.sin(2 * dr * M);
+    C1 -= 0.4068 * Math.sin(Mpr * dr) + 0.0161 * Math.sin(2 * dr * Mpr);
+    C1 -= 0.0004 * Math.sin(3 * dr * Mpr);
+    C1 += 0.0104 * Math.sin(2 * dr * F) - 0.0051 * Math.sin((M + Mpr) * dr);
+    C1 -= 0.0074 * Math.sin((M - Mpr) * dr) + 0.0004 * Math.sin((2 * F + M) * dr);
+    C1 -= 0.0004 * Math.sin((2 * F - M) * dr) - 0.0006 * Math.sin((2 * F + Mpr) * dr);
+    C1 += 0.0010 * Math.sin((2 * F - Mpr) * dr) + 0.0005 * Math.sin((2 * Mpr + M) * dr);
+    let deltaT;
+    if (T < -11) {
+      deltaT = 0.001 + 0.000839 * T + 0.0002261 * T2 - 0.00000845 * T3 - 0.000000081 * T * T3;
+    } else {
+      deltaT = -0.000278 + 0.000265 * T + 0.000262 * T2;
+    }
+    return rcINT(Jd1 + C1 - deltaT + 0.5 + timeZone / 24);
+  }
+
+  function rcGetSunLongitude(jdn, timeZone) {
+    const T = (jdn - 2451545.5 - timeZone / 24) / 36525;
+    const T2 = T * T;
+    const dr = Math.PI / 180;
+    const M = 357.52910 + 35999.05030 * T - 0.0001559 * T2 - 0.00000048 * T * T2;
+    const L0 = 280.46645 + 36000.76983 * T + 0.0003032 * T2;
+    let DL = (1.914600 - 0.004817 * T - 0.000014 * T2) * Math.sin(dr * M);
+    DL += (0.019993 - 0.000101 * T) * Math.sin(dr * 2 * M) + 0.000290 * Math.sin(dr * 3 * M);
+    let L = L0 + DL;
+    L = L * dr;
+    L = L - Math.PI * 2 * rcINT(L / (Math.PI * 2));
+    return rcINT(L / Math.PI * 6);
+  }
+
+  function rcGetLunarMonth11(yy, timeZone) {
+    const off = rcJdFromDate(31, 12, yy) - 2415021;
+    const k = rcINT(off / 29.530588853);
+    let nm = rcGetNewMoonDay(k, timeZone);
+    const sunLong = rcGetSunLongitude(nm, timeZone);
+    if (sunLong >= 9) nm = rcGetNewMoonDay(k - 1, timeZone);
+    return nm;
+  }
+
+  function rcGetLeapMonthOffset(a11, timeZone) {
+    const k = rcINT((a11 - 2415021.076998695) / 29.530588853 + 0.5);
+    let last = 0;
+    let i = 1;
+    let arc = rcGetSunLongitude(rcGetNewMoonDay(k + i, timeZone), timeZone);
+    do {
+      last = arc;
+      i++;
+      arc = rcGetSunLongitude(rcGetNewMoonDay(k + i, timeZone), timeZone);
+    } while (arc !== last && i < 14);
+    return i - 1;
+  }
+
+  function convertSolar2Lunar(dd, mm, yy, timeZone) {
+    const dayNumber = rcJdFromDate(dd, mm, yy);
+    const k = rcINT((dayNumber - 2415021.076998695) / 29.530588853);
+    let monthStart = rcGetNewMoonDay(k + 1, timeZone);
+    if (monthStart > dayNumber) monthStart = rcGetNewMoonDay(k, timeZone);
+    let a11 = rcGetLunarMonth11(yy, timeZone);
+    let b11 = a11;
+    let lunarYear;
+    if (a11 >= monthStart) {
+      lunarYear = yy;
+      a11 = rcGetLunarMonth11(yy - 1, timeZone);
+    } else {
+      lunarYear = yy + 1;
+      b11 = rcGetLunarMonth11(yy + 1, timeZone);
+    }
+    const lunarDay = dayNumber - monthStart + 1;
+    const diff = rcINT((monthStart - a11) / 29);
+    let lunarLeap = 0;
+    let lunarMonth = diff + 11;
+    if (b11 - a11 > 365) {
+      const leapMonthDiff = rcGetLeapMonthOffset(a11, timeZone);
+      if (diff >= leapMonthDiff) {
+        lunarMonth = diff + 10;
+        if (diff === leapMonthDiff) lunarLeap = 1;
+      }
+    }
+    if (lunarMonth > 12) lunarMonth -= 12;
+    if (lunarMonth >= 11 && diff < 4) lunarYear -= 1;
+    return [lunarDay, lunarMonth, lunarYear, lunarLeap];
+  }
+
+  function getVietnameseWeekday(date) {
+    return ["Chủ nhật","Thứ hai","Thứ ba","Thứ tư","Thứ năm","Thứ sáu","Thứ bảy"][date.getDay()];
+  }
+
+  function getCanChiYear(year) {
+    return ROOT_CLOCK_CAN[(year + 6) % 10] + " " + ROOT_CLOCK_CHI[(year + 8) % 12];
+  }
+
+  function formatTimeInZone(date, timeZone) {
+    try {
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+      }).format(date);
+    } catch (e) {
+      return "--:--:--";
+    }
+  }
+
+  // Every value the clock block shows, computed fresh from `now` — used
+  // both to fill the block in the moment it's created (renderNode) and
+  // to refresh it in place every second (rootClockTick) below.
+  function rootClockValues(now) {
+    const h = String(now.getHours()).padStart(2, "0");
+    const m = String(now.getMinutes()).padStart(2, "0");
+    const s = String(now.getSeconds()).padStart(2, "0");
+    const uh = String(now.getUTCHours()).padStart(2, "0");
+    const um = String(now.getUTCMinutes()).padStart(2, "0");
+    const us_ = String(now.getUTCSeconds()).padStart(2, "0");
+    const dd = now.getDate(), mm = now.getMonth() + 1, yy = now.getFullYear();
+    const lunar = convertSolar2Lunar(dd, mm, yy, 7);
+    const leapText = lunar[3] ? " nhuận" : "";
+    return {
+      time: `${h}:${m}:${s}`,
+      utc: `${uh}:${um}:${us_}`,
+      us: formatTimeInZone(now, "America/New_York"),
+      uk: formatTimeInZone(now, "Europe/London"),
+      solar: `${getVietnameseWeekday(now)}, ngày ${dd} tháng ${mm} năm ${yy}`,
+      lunar: `Âm lịch: ngày ${lunar[0]} tháng ${lunar[1]}${leapText} năm ${getCanChiYear(lunar[2])}`,
+    };
+  }
+
+  // Only one root node is ever on screen at a time (one map open at
+  // once), so a plain class query is enough — no need to track an id.
+  function rootClockTick() {
+    const block = nodesLayer.querySelector(".node.depth-0 .node-clock-block");
+    if (!block) return;
+    const v = rootClockValues(new Date());
+    const timeEl = block.querySelector(".node-clock-time");
+    if (timeEl) timeEl.textContent = v.time;
+    const utcEl = block.querySelector('[data-tz="utc"]');
+    if (utcEl) utcEl.textContent = v.utc;
+    const usEl = block.querySelector('[data-tz="us"]');
+    if (usEl) usEl.textContent = v.us;
+    const ukEl = block.querySelector('[data-tz="uk"]');
+    if (ukEl) ukEl.textContent = v.uk;
+    const solarEl = block.querySelector(".node-clock-solar");
+    if (solarEl) solarEl.textContent = v.solar;
+    const lunarEl = block.querySelector(".node-clock-lunar");
+    if (lunarEl) lunarEl.textContent = v.lunar;
+  }
+  setInterval(() => {
+    if (document.visibilityState === "visible") rootClockTick();
+  }, 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") rootClockTick();
+  });
+
   // True from the moment an edit schedules a save until that save has
   // actually finished writing everywhere (local DB, folder, Drive) —
   // covers both persist()'s own 500ms debounce delay and the awaits
@@ -3188,8 +3372,27 @@
       barMinW = 56 /* track */ + 6 /* gap */ + 30 /* "100%" label */ + padX;
     }
 
-    node._w = Math.max(w, stripW + padX, barMinW);
-    node._h = h + stripH + barH;
+    // Reserve room for the "time played" badge (see renderNode/
+    // openTimerModal) — a single small pill, so a fixed height/min-width
+    // is enough rather than the strip's column math above.
+    const timePlayedForBox = getNodeTimePlayed(node);
+    let timerBadgeH = 0, timerBadgeMinW = 0;
+    if (timePlayedForBox) {
+      timerBadgeH = 5 /* margin-top */ + 18 /* pill height */;
+      timerBadgeMinW = 50 + padX;
+    }
+
+    // Reserve room for the root node's live clock block (current time,
+    // UTC/US/UK world clocks, weekday+date, lunar date — see
+    // renderNode). Fixed dimensions since, unlike the text above, its
+    // content never depends on anything the person typed.
+    const ROOT_CLOCK_W = 300;
+    const ROOT_CLOCK_H = 116;
+    const clockW = depth === 0 ? ROOT_CLOCK_W + padX : 0;
+    const clockH = depth === 0 ? ROOT_CLOCK_H : 0;
+
+    node._w = Math.max(w, stripW + padX, barMinW, timerBadgeMinW, clockW);
+    node._h = h + stripH + barH + timerBadgeH + clockH;
     node._lines = lines;
     return { w: node._w, h: node._h };
   }
@@ -4006,6 +4209,52 @@
         e.preventDefault();
         handleNodePhotoFiles(node.id, [file]);
       });
+    }
+
+    // The root node doubles as a small live clock — current time,
+    // UTC/US(NY)/UK world clocks, the Vietnamese weekday+date, and the
+    // lunar date, right in the map's central node. Filled in once here
+    // (see rootClockValues) and kept ticking afterward by rootClockTick,
+    // a separate 1-second interval that just walks back in and updates
+    // this block's text — see "root node live clock" above. Hidden while
+    // actively editing the title, same as every other marker below.
+    if (depth === 0 && node.id !== state.editingId) {
+      const clockBlock = document.createElement("span");
+      clockBlock.className = "node-clock-block";
+      const v = rootClockValues(new Date());
+
+      const timeEl = document.createElement("span");
+      timeEl.className = "node-clock-time";
+      timeEl.textContent = v.time;
+      clockBlock.appendChild(timeEl);
+
+      const worldRow = document.createElement("span");
+      worldRow.className = "node-clock-world";
+      [["UTC", "utc", v.utc], ["NY", "us", v.us], ["UK", "uk", v.uk]].forEach(([label, key, val]) => {
+        const cell = document.createElement("span");
+        cell.className = "node-clock-tz";
+        const lab = document.createElement("b");
+        lab.textContent = label;
+        const t = document.createElement("span");
+        t.dataset.tz = key;
+        t.textContent = val;
+        cell.appendChild(lab);
+        cell.appendChild(t);
+        worldRow.appendChild(cell);
+      });
+      clockBlock.appendChild(worldRow);
+
+      const solarEl = document.createElement("span");
+      solarEl.className = "node-clock-solar";
+      solarEl.textContent = v.solar;
+      clockBlock.appendChild(solarEl);
+
+      const lunarEl = document.createElement("span");
+      lunarEl.className = "node-clock-lunar";
+      lunarEl.textContent = v.lunar;
+      clockBlock.appendChild(lunarEl);
+
+      div.appendChild(clockBlock);
     }
 
     // collapse toggle — hidden while actively editing so it doesn't sit

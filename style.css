@@ -911,6 +911,61 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-timer-badge:hover{ background: rgba(245, 162, 92, 0.3); }
 .node-timer-badge svg{ width: 11px; height: 11px; flex: none; }
 
+/* Root node's live clock — current time, UTC/US/UK world clocks, the
+   Vietnamese weekday+date, and the lunar date, all rendered in normal
+   flow below the map's title so the root's own box always fully
+   encloses it (see the ROOT_CLOCK_W/H reservation in computeNodeBox).
+   Ticks forward once a second via rootClockTick, entirely independent
+   of the map's own re-render cycle. Uses currentColor for the main
+   time so it always reads against the root's fill/border color,
+   whatever that's set to; the secondary lines fade out a bit via
+   opacity so the time stays the clear focal point. */
+.node-clock-block{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap: 6px;
+  width:100%;
+  margin-top: 8px;
+  cursor: default;
+  pointer-events: none;
+}
+.node-clock-time{
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.node-clock-world{
+  display:flex;
+  align-items:flex-start;
+  justify-content:center;
+  gap: 16px;
+}
+.node-clock-tz{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap: 1px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.node-clock-tz b{
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+}
+.node-clock-solar,
+.node-clock-lunar{
+  font-size: 11px;
+  text-align: center;
+  opacity: 0.8;
+}
+.node-clock-lunar{ opacity: 0.65; }
+
 /* Fewer than 6 cells always fit in a single row (max-width caps it at
    5 columns), so there's room to show them noticeably bigger instead of
    at the same small size a full row uses. */

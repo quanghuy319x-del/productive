@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <div id="app">
@@ -167,6 +167,7 @@
       <tr><td>🏷 Tags (sidebar)</td><td>Opens a browser of every tag you've added to a photo, gathered from across the whole map. Tap a tag to see every photo carrying it, no matter which node it's on — tap a photo there to jump straight to its node (expanding any collapsed branch in the way) and open it full-size.</td></tr>
       <tr><td>Crop / Add text on photo</td><td>Open a photo full-size, then use the ⛶ button to crop it, or the "Aa" button to add a text label. Each click on the photo places one label — drag it into place (or drag its small ⠿ handle at the top-left corner, which always moves it even mid-edit, so you never fight with text-caret placement), pick a color, drag the small dot on its corner to resize the text. Click "Aa" again to place another label; click elsewhere on the photo to just finish the current one. "Apply" bakes every label permanently into the photo.</td></tr>
       <tr><td>⏱ Timer</td><td>Right-click a node and choose "Add timer…" to keep a running total of time spent on it. Tap "+1m" in the popup each time you spend a minute on it — no countdown, just a manual tally. The total shows right on the node as a small "⏱ 45m"-style badge; tap the badge (or right-click → the timer item again) to add more or reset it. Saved with the map like everything else.</td></tr>
+      <tr><td>Root node clock</td><td>The map's central node always shows a small live clock below its title: the current time, UTC/US (NY)/UK world clocks, today's Vietnamese weekday and date, and the lunar date — ticking forward on its own, no setup needed.</td></tr>
     </table>
     <button id="help-close" class="btn-primary">Got it</button>
   </div>
@@ -457,6 +458,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
