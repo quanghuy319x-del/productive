@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 <div id="app">
@@ -68,7 +68,9 @@
   <main id="main">
     <div id="toolbar">
       <input id="title-input" class="title-input" spellcheck="false" placeholder="Untitled map">
-      <div class="toolbar-gap"></div>
+      <div id="toolbar-quote-banner" class="toolbar-gap toolbar-quote-banner" role="button" tabindex="0" title="Click to view or edit your affirmations">
+        <marquee id="quote-banner-marquee" behavior="scroll" direction="left" scrollamount="4">Loading…</marquee>
+      </div>
       <span id="save-status" class="save-status">Saved</span>
       <div class="undo-controls">
         <button id="btn-undo" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" disabled>↶</button>
@@ -278,6 +280,19 @@
   </div>
 </div>
 
+<div id="quote-banner-modal" class="modal hidden">
+  <div class="modal-card quote-banner-modal-card">
+    <h2>Affirmations</h2>
+    <div id="quote-banner-list" class="quote-banner-list"></div>
+    <textarea id="quote-banner-editor" class="quote-banner-editor" spellcheck="false" placeholder="Type a new affirmation, or pick one above to edit it…"></textarea>
+    <div class="quote-banner-actions">
+      <button id="quote-banner-save" class="btn-ghost">Save / Add</button>
+      <button id="quote-banner-random" class="btn-ghost">🔀 Random</button>
+    </div>
+    <button id="quote-banner-close" class="btn-primary">Done</button>
+  </div>
+</div>
+
 <div id="note-modal" class="modal hidden">
   <div class="modal-card note-modal-card">
     <input id="note-title-input" class="note-title-input" spellcheck="false">
@@ -474,6 +489,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

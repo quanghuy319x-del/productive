@@ -6571,6 +6571,169 @@
   $("#theme-close").addEventListener("click", () => themeModal.classList.add("hidden"));
   themeModal.addEventListener("click", (e) => { if (e.target === themeModal) themeModal.classList.add("hidden"); });
 
+  /* ---------------- toolbar quote banner ----------------
+     Ported from a companion clock/timer page: a short scrolling
+     affirmation in the toolbar, picked from (or added to) a small
+     editable list, remembered across reloads via localStorage. This is
+     separate from the per-node "Affirmation" typing-practice task
+     below — that one quizzes you on retyping a line 20 times; this one
+     just quietly displays one. Named "quote banner" internally (ids,
+     classes, functions) so nothing here collides with that feature's
+     own affirmation-* names, even though both surface the word
+     "Affirmation" to the user.
+     The banner itself is desktop/mouse-only — see
+     .toolbar-quote-banner's media query in style.css — so all of this
+     simply has nothing to drive on a touch device; the "click" here
+     means a real mouse/pen click, never a touch tap. */
+
+  const QUOTE_BANNER_LIST_KEY = "branchlineQuoteBannerList_v1";
+  const QUOTE_BANNER_SELECTED_KEY = "branchlineQuoteBannerSelected_v1";
+
+  const DEFAULT_QUOTE_BANNER_LINES = [
+    "a successful life start with a successful day",
+    "buồn như buồn, vui như vui, phiền não như phiền não",
+    "Nó là chính nó",
+    "Phiền Não Tức Bồ Đề",
+    "ta là cái biết thân tâm hoàn cảnh",
+    "tham sân si tức bồ đề",
+    "thêm cũng ko được, bớt cũng chẳng xong",
+    "Tôi hoàn toàn chấp nhận hiện tại",
+    "tôi không muốn thay đổi bất cứ điều gì",
+    "trăm triệu hạt mưa ko hạt nào rơi nhầm chỗ",
+    "Tri kiến lập tri là gốc của vô minh",
+    "Tự Nhiên tâm là đạo",
+    "Tôi bình tĩnh, tập trung và làm đúng kế hoạch",
+    "Tôi chỉ giao dịch khi có vị trí đẹp và xác suất cao",
+    "Tôi kiên nhẫn chờ failure test rõ ràng",
+    "Tôi bảo vệ vốn trước, lợi nhuận đến sau",
+    "Tôi vào lệnh nhỏ, thoát nhanh, không hy vọng",
+    "Tôi làm đúng quy trình, không revenge trade",
+    "Tôi đọc thanh khoản, range và phản ứng giá thật chậm rãi"
+  ];
+
+  const quoteBannerEl = $("#toolbar-quote-banner");
+  const quoteBannerMarquee = $("#quote-banner-marquee");
+  const quoteBannerModal = $("#quote-banner-modal");
+  const quoteBannerListEl = $("#quote-banner-list");
+  const quoteBannerEditor = $("#quote-banner-editor");
+  let selectedQuoteBannerIndex = null;
+
+  function getQuoteBannerLines() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(QUOTE_BANNER_LIST_KEY));
+      if (Array.isArray(saved) && saved.length) {
+        const merged = [...DEFAULT_QUOTE_BANNER_LINES];
+        saved.forEach((item) => { if (item && !merged.includes(item)) merged.push(item); });
+        return merged;
+      }
+    } catch (e) {}
+    return DEFAULT_QUOTE_BANNER_LINES;
+  }
+
+  function saveQuoteBannerLines(list) {
+    localStorage.setItem(QUOTE_BANNER_LIST_KEY, JSON.stringify(list));
+  }
+
+  function applyQuoteBanner(text, index) {
+    const clean = (text || "").trim();
+    if (!clean || !quoteBannerMarquee) return;
+    quoteBannerMarquee.textContent = clean;
+    selectedQuoteBannerIndex = index;
+    if (index === null) localStorage.removeItem(QUOTE_BANNER_SELECTED_KEY);
+    else localStorage.setItem(QUOTE_BANNER_SELECTED_KEY, String(index));
+  }
+
+  function initQuoteBanner() {
+    if (!quoteBannerEl) return;
+    const list = getQuoteBannerLines();
+    const savedIndex = Number(localStorage.getItem(QUOTE_BANNER_SELECTED_KEY));
+    if (Number.isInteger(savedIndex) && list[savedIndex]) {
+      applyQuoteBanner(list[savedIndex], savedIndex);
+    } else {
+      applyQuoteBanner(list[Math.floor(Math.random() * list.length)], null);
+    }
+  }
+
+  function renderQuoteBannerList() {
+    const list = getQuoteBannerLines();
+    quoteBannerListEl.innerHTML = "";
+    list.forEach((text, index) => {
+      const row = document.createElement("div");
+      row.className = "quote-banner-item" + (selectedQuoteBannerIndex === index ? " selected" : "");
+
+      const label = document.createElement("span");
+      label.textContent = text;
+      label.title = text;
+
+      const chooseBtn = document.createElement("button");
+      chooseBtn.type = "button";
+      chooseBtn.className = "btn-ghost small";
+      chooseBtn.textContent = selectedQuoteBannerIndex === index ? "Using" : "Use";
+      chooseBtn.addEventListener("click", () => {
+        applyQuoteBanner(text, index);
+        quoteBannerEditor.value = text;
+        renderQuoteBannerList();
+      });
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn-ghost small";
+      editBtn.textContent = "Edit";
+      editBtn.addEventListener("click", () => {
+        selectedQuoteBannerIndex = index;
+        quoteBannerEditor.value = text;
+        quoteBannerEditor.focus();
+        quoteBannerEditor.select();
+        renderQuoteBannerList();
+      });
+
+      row.append(label, chooseBtn, editBtn);
+      quoteBannerListEl.appendChild(row);
+    });
+  }
+
+  function openQuoteBannerModal() {
+    quoteBannerEditor.value = selectedQuoteBannerIndex === null ? "" : (getQuoteBannerLines()[selectedQuoteBannerIndex] || "");
+    renderQuoteBannerList();
+    quoteBannerModal.classList.remove("hidden");
+  }
+
+  function saveQuoteBannerFromEditor() {
+    const text = quoteBannerEditor.value.trim();
+    if (!text) return;
+    const list = getQuoteBannerLines();
+    if (selectedQuoteBannerIndex !== null && list[selectedQuoteBannerIndex]) {
+      list[selectedQuoteBannerIndex] = text;
+    } else {
+      list.push(text);
+      selectedQuoteBannerIndex = list.length - 1;
+    }
+    saveQuoteBannerLines(list);
+    applyQuoteBanner(text, selectedQuoteBannerIndex);
+    renderQuoteBannerList();
+  }
+
+  function randomizeQuoteBanner() {
+    const list = getQuoteBannerLines();
+    const others = list.filter((_, i) => i !== selectedQuoteBannerIndex);
+    const pick = others.length ? others[Math.floor(Math.random() * others.length)] : list[0];
+    applyQuoteBanner(pick, list.indexOf(pick));
+    quoteBannerEditor.value = pick;
+    renderQuoteBannerList();
+  }
+
+  if (quoteBannerEl) {
+    initQuoteBanner();
+    quoteBannerEl.addEventListener("click", openQuoteBannerModal);
+    quoteBannerEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openQuoteBannerModal(); }
+    });
+    $("#quote-banner-save").addEventListener("click", saveQuoteBannerFromEditor);
+    $("#quote-banner-random").addEventListener("click", randomizeQuoteBanner);
+    $("#quote-banner-close").addEventListener("click", () => quoteBannerModal.classList.add("hidden"));
+    quoteBannerModal.addEventListener("click", (e) => { if (e.target === quoteBannerModal) quoteBannerModal.classList.add("hidden"); });
+  }
+
   /* ---------------- node photo attachments ---------------- */
 
   // WebP typically renders the same visual quality as JPEG at roughly
