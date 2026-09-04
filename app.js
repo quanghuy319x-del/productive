@@ -2520,8 +2520,15 @@
   // silently dropping whatever edit was still waiting to be written to
   // disk/Drive.
   function flushPersist() {
-    if (!persistTimer) return;
-    clearTimeout(persistTimer);
+    // Also catches the case where something (like the node countdown
+    // timer, which only calls persist() every ~10s to avoid re-saving
+    // photo-heavy maps every second) has updated state and flagged
+    // unsavedEdits without a pending debounce timer in flight — without
+    // this, up to that many seconds of progress could be lost if the
+    // tab is closed in between.
+    if (!persistTimer && !unsavedEdits) return;
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = null;
     runPersistNow();
   }
   document.addEventListener("visibilitychange", () => {
@@ -10350,10 +10357,17 @@
     if (badgeLabel) {
       badgeLabel.textContent = formatTimePlayed(total);
       badgeLabel.parentElement.title = `${formatTimePlayed(total)} logged — click to add more`;
-    } else if (total && node.id !== state.editingId) {
-      // The badge doesn't exist yet (this node had no logged time before
-      // the countdown started) — a one-time full render creates it, and
-      // subsequent ticks go back to the cheap path above.
+    } else if (total && node.id !== state.editingId && nodeTimer && nodeTimer.nodeId === nodeId && !nodeTimer.badgeRenderAttempted) {
+      // The badge doesn't exist yet in the DOM — either this node had no
+      // logged time before the countdown started, or the node isn't
+      // currently rendered at all (e.g. inside a collapsed branch, or
+      // off in a part of the tree not mounted). A one-time full render
+      // will create it if it's visible; badgeRenderAttempted makes sure
+      // this only ever fires once per session instead of on every tick
+      // forever when the node simply isn't on screen (a collapsed
+      // branch, for instance, never gets a DOM node to find, and
+      // calling renderAll() every second was crashing the tab).
+      nodeTimer.badgeRenderAttempted = true;
       renderAll();
     }
     if (timerEditingId === nodeId && !timerModal.classList.contains("hidden")) {
@@ -10374,10 +10388,23 @@
       remaining: durationSec,
       duration: durationSec,
       paused: false,
+      ticksSincePersist: 0,
       intervalId: setInterval(nodeTimerTick, 1000),
     };
     renderTimerModal();
   }
+
+  // How often the countdown writes its running total to disk while it's
+  // actually ticking. This is a *cheap* in-memory update every second
+  // (node.timePlayedSec++), but persist() triggers this app's full save
+  // path — which re-embeds every photo's bytes into JSON for the folder
+  // mirror/Drive upload — so calling it every single second would re-run
+  // that heavy work once a second for as long as the timer runs and can
+  // exhaust memory on a photo-heavy map. Saving every 10s instead (plus
+  // on pause/stop/complete, and the existing flushPersist safety net on
+  // tab-hide/close) keeps at most ~10s of countdown time at risk of loss
+  // without hammering the save path.
+  const NODE_TIMER_PERSIST_EVERY_SEC = 10;
 
   function nodeTimerTick() {
     if (!nodeTimer || nodeTimer.paused) return;
@@ -10385,7 +10412,12 @@
     const node = findNode(nodeTimer.nodeId);
     if (node) {
       node.timePlayedSec = getNodeTimePlayed(node) + 1;
-      persist();
+      unsavedEdits = true;
+      nodeTimer.ticksSincePersist++;
+      if (nodeTimer.ticksSincePersist >= NODE_TIMER_PERSIST_EVERY_SEC) {
+        nodeTimer.ticksSincePersist = 0;
+        persist();
+      }
       updateNodeTimerLiveUI(nodeTimer.nodeId);
     }
     if (nodeTimer.remaining <= 0) {
@@ -10398,6 +10430,10 @@
   function toggleNodeTimerPause() {
     if (!nodeTimer) return;
     nodeTimer.paused = !nodeTimer.paused;
+    if (nodeTimer.paused) {
+      nodeTimer.ticksSincePersist = 0;
+      persist();
+    }
     renderTimerModal();
   }
 
