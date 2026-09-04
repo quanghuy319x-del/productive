@@ -972,6 +972,15 @@ body.signed-out #title-input{ visibility:hidden; }
   color: inherit;
   font: inherit;
   letter-spacing: inherit;
+  /* .node (the parent) sets white-space:pre-wrap for normal node text,
+     which was cascading down here and making the title wrap onto
+     multiple lines instead of scrolling as one line — nowrap +
+     overflow:hidden keeps it a single line that runs the full width
+     of the box, from its right inner edge to its left inner edge,
+     clipped to stay inside the node instead of spilling past it. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-align: left;
 }
 .node-clock-block{
   display:flex;

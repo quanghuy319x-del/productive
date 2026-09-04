@@ -5129,11 +5129,36 @@
     }
   }
 
+  // Toggles just the .selected class between two nodes' existing DOM
+  // elements — used instead of a full renderAll() when a click only
+  // changes which node is selected (see selectNode below). A full
+  // renderAll() tears down and rebuilds every node's DOM from scratch,
+  // which would restart the root title's scrolling marquee (and any
+  // other per-node DOM state) from the beginning on every single click.
+  function updateSelectedClasses(prevId, id) {
+    if (prevId) {
+      const prevDiv = nodesLayer.querySelector(`.node[data-id="${prevId}"]`);
+      if (prevDiv) prevDiv.classList.remove("selected");
+    }
+    if (id) {
+      const div = nodesLayer.querySelector(`.node[data-id="${id}"]`);
+      if (div) div.classList.add("selected");
+    }
+  }
+
   function selectNode(id) {
     if (state.editingId === id) return; // a click inside the box being edited is just caret placement, not a request to stop editing
-    commitEditIfActive();
+    const wasEditing = !!state.editingId;
+    commitEditIfActive({ render: false });
+    const prevId = state.selectedId;
     state.selectedId = id;
-    renderAll();
+    if (wasEditing) {
+      // Text/size may have just changed, which can shift the whole
+      // layout — needs the real thing.
+      renderAll();
+      return;
+    }
+    updateSelectedClasses(prevId, id);
   }
 
   function startEdit(id) {
