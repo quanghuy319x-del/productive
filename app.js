@@ -3821,7 +3821,16 @@
       carryPhotoTags(source, target, pairs);
       carryPhotoNotes(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
-      if (!copy) { source.images = []; source.image = null; }
+      if (!copy) {
+        source.images = []; source.image = null;
+        // A real move (not a copy) reuses the same id on the target (see
+        // carriedIds above), so the tags/notes just carried over would
+        // otherwise also linger under the SOURCE's own id — a leftover
+        // that showed up as a permanently broken, unclickable entry in
+        // the tag browser once this node no longer actually held that
+        // photo (see collectPhotoTagGroups).
+        srcIds.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); });
+      }
     } else if (type === "photo") {
       // A single thumbnail, dragged by its index in the source's images.
       const srcIds = getNodeImageIds(source);
@@ -3837,6 +3846,9 @@
         remaining.splice(photoIndex, 1);
         source.images = remaining;
         source.image = null;
+        // Same cleanup as the bulk "photos" case above.
+        setPhotoTags(source, movedId, null);
+        setPhotoNotes(source, movedId, null);
       }
     } else if (type === "photos-overflow") {
       // The "+N" badge — everything past the thumbnails actually shown.
@@ -3852,6 +3864,8 @@
       if (!copy) {
         source.images = srcIds.slice(0, overflowFrom || 0);
         source.image = null;
+        // Same cleanup as the bulk "photos" case above.
+        carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); });
       }
     } else if (type === "note-single") {
       // A single note, dragged by its index in the source's notes — same
@@ -4467,9 +4481,25 @@
   // "Photo tags" browser.
   function collectPhotoTagGroups() {
     const groups = new Map();
+    let cleaned = false;
     collectAllNodesFlat().forEach((node) => {
       if (!node.photoTags) return;
+      const liveIds = new Set(getNodeImageIds(node));
       Object.keys(node.photoTags).forEach((id) => {
+        // A tag only ever means anything while the photo it's keyed by is
+        // still actually attached to THIS node (see setPhotoTags) — but a
+        // photo dragged onto a different node (see completeMarkerDrop)
+        // used to leave its old tag entry behind here, pointing at a
+        // photo this node no longer has. That showed up in the tag
+        // browser as a permanently broken, unclickable thumbnail (open
+        // its click handler no-ops once the id isn't found in the node's
+        // own images). Clean up any such leftover the moment it's
+        // noticed instead of surfacing it.
+        if (!liveIds.has(id)) {
+          delete node.photoTags[id];
+          cleaned = true;
+          return;
+        }
         (node.photoTags[id] || []).forEach((tag) => {
           const key = tag.toLowerCase();
           if (!groups.has(key)) groups.set(key, { label: tag, items: [] });
@@ -4477,6 +4507,7 @@
         });
       });
     });
+    if (cleaned) persist();
     // Most-tagged first (the tag browser's whole point is surfacing your
     // biggest photo collections at a glance); ties broken alphabetically
     // so the order stays stable rather than shuffling on every render.
@@ -10145,8 +10176,13 @@
 
       const thumb = document.createElement("img");
       thumb.className = "tagbrowser-tag-thumb";
-      thumb.src = photoUrl(group.items[0].id);
       thumb.alt = "";
+      // Defensive fallback: if this photo's bytes genuinely aren't in
+      // this browser's local PhotoDB (data loss, or a not-yet-finished
+      // cache load), hide the broken-image icon rather than show it.
+      const thumbUrl = photoUrl(group.items[0].id);
+      if (thumbUrl) thumb.src = thumbUrl; else thumb.style.visibility = "hidden";
+      thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
 
       const name = document.createElement("span");
       name.className = "tagbrowser-tag-name";
@@ -10177,8 +10213,10 @@
 
       const thumb = document.createElement("img");
       thumb.className = "tagbrowser-gallery-thumb";
-      thumb.src = photoUrl(it.id);
       thumb.alt = "";
+      const thumbUrl = photoUrl(it.id);
+      if (thumbUrl) thumb.src = thumbUrl; else thumb.style.visibility = "hidden";
+      thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
 
       const label = document.createElement("span");
       label.className = "tagbrowser-gallery-label";
