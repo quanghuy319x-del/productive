@@ -4772,7 +4772,18 @@
     const targetDiv = el && el.closest ? el.closest(".node[data-id]") : null;
     if (targetDiv) {
       const id = targetDiv.dataset.id;
-      if (id !== node.id && !isWithinSubtree(node, id)) targetId = id;
+      // Hovering over the node's OWN current parent isn't a meaningful
+      // reparent (it's already there) — most importantly, that parent is
+      // very often the root itself, and in Timeline mode a top-level
+      // branch has to pass right over the root's box on its way to being
+      // dragged above it. Without this guard, releasing the mouse there
+      // was read as "drop onto root" (reparentNode), which silently
+      // resets the branch's vSide/side/order — instead of the intended
+      // above/below flip (see maybeFlipVSideOnDrop/maybeFlipSideOnDrop),
+      // which only ever fires once no drop target is set.
+      const curParent = findParent(node.id);
+      const isOwnParent = curParent && curParent.id === id;
+      if (id !== node.id && !isOwnParent && !isWithinSubtree(node, id)) targetId = id;
     }
     if (dragCandidate.dropTargetId && dragCandidate.dropTargetId !== targetId) {
       const prevDiv = nodesLayer.querySelector(`.node[data-id="${dragCandidate.dropTargetId}"]`);
