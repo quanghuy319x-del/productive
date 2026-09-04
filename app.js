@@ -5357,10 +5357,11 @@
     }
 
     // A "mother" node with children gets a single input that sets the
-    // distance for ALL of its direct children's connectors at once — the
+    // distance for ALL of its descendants' connectors at once — every
+    // generation below this node, not just its direct children — so one
+    // number gives the whole subtree consistent spacing in one go. The
     // per-connector right-click menu (see openConnectorContextMenu) still
-    // works for tweaking just one, but this is the quick way to set them
-    // all the same when you don't want to click each one individually.
+    // works for tweaking just one hop afterward.
     if (node.children && node.children.length) {
       const sep0 = document.createElement("div"); sep0.className = "ctx-sep"; ctxMenu.appendChild(sep0);
       const distLabel = document.createElement("div");
@@ -5385,6 +5386,8 @@
       distRow.appendChild(distUnit);
       ctxMenu.appendChild(distRow);
 
+      const allDescendants = collectDescendants(node);
+
       distRow.addEventListener("click", (e) => e.stopPropagation());
       distInput.addEventListener("keydown", (e) => {
         e.stopPropagation();
@@ -5395,12 +5398,12 @@
         if (Number.isNaN(v)) return;
         const clamped = Math.max(MIN_X_GAP, Math.min(MAX_X_GAP, Math.round(v)));
         pushUndo();
-        node.children.forEach(c => { c.xGap = clamped; });
+        allDescendants.forEach(d => { d.xGap = clamped; });
         renderAll();
         persist();
       });
 
-      const anyCustomGap = node.children.some(c => typeof c.xGap === "number" && c.xGap >= 0);
+      const anyCustomGap = allDescendants.some(d => typeof d.xGap === "number" && d.xGap >= 0);
       if (anyCustomGap) {
         const resetAll = document.createElement("div");
         resetAll.className = "ctx-item";
@@ -5408,7 +5411,7 @@
         resetAll.addEventListener("click", () => {
           closeContextMenu();
           pushUndo();
-          node.children.forEach(c => { c.xGap = null; });
+          allDescendants.forEach(d => { d.xGap = null; });
           renderAll();
           persist();
         });
@@ -5515,7 +5518,15 @@
     positionContextMenu(x, y);
   }
 
-  const MIN_X_GAP = 60;
+  // The lower bound has to stay at or below the smallest distance the
+  // layout can ever hand out by default — an elbow-shaped connector below
+  // the root already defaults to X_GAP / 2 (see defaultGapForDepth), which
+  // is well under what used to be the floor here. Whenever that default
+  // fell below the input's own declared `min`, the field opened already
+  // out of range, and typing into it (particularly on level-2+ nodes,
+  // since only THEIR default sits below the old floor) never produced a
+  // value the input would accept.
+  const MIN_X_GAP = 20;
   const MAX_X_GAP = 900;
 
   // Right-click on a parent→child connector: lets the user type an exact
