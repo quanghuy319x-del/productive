@@ -4579,7 +4579,20 @@
     // Same for a custom connector distance — a distance tailored to the
     // old parent isn't meaningful under a new one.
     node.xGap = null;
-    collectDescendants(node).forEach(d => { d.ox = 0; d.oy = 0; d._autoSide = null; });
+    // A node's own .color only ever means "this is a top-level branch and
+    // this is its branch color" (set by assignBranchColors, or by the
+    // "Branch color" swatch picker) — every other node just inherits
+    // whichever branch it descends from (see branchColorFor), it never
+    // has a real .color of its own. So if this node WAS a top-level
+    // branch and is now being tucked under a different node, drop that
+    // leftover color; left in place, it would keep outranking (via
+    // `node.color || branchColorFor(...)`) the color of whatever branch
+    // it's actually part of now, forever. Its own descendants can never
+    // end up at depth 1 as a result of this move either (only `node`
+    // itself, if dropped directly on the root, can) — clear any
+    // color they're separately carrying from a past life too.
+    if (newParent !== state.current.root) node.color = null;
+    collectDescendants(node).forEach(d => { d.ox = 0; d.oy = 0; d._autoSide = null; d.color = null; });
     state.selectedId = node.id;
     renderAll();
   }
