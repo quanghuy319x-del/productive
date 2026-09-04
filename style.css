@@ -882,6 +882,35 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-whack-marker svg{ width: 70%; height:70%; }
 
+/* Manual "time played" total — a per-node running total built up by
+   tapping "+1m" in the timer modal (see openTimerModal in app.js). It's
+   its own small pill rather than a cell in the note/link/photo strip
+   above, since its label is a variable-width time string ("45m",
+   "1h 20m") rather than a fixed-size icon. Sits in normal flow below
+   whatever else the node has, same as the task-progress row. */
+.node-timer-badge{
+  display:inline-flex;
+  align-items:center;
+  gap: 3px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(245, 162, 92, 0.18);
+  border: 1px solid rgba(245, 162, 92, 0.4);
+  color: #f5a25c;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.6;
+  cursor: pointer;
+  pointer-events: auto;
+  flex: none;
+  white-space: nowrap;
+}
+.node-timer-badge:hover{ background: rgba(245, 162, 92, 0.3); }
+.node-timer-badge svg{ width: 11px; height: 11px; flex: none; }
+
 /* Fewer than 6 cells always fit in a single row (max-width caps it at
    5 columns), so there's room to show them noticeably bigger instead of
    at the same small size a full row uses. */
@@ -2295,6 +2324,43 @@ kbd{
 }
 .whack-feedback.ok{ color: #5a8f5a; }
 .whack-feedback.bad{ color: var(--danger); }
+
+/* ---- Node timer modal (manual "+1m" running total) ---- */
+.timer-modal-card{ max-width: 360px; text-align: center; }
+.timer-node-label{
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.timer-total-display{
+  margin: 10px 0 18px;
+  font-size: 44px;
+  font-weight: 800;
+  color: #f5a25c;
+  letter-spacing: 0.5px;
+}
+.timer-add-btn{
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  font-weight: 800;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(90deg, #ffd76a, #f5a25c);
+  color: #241300;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(245,162,92,0.35);
+}
+.timer-add-btn:hover{ filter: brightness(1.05); }
+.timer-add-btn:active{ transform: scale(0.98); }
+.timer-hint{
+  margin: 14px 2px 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
 
 /* ---- Affirmation lines manager modal ---- */
 .affirmation-quotes-modal-card{ max-width: 480px; }

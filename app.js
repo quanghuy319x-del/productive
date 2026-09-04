@@ -4269,6 +4269,21 @@
       div.appendChild(row);
     }
 
+    const timePlayed = getNodeTimePlayed(node);
+    if (timePlayed && node.id !== state.editingId) {
+      const tbadge = document.createElement("span");
+      tbadge.className = "node-timer-badge";
+      tbadge.title = `${formatTimePlayed(timePlayed)} logged — click to add more`;
+      tbadge.addEventListener("mousedown", (e) => { e.stopPropagation(); });
+      tbadge.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
+      tbadge.addEventListener("click", (e) => { e.stopPropagation(); openTimerModal(node.id); });
+      tbadge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>';
+      const tlabel = document.createElement("span");
+      tlabel.textContent = formatTimePlayed(timePlayed);
+      tbadge.appendChild(tlabel);
+      div.appendChild(tbadge);
+    }
+
     function beginNodeDrag(e) {
       e.stopPropagation();
       if (!requireSignIn()) return;
@@ -5256,6 +5271,11 @@
       const prog = nodeTaskProgress(node);
       const label = prog.total ? `Tasks… (${prog.done}/${prog.total})` : "Add tasks…";
       items.push([label, () => openTasksModal(node.id)]);
+    }
+    {
+      const played = getNodeTimePlayed(node);
+      const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
+      items.push([label, () => openTimerModal(node.id)]);
     }
     items.push(["Add photo…", () => openNodePhotoPicker(node.id)]);
     if (nodeHasImages(node)) {
@@ -9980,6 +10000,86 @@
     e.preventDefault();
     e.stopPropagation();
     handleWhackKey(e.key);
+  });
+
+  /* ---------------- node timer ("time played") ---------------- */
+  // A manual per-node stopwatch total — no countdown, no alarm, just a
+  // running tally in whole minutes that grows by tapping "+1m" in the
+  // popup each time you spend a minute on whatever the node represents.
+  // Stored as node.timePlayedSec (seconds, always a multiple of 60 since
+  // it's only ever stacked in 1-minute steps), shown live on the node
+  // itself as a small "⏱ 45m" badge (see renderNode) and saved with the
+  // map like everything else.
+  const TIMER_STEP_SEC = 60; // what one "+1m" tap adds
+
+  const timerModal = $("#timer-modal");
+  const timerNodeLabel = $("#timer-node-label");
+  const timerTotalDisplay = $("#timer-total-display");
+  const timerAddBtn = $("#timer-add-btn");
+  const timerResetBtn = $("#timer-reset-btn");
+  let timerEditingId = null;
+
+  function getNodeTimePlayed(node) {
+    return (node && typeof node.timePlayedSec === "number" && node.timePlayedSec > 0) ? node.timePlayedSec : 0;
+  }
+
+  // "45m", "1h", "1h 20m" — always whole minutes, so no seconds ever show.
+  function formatTimePlayed(totalSeconds) {
+    const s = Math.max(0, Math.round(totalSeconds || 0));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    return `${m}m`;
+  }
+
+  function openTimerModal(nodeId) {
+    const node = findNode(nodeId);
+    if (!node) return;
+    commitEditIfActive();
+    closeContextMenu();
+    timerEditingId = nodeId;
+    renderTimerModal();
+    timerModal.classList.remove("hidden");
+  }
+
+  function closeTimerModal() {
+    timerModal.classList.add("hidden");
+    timerEditingId = null;
+    renderAll();
+  }
+
+  function renderTimerModal() {
+    const node = findNode(timerEditingId);
+    if (!node) { closeTimerModal(); return; }
+    timerNodeLabel.textContent = node.text || "(untitled)";
+    const total = getNodeTimePlayed(node);
+    timerTotalDisplay.textContent = formatTimePlayed(total);
+    timerResetBtn.style.visibility = total ? "visible" : "hidden";
+  }
+
+  timerAddBtn.addEventListener("click", () => {
+    const node = findNode(timerEditingId);
+    if (!node) return;
+    pushUndo();
+    node.timePlayedSec = getNodeTimePlayed(node) + TIMER_STEP_SEC;
+    persist();
+    renderTimerModal();
+  });
+
+  timerResetBtn.addEventListener("click", () => {
+    const node = findNode(timerEditingId);
+    if (!node || !getNodeTimePlayed(node)) return;
+    pushUndo();
+    node.timePlayedSec = 0;
+    persist();
+    renderTimerModal();
+  });
+
+  $("#timer-back").addEventListener("click", closeTimerModal);
+  timerModal.addEventListener("click", (e) => { if (e.target === timerModal) closeTimerModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (timerModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeTimerModal();
   });
 
   /* ---------------- affirmation lines manager ---------------- */

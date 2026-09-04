@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <div id="app">
@@ -166,6 +166,7 @@
       <tr><td>Add photo…</td><td>Right-click a node and choose "Add photo…" to attach one or more pictures to it (pick multiple files at once, or repeat to add more later). Nodes with photos show a small thumbnail with a count badge — click it to view full-size and step through them. With a node selected, you can also just paste (<kbd>Ctrl/⌘</kbd> + <kbd>V</kbd>) an image straight from your clipboard — handy right after taking a screenshot.</td></tr>
       <tr><td>🏷 Tags (sidebar)</td><td>Opens a browser of every tag you've added to a photo, gathered from across the whole map. Tap a tag to see every photo carrying it, no matter which node it's on — tap a photo there to jump straight to its node (expanding any collapsed branch in the way) and open it full-size.</td></tr>
       <tr><td>Crop / Add text on photo</td><td>Open a photo full-size, then use the ⛶ button to crop it, or the "Aa" button to add a text label. Each click on the photo places one label — drag it into place (or drag its small ⠿ handle at the top-left corner, which always moves it even mid-edit, so you never fight with text-caret placement), pick a color, drag the small dot on its corner to resize the text. Click "Aa" again to place another label; click elsewhere on the photo to just finish the current one. "Apply" bakes every label permanently into the photo.</td></tr>
+      <tr><td>⏱ Timer</td><td>Right-click a node and choose "Add timer…" to keep a running total of time spent on it. Tap "+1m" in the popup each time you spend a minute on it — no countdown, just a manual tally. The total shows right on the node as a small "⏱ 45m"-style badge; tap the badge (or right-click → the timer item again) to add more or reset it. Saved with the map like everything else.</td></tr>
     </table>
     <button id="help-close" class="btn-primary">Got it</button>
   </div>
@@ -438,9 +439,24 @@
   </div>
 </div>
 
+<div id="timer-modal" class="modal hidden">
+  <div class="modal-card timer-modal-card">
+    <div class="modal-back-row">
+      <button type="button" id="timer-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+      <h2>Timer</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="timer-reset-btn" class="modal-back-btn" title="Reset total" aria-label="Reset total">↺</button>
+    </div>
+    <p id="timer-node-label" class="timer-node-label"></p>
+    <p id="timer-total-display" class="timer-total-display">0m</p>
+    <button type="button" id="timer-add-btn" class="timer-add-btn">+1m</button>
+    <p class="timer-hint">Tap +1m each time you spend a minute on this — the total shows right on the node.</p>
+  </div>
+</div>
+
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
