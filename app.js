@@ -3334,13 +3334,12 @@
     // of floating outside the frame or overlapping the label. Matches the
     // sizing renderNode/CSS actually use so the box always fully encloses it.
     const nodeImages = getNodeImages(node);
-    const stripIconCountForBox = getNodeNotes(node).length + (getNodeUrls(node).length ? 1 : 0) + (nodeAffirmationWins(node) ? 1 : 0);
-    // The "time played" pill (see renderNode/openTimerModal) is now a
-    // trailing cell of this same strip rather than its own block below,
-    // so its room gets reserved here too.
-    const timePlayedForBox = getNodeTimePlayed(node);
-    let stripW = 0, stripH = 0, timerBadgeMinW = 0;
-    if (stripIconCountForBox || nodeImages.length || timePlayedForBox) {
+    // The time-played total (see renderNode/openTimerModal) is now a
+    // same-size trailing cell of this same strip rather than a wider
+    // pill, so it counts toward itemCount just like a note/link icon.
+    const stripIconCountForBox = getNodeNotes(node).length + (getNodeUrls(node).length ? 1 : 0) + (nodeAffirmationWins(node) ? 1 : 0) + (getNodeTimePlayed(node) ? 1 : 0);
+    let stripW = 0, stripH = 0;
+    if (stripIconCountForBox || nodeImages.length) {
       // Past 10 photos, collapse down to a single cover thumbnail with a
       // count badge (see renderNode) instead of a wall of thumbnails, so
       // a node with dozens of photos still reads as one compact cell.
@@ -3351,19 +3350,9 @@
       const thumb = large ? 18 : 9;
       const gap = large ? 3 : 2;
       const cols = Math.min(itemCount, 5);
-      const rows = itemCount ? Math.ceil(itemCount / 5) : 0;
+      const rows = Math.ceil(itemCount / 5);
       stripW = cols * thumb + (cols - 1) * gap;
-      stripH = 5 /* margin-top */ + rows * thumb + Math.max(rows - 1, 0) * gap;
-      if (timePlayedForBox) {
-        // The pill's label ("45m", "1h 20m") is variable-width and
-        // usually wider than a single icon cell, so it's likeliest to
-        // land on its own line within the strip rather than squeeze onto
-        // the icon row — reserve an extra row for that (harmless if it
-        // actually does fit alongside the icons; the box just ends up a
-        // touch taller than strictly needed).
-        timerBadgeMinW = 50 + padX;
-        stripH += (itemCount ? gap : 0) + 18 /* pill height */;
-      }
+      stripH = 5 /* margin-top */ + rows * thumb + (rows - 1) * gap;
     }
 
     // Reserve room for the task-progress bar + percentage label, which
@@ -3387,7 +3376,7 @@
     const clockW = depth === 0 ? ROOT_CLOCK_W + padX : 0;
     const clockH = depth === 0 ? ROOT_CLOCK_H : 0;
 
-    node._w = Math.max(w, stripW + padX, barMinW, timerBadgeMinW, clockW);
+    node._w = Math.max(w, stripW + padX, barMinW, clockW);
     node._h = h + stripH + barH + clockH;
     node._lines = lines;
     return { w: node._w, h: node._h };
@@ -4311,17 +4300,14 @@
 
     const nodeImages = getNodeImages(node);
     const timePlayed = getNodeTimePlayed(node);
-    // Note, link, and affirmation-completion markers all render inline as
-    // cells of this same strip, right alongside the photo thumbnails,
-    // instead of floating outside the node — so every attachment/status
-    // indicator for a node lives in one place. The "time played" pill
-    // (see below) joins this same strip too, as a trailing flex item — it
-    // just wraps onto its own line within the strip when the icon row is
-    // already full, rather than sitting in a fully separate block
-    // underneath. Only the task-progress bar stays separate, since it's a
-    // full-width row rather than a small cell.
-    const stripIconCount = nodeNotes.length + nodeUrls.length + (affirmationWins ? 1 : 0);
-    if ((stripIconCount || nodeImages.length || timePlayed) && node.id !== state.editingId) {
+    // Note, link, affirmation-completion, and time-played markers all
+    // render inline as cells of this same strip, right alongside the
+    // photo thumbnails, instead of floating outside the node — so every
+    // attachment/status indicator for a node lives in one place, all at
+    // the same cell size. Only the task-progress bar stays separate,
+    // since it's a full-width row rather than a small cell.
+    const stripIconCount = nodeNotes.length + nodeUrls.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0);
+    if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
       // would — "large" only kicks in when everything still fits in one
@@ -4336,13 +4322,6 @@
       strip.className = "node-photo-strip" + (large ? " large" : "");
       strip.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       strip.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
-      // With no icon/photo cells at all — a node whose only marker is the
-      // time-played pill — there's nothing to pin a fixed column width
-      // to below, so let the strip size itself to the pill instead.
-      if (!itemCount) {
-        strip.style.width = "auto";
-        strip.style.maxWidth = "none";
-      }
       if (nodeImages.length) {
         // Dragging the strip's own background (not a specific icon/thumb,
         // which each have their own drag handlers) moves every photo at
@@ -4361,15 +4340,7 @@
       const thumbPx = large ? 18 : 9;
       const gapPx = large ? 3 : 2;
       const cols = Math.min(itemCount, 5);
-      if (itemCount) {
-        let pinnedW = cols * thumbPx + (cols - 1) * gapPx;
-        // The time-played pill (appended below) is a variable-width label
-        // rather than a fixed-size cell, and is usually wider than the
-        // icon columns above pin — widen the strip to fit it (and let it
-        // wrap onto its own line) rather than clipping/overflowing.
-        if (timePlayed) pinnedW = Math.max(pinnedW, 50);
-        strip.style.width = pinnedW + "px";
-      }
+      strip.style.width = (cols * thumbPx + (cols - 1) * gapPx) + "px";
 
       // One icon per note (instead of a single icon plus a count badge),
       // same cell size/box as a photo thumbnail — each is independently
@@ -4488,17 +4459,17 @@
       }
 
       if (timePlayed) {
-        // Same pill as before, just now a trailing cell of the shared
-        // strip (see comment above) instead of its own block underneath —
-        // it sits right alongside the note/link/photo icons and only
-        // drops to a second line within the strip if that row is full.
+        // Same small cell size/box as a photo thumbnail (see below) rather
+        // than its own wider pill — just the total's text, no clock icon,
+        // with the cell's own border traced into a little alarm-clock
+        // silhouette (round face + two angled "ears" up top) so it still
+        // reads as a timer at a glance without needing an icon inside it.
         const tbadge = document.createElement("span");
-        tbadge.className = "node-timer-badge node-timer-badge-in-strip";
+        tbadge.className = "node-photo-thumb node-timer-badge";
         tbadge.title = `${formatTimePlayed(timePlayed)} logged — click to add more`;
         tbadge.addEventListener("mousedown", (e) => { e.stopPropagation(); });
         tbadge.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
         tbadge.addEventListener("click", (e) => { e.stopPropagation(); openTimerModal(node.id); });
-        tbadge.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/></svg>';
         const tlabel = document.createElement("span");
         tlabel.textContent = formatTimePlayed(timePlayed);
         tbadge.appendChild(tlabel);

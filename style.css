@@ -906,40 +906,54 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-affirmation-marker svg{ width: 70%; height:70%; }
 
 /* Manual "time played" total — a per-node running total built up by
-   tapping "+1m" in the timer modal (see openTimerModal in app.js). It's
-   its own small pill rather than a cell in the note/link/photo strip
-   above, since its label is a variable-width time string ("45m",
-   "1h 20m") rather than a fixed-size icon. Sits in normal flow below
-   whatever else the node has, same as the task-progress row. */
+   tapping "+1m" in the timer modal (see openTimerModal in app.js). Same
+   small cell box as a photo thumbnail/note/link icon (see
+   .node-photo-thumb) rather than a wider pill, holding just the time
+   text with no separate clock icon — the cell's own border is traced
+   into a little round alarm-clock silhouette (face + two angled "ears"
+   up top, via the ::before/::after ticks below) so it still reads as a
+   timer without needing an icon inside it. */
 .node-timer-badge{
-  display:inline-flex;
+  position: relative;
+  display:flex;
   align-items:center;
-  gap: 3px;
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 5px;
-  padding: 1px 6px;
-  border-radius: 999px;
+  justify-content:center;
   background: rgba(245, 162, 92, 0.18);
-  border: 1px solid rgba(245, 162, 92, 0.4);
+  border-color: rgba(245, 162, 92, 0.55);
+  border-radius: 50%;
   color: #f5a25c;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.6;
+  font-weight: 800;
+  line-height: 1;
   cursor: pointer;
   pointer-events: auto;
-  flex: none;
-  white-space: nowrap;
 }
-.node-timer-badge:hover{ background: rgba(245, 162, 92, 0.3); }
-.node-timer-badge svg{ width: 11px; height: 11px; flex: none; }
-
-/* When the pill is a trailing cell of the shared note/link/photo strip
-   (see renderNode) instead of its own block, the strip's own margin-top
-   already provides the spacing above the whole group — an extra
-   margin-top on the pill itself would just add a gap only when it wraps
-   onto its own line within the strip, which looked inconsistent. */
-.node-timer-badge-in-strip{ margin-top: 0; }
+.node-timer-badge:hover{ background: rgba(245, 162, 92, 0.32); }
+.node-timer-badge span{
+  transform: scale(0.62);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* The two "ears" — small angled ticks at the top-left/top-right of the
+   round face, same idea as an alarm clock's twin bells. */
+.node-timer-badge::before,
+.node-timer-badge::after{
+  content:"";
+  position:absolute;
+  top: -3px;
+  width: 4px;
+  height: 2px;
+  background: #f5a25c;
+  border-radius: 1px;
+}
+.node-timer-badge::before{ left: -1px; transform: rotate(-40deg); }
+.node-timer-badge::after{ right: -1px; transform: rotate(40deg); }
+.node-photo-strip.large .node-timer-badge span{ transform: scale(0.85); }
+.node-photo-strip.large .node-timer-badge::before,
+.node-photo-strip.large .node-timer-badge::after{
+  width: 6px;
+  height: 2.6px;
+  top: -4px;
+}
 
 /* Root node's live clock — current time, UTC/US/UK world clocks, the
    Vietnamese weekday+date, and the lunar date, all rendered in normal
