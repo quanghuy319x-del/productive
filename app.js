@@ -4196,7 +4196,25 @@
       : (theme.fontMode === "custom" ? theme.fontColor : caretColorFor(effectiveBg));
     div.style.caretColor = caretColorFor(effectiveBg);
 
-    div.textContent = node.text || (node.id === state.editingId ? "" : "(untitled)");
+    // The root node's title scrolls the same way the toolbar's quote
+    // banner does (see "toolbar quote banner" above) rather than just
+    // wrapping/clipping — it tends to run long above the live clock
+    // block below it, and centering + wrapping ate into that space.
+    // Only while NOT actively editing: mid-edit, div stays a plain
+    // contentEditable text node exactly like every other node, so
+    // typing, caret placement, and autosizeEditingBox keep working
+    // unchanged.
+    if (depth === 0 && node.id !== state.editingId) {
+      const titleMarquee = document.createElement("marquee");
+      titleMarquee.className = "node-title-marquee";
+      titleMarquee.setAttribute("behavior", "scroll");
+      titleMarquee.setAttribute("direction", "left");
+      titleMarquee.setAttribute("scrollamount", "4");
+      titleMarquee.textContent = node.text || "(untitled)";
+      div.appendChild(titleMarquee);
+    } else {
+      div.textContent = node.text || (node.id === state.editingId ? "" : "(untitled)");
+    }
 
     if (node.id === state.editingId) {
       div.contentEditable = "true";
