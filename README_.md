@@ -122,7 +122,7 @@ only see files it created itself — never your other Drive files.
   Affirmation task, on any map.
 - **Per-node countdown timer** — right-click a node and choose "Add
   timer…" (or click its ⏱ badge once it has time logged) to open a
-  countdown for that node: "Start" begins a 5‑minute countdown with
+  countdown for that node: "Start" begins a 1‑minute countdown with
   pause/resume, "+1m" to stack on more time, and a chime when it hits
   zero. The node's total only grows for time the countdown was actually
   running (not while paused), and updates live — both in the popup and

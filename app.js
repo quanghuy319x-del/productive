@@ -10263,7 +10263,7 @@
   // everything else. A manual "+1m to the total" fallback stays available
   // for logging time after the fact without running the countdown live.
   const TIMER_STEP_SEC = 60; // what the manual "+1m to total" link adds
-  const NODE_TIMER_DEFAULT_SEC = 5 * 60; // default countdown length when starting fresh
+  const NODE_TIMER_DEFAULT_SEC = 1 * 60; // default countdown length when starting fresh
   const NODE_TIMER_EXTEND_SEC = 60; // added per "+1m" click while running
 
   const timerModal = $("#timer-modal");
