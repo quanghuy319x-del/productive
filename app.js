@@ -2860,13 +2860,21 @@
     return computeBBox(root);
   }
 
-  // Vertical "spine" layout: the root sits at the top with each top-level
-  // branch stacked directly beneath it in turn. Each branch's own
-  // descendants fan out sideways from that branch — splitting between
-  // left and right (like a mini mind map hanging off the spine) rather
-  // than being locked to a single side for the whole branch, so a branch
-  // with a lot of children doesn't need to push way out to one side while
-  // the other side sits empty.
+  // Vertical "spine" layout: the root sits in the middle with each
+  // top-level branch stacked along the spine above or below it. Each
+  // branch's own descendants fan out sideways from that branch —
+  // splitting between left and right (like a mini mind map hanging off
+  // the spine) rather than being locked to a single side for the whole
+  // branch, so a branch with a lot of children doesn't need to push way
+  // out to one side while the other side sits empty.
+  //
+  // A branch normally sits below the root (the original, and still
+  // default, arrangement), but dragging it above the root instead flips
+  // an explicit node.vSide === "above" flag (see maybeFlipVSideOnDrop/
+  // maybeFlipVSideDuringDrag) that sends it — and it alone, not its
+  // siblings — up onto the other half of the spine. Only a top-level
+  // branch has a vSide; it has no meaning at any other depth, so it's
+  // left untouched everywhere else (same treatment as .side).
   function layoutTimeline(root) {
     const children = root.children || [];
     root._x = 0; root._y = 0; root._depth = 0;
@@ -3002,7 +3010,16 @@
       return { branch, localHeight };
     });
 
-    // Pass 2: place each row along the spine. Two branches can have very
+    // Split the rows into the two halves of the spine. A side-less branch
+    // (no explicit vSide — every branch before this feature existed, and
+    // every new one by default) goes below, exactly as before; only a
+    // branch explicitly dragged above the root (vSide === "above") moves
+    // to the top half. Relative order within each half is whatever order
+    // those branches already have in the (single, shared) children array.
+    const belowLaidOut = laidOut.filter(({ branch }) => branch.vSide !== "above");
+    const aboveLaidOut = laidOut.filter(({ branch }) => branch.vSide === "above");
+
+    // Place each row along the spine. Two branches can have very
     // different heights (especially now that each one's own children can
     // split across both sides instead of piling onto a single side), so
     // spacing rows by "previous branch's height + gap" alone isn't
@@ -3013,10 +3030,13 @@
     // every pair of rows regardless of how lopsided their heights are —
     // which is what keeps different branches' node boxes, and the
     // connector curves fanning off them, from ever overlapping.
-    let spineCursor = (root._h || ROOT_H) / 2 + TIMELINE_ROOT_GAP + (laidOut.length ? laidOut[0].localHeight / 2 : 0);
-    laidOut.forEach(({ branch, localHeight }, i) => {
+    //
+    // Below-the-root half: unchanged from the original single-direction
+    // layout, just scoped to belowLaidOut instead of every branch.
+    let spineCursor = (root._h || ROOT_H) / 2 + TIMELINE_ROOT_GAP + (belowLaidOut.length ? belowLaidOut[0].localHeight / 2 : 0);
+    belowLaidOut.forEach(({ branch, localHeight }, i) => {
       if (i > 0) {
-        spineCursor += laidOut[i - 1].localHeight / 2 + TIMELINE_ROW_GAP + localHeight / 2;
+        spineCursor += belowLaidOut[i - 1].localHeight / 2 + TIMELINE_ROW_GAP + localHeight / 2;
       }
       const offset = spineCursor;
       (function shift(n) {
@@ -3024,6 +3044,25 @@
         if (!n.collapsed) (n.children || []).forEach(shift);
       })(branch);
     });
+
+    // Above-the-root half: the exact mirror image, growing upward
+    // (negative y) instead of downward. Walked back-to-front so that the
+    // branch LAST in the array sits closest to the root (directly above
+    // it) and the branch FIRST in the array ends up furthest away — i.e.
+    // reading the above group top-to-bottom on screen matches its order
+    // in the array, just like the below group does.
+    let spineCursorUp = -((root._h || ROOT_H) / 2 + TIMELINE_ROOT_GAP + (aboveLaidOut.length ? aboveLaidOut[aboveLaidOut.length - 1].localHeight / 2 : 0));
+    for (let i = aboveLaidOut.length - 1; i >= 0; i--) {
+      const { branch, localHeight } = aboveLaidOut[i];
+      if (i < aboveLaidOut.length - 1) {
+        spineCursorUp -= aboveLaidOut[i + 1].localHeight / 2 + TIMELINE_ROW_GAP + localHeight / 2;
+      }
+      const offset = spineCursorUp;
+      (function shift(n) {
+        n._y += offset;
+        if (!n.collapsed) (n.children || []).forEach(shift);
+      })(branch);
+    }
 
     return computeBBox(root);
   }
@@ -3271,9 +3310,26 @@
       }
     }
     if (layoutMode === "timeline" && branches.length) {
-      drawConnector(state.current.root, branches[0], originX, originY, { orientation: "v" });
-      for (let i = 0; i < branches.length - 1; i++) {
-        drawConnector(branches[i], branches[i + 1], originX, originY, { orientation: "v", colorNode: branches[i + 1], depth: 1 });
+      // The root chains to each half of the spine separately — branches
+      // below it (the default) chain downward as before, and any branch
+      // dragged above the root (vSide === "above") chains upward instead.
+      const belowBranches = branches.filter(b => b.vSide !== "above");
+      const aboveBranches = branches.filter(b => b.vSide === "above");
+      if (belowBranches.length) {
+        drawConnector(state.current.root, belowBranches[0], originX, originY, { orientation: "v" });
+        for (let i = 0; i < belowBranches.length - 1; i++) {
+          drawConnector(belowBranches[i], belowBranches[i + 1], originX, originY, { orientation: "v", colorNode: belowBranches[i + 1], depth: 1 });
+        }
+      }
+      if (aboveBranches.length) {
+        // aboveBranches is in array order, but on screen the LAST one sits
+        // closest to the root (see layoutTimeline) — so the chain runs
+        // root -> last -> ... -> first, the mirror of the downward chain.
+        const last = aboveBranches.length - 1;
+        drawConnector(state.current.root, aboveBranches[last], originX, originY, { orientation: "v" });
+        for (let i = last; i > 0; i--) {
+          drawConnector(aboveBranches[i], aboveBranches[i - 1], originX, originY, { orientation: "v", colorNode: aboveBranches[i - 1], depth: 1 });
+        }
       }
     }
 
@@ -4512,6 +4568,10 @@
     // drag under its old parent — under the new parent it should go back
     // to inheriting that branch's side until the user flips it again.
     node.side = null;
+    // Same for an explicit above/below override from Timeline mode — it
+    // only means anything for a direct child of the root, so it doesn't
+    // carry over to a new (non-root) parent.
+    node.vSide = null;
     // Same for the cached Timeline auto-balanced side (see layoutTimeline)
     // — it's scoped to whichever branch's left/right split it was computed
     // against, so it doesn't carry over to a new parent either.
@@ -4636,6 +4696,64 @@
     // Vertical layout can shift too (e.g. a top-level branch moving
     // between the left/right lists re-centers both), so re-anchor the
     // reorder target the same way the horizontal one is re-anchored above.
+    dragCandidate.startAbsY = worldY - dyLocal;
+
+    dragCandidate.descendants.forEach(d => {
+      d.startOx = node.ox - dxLocal;
+      d.startOy = node.oy - dyLocal;
+    });
+
+    return true;
+  }
+
+  // Same idea as maybeFlipSideOnDrop, but for a Timeline branch's place
+  // relative to the root along the vertical spine rather than a node's
+  // side of a horizontal fan. Every top-level branch used to be locked
+  // below the root, so there was nothing to flip; now dragging one up
+  // past the root's own center gives it an explicit node.vSide =
+  // "above" override (mirroring .side/"left"/"right"), sending it onto
+  // the top half of the spine instead — everything else about it
+  // (its own left/right-fanning children, its color, etc.) is untouched.
+  // A null/missing vSide always means "below", the original default, so
+  // maps saved before this feature keeps every branch exactly where it
+  // was.
+  function maybeFlipVSideOnDrop(node) {
+    const layoutMode = (state.current && state.current.layout) || "mindmap";
+    // Only a top-level branch sits directly on the spine; anything deeper
+    // just fans left/right off its own branch and has no "above/below
+    // the root" position of its own to flip.
+    if (layoutMode !== "timeline" || node._depth !== 1) return false;
+    const finalWorldY = node._y + (node.oy || 0);
+    if (finalWorldY === 0) return false;
+    const curVSide = node.vSide === "above" ? "above" : "below";
+    const newVSide = finalWorldY < 0 ? "above" : "below";
+    if (newVSide === curVSide) return false;
+    node.vSide = newVSide === "above" ? "above" : null;
+    return true;
+  }
+
+  // Live version of maybeFlipVSideOnDrop, called on every mousemove so a
+  // branch crosses onto the other half of the spine the instant it's
+  // dragged past the root, same continuous-drag treatment
+  // maybeFlipSideDuringDrag gives a left/right flip: the node stays under
+  // the cursor across the flip (oy/startAbsY re-anchored to compensate)
+  // and every descendant rides along on that same offset so the whole
+  // branch keeps moving as one rigid unit.
+  function maybeFlipVSideDuringDrag(node, dxLocal, dyLocal) {
+    const layoutMode = (state.current && state.current.layout) || "mindmap";
+    if (layoutMode !== "timeline" || node._depth !== 1) return false;
+    const worldX = node._x + (node.ox || 0);
+    const worldY = node._y + (node.oy || 0);
+    const curVSide = node.vSide === "above" ? "above" : "below";
+    const newVSide = worldY < 0 ? "above" : "below";
+    if (newVSide === curVSide) return false;
+
+    node.vSide = newVSide === "above" ? "above" : null;
+    layout(state.current.root);
+
+    node.ox = worldX - node._x;
+    node.oy = worldY - node._y;
+    dragCandidate.startOx = node.ox - dxLocal;
     dragCandidate.startAbsY = worldY - dyLocal;
 
     dragCandidate.descendants.forEach(d => {
@@ -5680,7 +5798,11 @@
     // center line — see maybeFlipSideDuringDrag for how it keeps the node
     // under the cursor and lets its children reflow to the new side right
     // away, while the mouse is still held.
-    const flipped = maybeFlipSideDuringDrag(node, dxLocal, dyLocal);
+    const flippedH = maybeFlipSideDuringDrag(node, dxLocal, dyLocal);
+    // Same idea, but for a top-level Timeline branch crossing above/below
+    // the root along the vertical spine (see maybeFlipVSideDuringDrag).
+    const flippedV = maybeFlipVSideDuringDrag(node, dxLocal, dyLocal);
+    const flipped = flippedH || flippedV;
 
     // Where the node "wants" to be vertically, tracked from the drag start
     // rather than from node._y directly, so it stays correct across any
@@ -5841,11 +5963,15 @@
         // keeps side in sync on every frame — this only catches the rare
         // case a flip is still needed right at the moment of release.
         const worldXAtDrop = node._x + (node.ox || 0);
-        if (maybeFlipSideOnDrop(node)) {
+        const worldYAtDrop = node._y + (node.oy || 0);
+        const flippedH = maybeFlipSideOnDrop(node);
+        const flippedV = maybeFlipVSideOnDrop(node);
+        if (flippedH || flippedV) {
           layout(state.current.root);
           // Keep the node exactly where it visually was at release instead
           // of letting it jump to the new side's raw slot center.
           node.ox = worldXAtDrop - node._x;
+          node.oy = worldYAtDrop - node._y;
         }
         // Deliberately no ox/oy reset here. They're already recomputed
         // fresh on every mousemove to reflect exactly where the node was
