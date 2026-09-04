@@ -2454,15 +2454,6 @@ kbd{
   flex-direction: column;
   gap: 8px;
 }
-.timer-manual-add-btn{
-  border:none;
-  background:transparent;
-  color: var(--text-dim);
-  font-size: 12px;
-  text-decoration: underline;
-  cursor:pointer;
-  padding: 2px;
-}
 
 /* ---- Affirmation lines manager modal ---- */
 .affirmation-quotes-modal-card{ max-width: 480px; }

@@ -127,10 +127,8 @@ only see files it created itself — never your other Drive files.
   zero. The node's total only grows for time the countdown was actually
   running (not while paused), and updates live — both in the popup and
   as the small "⏱ 45m" badge on the node itself — so it reflects time
-  actually spent, not just time scheduled. A "log +1m to the total"
-  link is still there for adding time after the fact without running
-  the countdown live. The countdown keeps running in the background
-  even if you close the popup or switch nodes/maps.
+  actually spent, not just time scheduled. The countdown keeps running
+  in the background even if you close the popup or switch nodes/maps.
 - **Photos from the clipboard** — with a node selected, paste
   (`Ctrl`/`Cmd` + `V`) an image straight from your clipboard to attach it
   as a photo — no need to save a screenshot to disk first and go through

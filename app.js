@@ -10267,16 +10267,13 @@
   // it reflects time actually played/worked, not just time scheduled.
   // That total is shown live both here and as the small "⏱ 45m" badge on
   // the node itself (see renderNode), and is saved with the map like
-  // everything else. A manual "+1m to the total" fallback stays available
-  // for logging time after the fact without running the countdown live.
-  const TIMER_STEP_SEC = 60; // what the manual "+1m to total" link adds
+  // everything else.
   const NODE_TIMER_DEFAULT_SEC = 1 * 60; // default countdown length when starting fresh
   const NODE_TIMER_EXTEND_SEC = 60; // added per "+1m" click while running
 
   const timerModal = $("#timer-modal");
   const timerNodeLabel = $("#timer-node-label");
   const timerTotalDisplay = $("#timer-total-display");
-  const timerAddBtn = $("#timer-add-btn");
   const timerResetBtn = $("#timer-reset-btn");
   const timerStartRow = $("#timer-start-row");
   const timerStartBtn = $("#timer-start-btn");
@@ -10485,16 +10482,6 @@
   timerPauseBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleNodeTimerPause(); });
   timerStopBtn.addEventListener("click", (e) => { e.stopPropagation(); stopNodeTimer(); });
   timerExtendBtn.addEventListener("click", (e) => { e.stopPropagation(); extendNodeTimer(NODE_TIMER_EXTEND_SEC); });
-
-  timerAddBtn.addEventListener("click", () => {
-    const node = findNode(timerEditingId);
-    if (!node) return;
-    pushUndo();
-    node.timePlayedSec = getNodeTimePlayed(node) + TIMER_STEP_SEC;
-    persist();
-    renderTimerModal();
-    updateNodeTimerLiveUI(timerEditingId);
-  });
 
   timerResetBtn.addEventListener("click", () => {
     const node = findNode(timerEditingId);
