@@ -1368,7 +1368,15 @@
     // value overrides it for just this hop. Both are set from the
     // combined "Connector style" picker on the connector's own
     // right-click menu, or in bulk from a parent node's menu.
-    return { id: uid(), text: text || "", children: [], collapsed: false, color: null, struck: false, note: "", notes: [], image: null, images: [], url: null, urls: [], side: null, xGap: null, connectorStyle: null, connectorShape: null, table: null };
+    // `fontColor` is a per-node text color override — null to keep
+    // inheriting whatever color the depth/branch rules (and the map-wide
+    // custom font color, if the theme has one) would otherwise produce,
+    // or an explicit hex string that wins over all of that. Set from the
+    // "Font color" swatch row on the node's own right-click menu; a table
+    // cell gets the same override on its own attach record instead (see
+    // getCellAttach) so a single cell's text can be recolored without
+    // affecting the rest of the table.
+    return { id: uid(), text: text || "", children: [], collapsed: false, color: null, fontColor: null, struck: false, note: "", notes: [], image: null, images: [], url: null, urls: [], side: null, xGap: null, connectorStyle: null, connectorShape: null, table: null };
   }
 
   // A "table" node swaps its normal text label for a small editable grid
@@ -4704,6 +4712,33 @@
       it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     });
+
+    // Same per-cell text-color override as a node's own "Font color" row
+    // (see openContextMenu) — stored on this cell's attach record instead
+    // of the node, so recoloring one cell's text doesn't touch the rest
+    // of the table (see the cell-building loop's textEl.style.color).
+    {
+      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "Font color";
+      ctxMenu.appendChild(label);
+      const sw = document.createElement("div"); sw.className = "ctx-swatches";
+      const resetSwatch = document.createElement("span");
+      resetSwatch.className = "ctx-swatch ctx-swatch-reset" + (!a.fontColor ? " active" : "");
+      resetSwatch.title = "Default";
+      resetSwatch.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fontColor = null; closeContextMenu(); renderAll(); persist(); });
+      sw.appendChild(resetSwatch);
+      PALETTE.forEach(c => {
+        const s = document.createElement("span");
+        s.className = "ctx-swatch" + (a.fontColor === c ? " active" : "");
+        s.style.background = c;
+        s.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fontColor = c; closeContextMenu(); renderAll(); persist(); });
+        sw.appendChild(s);
+      });
+      ctxMenu.appendChild(sw);
+    }
+
     positionContextMenu(x, y);
   }
 
@@ -4902,6 +4937,7 @@
         textEl.contentEditable = "true";
         textEl.spellcheck = false;
         textEl.textContent = row[c] || "";
+        textEl.style.color = getCellAttach(node, r, c).fontColor || "";
         textEl.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id, { nodeId: node.id, r, c }); });
         textEl.addEventListener("blur", () => {
           const newText = textEl.textContent;
@@ -4988,7 +5024,9 @@
     // black/white, so the color story stays consistent all the way down
     // the branch rather than only kicking in once the box disappears —
     // unless the user has set a custom font color, which still wins.
-    div.style.color = (color && depth > 1 && theme.fontMode !== "custom")
+    div.style.color = node.fontColor
+      ? node.fontColor
+      : (color && depth > 1 && theme.fontMode !== "custom")
       ? color
       : (theme.fontMode === "custom" ? theme.fontColor : caretColorFor(effectiveBg));
     div.style.caretColor = caretColorFor(effectiveBg);
@@ -6716,6 +6754,34 @@
         s.className = "ctx-swatch" + (node.color === c ? " active" : "");
         s.style.background = c;
         s.addEventListener("click", () => { pushUndo(); node.color = c; closeContextMenu(); renderAll(); persist(); });
+        sw.appendChild(s);
+      });
+      ctxMenu.appendChild(sw);
+    }
+
+    // Font color is independent of branch/root fill color above — it's a
+    // per-node text override (see the fontColor field on newNode) that
+    // wins over the branch tint, the map-wide theme font color, and the
+    // auto-contrast default, in that order (see renderNode). Offered on
+    // every node, not just branch tops/root, since any single node's text
+    // can be recolored regardless of what's coloring its box.
+    {
+      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "Font color";
+      ctxMenu.appendChild(label);
+      const sw = document.createElement("div"); sw.className = "ctx-swatches";
+      const resetSwatch = document.createElement("span");
+      resetSwatch.className = "ctx-swatch ctx-swatch-reset" + (!node.fontColor ? " active" : "");
+      resetSwatch.title = "Default";
+      resetSwatch.addEventListener("click", () => { pushUndo(); node.fontColor = null; closeContextMenu(); renderAll(); persist(); });
+      sw.appendChild(resetSwatch);
+      PALETTE.forEach(c => {
+        const s = document.createElement("span");
+        s.className = "ctx-swatch" + (node.fontColor === c ? " active" : "");
+        s.style.background = c;
+        s.addEventListener("click", () => { pushUndo(); node.fontColor = c; closeContextMenu(); renderAll(); persist(); });
         sw.appendChild(s);
       });
       ctxMenu.appendChild(sw);

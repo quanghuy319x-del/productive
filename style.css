@@ -1425,6 +1425,15 @@ body.signed-out #title-input{ visibility:hidden; }
   cursor:pointer; border: 2px solid transparent;
 }
 .ctx-swatch.active{ border-color: var(--text); }
+/* The "Default" option in a Font color row (see openContextMenu /
+   openCellAddMenu in app.js) — a plain slashed circle rather than a solid
+   fill, so it reads as "no override" instead of looking like just
+   another color choice among the palette swatches next to it. */
+.ctx-swatch-reset{
+  background: linear-gradient(to bottom right, transparent calc(50% - 1px), var(--danger, #e05a5a) calc(50% - 1px), var(--danger, #e05a5a) calc(50% + 1px), transparent calc(50% + 1px));
+  border: 2px solid var(--border);
+}
+.ctx-swatch-reset.active{ border-color: var(--text); }
 .ctx-glow-options{ display:flex; gap:6px; padding: 6px 8px 8px; flex-wrap:wrap; }
 .ctx-glow-opt{
   padding: 5px 10px;
