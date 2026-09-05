@@ -8315,6 +8315,7 @@
   const videoModalCard = $(".video-modal-card");
   const videoModalIframe = $("#video-modal-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
+  const videoModalSizeBtn = $("#video-modal-size");
   const videoModalCloseBtn = $("#video-modal-close");
   const videoModalCommentRow = $("#video-modal-comment-row");
   const videoModalCommentInput = $("#video-modal-comment-input");
@@ -8339,6 +8340,35 @@
     positions[ytId] = Math.max(0, Math.floor(seconds));
     try { localStorage.setItem(YT_POSITIONS_KEY, JSON.stringify(positions)); } catch {}
   }
+
+  // Player size is a per-browser display preference (like the playback
+  // position above), not part of the map itself, so it lives in
+  // localStorage too and carries over between videos and sessions. The
+  // button cycles normal → large → full each click; the CSS for each is
+  // on .video-modal-card.size-large / .size-full (see style.css).
+  const VIDEO_MODAL_SIZES = ["normal", "large", "full"];
+  const VIDEO_MODAL_SIZE_KEY = "branchline:video-modal-size";
+  function loadVideoModalSize() {
+    const saved = localStorage.getItem(VIDEO_MODAL_SIZE_KEY);
+    return VIDEO_MODAL_SIZES.includes(saved) ? saved : "normal";
+  }
+  function applyVideoModalSize(size) {
+    VIDEO_MODAL_SIZES.forEach(s => videoModalCard.classList.remove("size-" + s));
+    if (size !== "normal") videoModalCard.classList.add("size-" + size);
+    const next = VIDEO_MODAL_SIZES[(VIDEO_MODAL_SIZES.indexOf(size) + 1) % VIDEO_MODAL_SIZES.length];
+    const label = size === "normal" ? "Make player bigger" : size === "large" ? "Make player even bigger" : "Back to normal size";
+    videoModalSizeBtn.title = label;
+    videoModalSizeBtn.setAttribute("aria-label", label);
+    videoModalSizeBtn.textContent = size === "full" ? "⤡" : "⤢";
+    videoModalSizeBtn.dataset.next = next;
+  }
+  videoModalSizeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const next = videoModalSizeBtn.dataset.next || "large";
+    try { localStorage.setItem(VIDEO_MODAL_SIZE_KEY, next); } catch {}
+    applyVideoModalSize(next);
+  });
+  applyVideoModalSize(loadVideoModalSize());
 
   // Lazily loads the YouTube IFrame Player API — only needed the first
   // time a video is actually opened. A plain <iframe src="...embed/...">

@@ -2996,6 +2996,20 @@ kbd{
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
+  transition: width 0.18s ease;
+}
+/* "Large" widens the 16:9 box considerably; "full" goes nearly
+   edge-to-edge — both still keep the 16:9 aspect ratio via
+   .video-modal-frame-wrap below, just scaled up. Toggled by
+   #video-modal-size (see applyVideoModalSize in app.js), and the
+   choice is remembered in localStorage across videos/sessions. */
+.video-modal-card.size-large{
+  width: 1400px;
+  max-width: 96vw;
+}
+.video-modal-card.size-full{
+  width: 96vw;
+  max-width: 96vw;
 }
 .video-modal-frame-wrap{
   position: relative;
@@ -3005,6 +3019,14 @@ kbd{
   overflow: hidden;
   background: #000;
   box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+}
+/* On very wide/short viewports, a "full" width 16:9 box can exceed the
+   viewport height — cap it there and let width relax below 96vw so the
+   whole player still fits on screen instead of being clipped. */
+.video-modal-card.size-full .video-modal-frame-wrap{
+  max-height: 90vh;
+  width: min(96vw, 90vh * 16 / 9);
+  margin: 0 auto;
 }
 .video-modal-iframe{
   position: absolute;
@@ -3016,12 +3038,26 @@ kbd{
 .video-modal-actions{
   display:flex;
   align-items:center;
-  justify-content: space-between;
+  gap: 8px;
 }
+.video-modal-size{
+  background: rgba(255,255,255,0.08);
+  border: none;
+  color: var(--text-faint);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.video-modal-size:hover{ background: rgba(255,255,255,0.18); color: var(--text); }
 .video-modal-open-link{
   color: var(--text-faint);
   font-size: 13px;
   text-decoration: none;
+  margin-right: auto;
 }
 .video-modal-open-link:hover{ color: var(--text); text-decoration: underline; }
 .video-modal-close{
