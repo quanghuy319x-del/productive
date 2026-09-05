@@ -4455,7 +4455,7 @@
       labelSpan.className = "ctx-item-label";
       labelSpan.textContent = label;
       it.appendChild(labelSpan);
-      it.addEventListener("click", () => { closeContextMenu(); fn(); });
+      it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     });
     positionContextMenu(x, y);
