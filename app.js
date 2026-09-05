@@ -1444,7 +1444,64 @@
       }
       node.table.attach[r] = attach[r];
     }
+    // A row/column can only ever be removed from the end (see
+    // tableRemoveRow/tableRemoveColumn), so a saved merge (see
+    // mergeCellRange below) can end up pointing past the grid's current
+    // bounds. Clip each merge to whatever's still there, and drop it
+    // entirely once it no longer covers more than one cell — same
+    // "sanitize on every render" spirit as the padding above, so no
+    // removal call site needs its own merge bookkeeping.
+    if (Array.isArray(node.table.merges) && node.table.merges.length) {
+      const rows = cells.length;
+      const cols = cells[0] ? cells[0].length : 0;
+      node.table.merges = node.table.merges
+        .map(m => ({ r0: m.r0, c0: m.c0, r1: Math.min(m.r1, rows - 1), c1: Math.min(m.c1, cols - 1) }))
+        .filter(m => m.r0 <= m.r1 && m.c0 <= m.c1 && m.r0 < rows && m.c0 < cols && (m.r1 > m.r0 || m.c1 > m.c0));
+    }
     return attach;
+  }
+  // A table cell can be merged with its neighbors into one rectangular
+  // block — node.table.merges is a flat list of {r0, c0, r1, c1} rects
+  // (inclusive), each naming the covered cells. The top-left cell of a
+  // rect (r0, c0) is that block's "origin": it's the only one that
+  // actually renders a <td> (with rowSpan/colSpan set to cover the rest —
+  // see renderTableGrid), keeps its own text/attach record, and is what
+  // buildCellIconStrip/openCellAddMenu are called with. The other cells
+  // covered by the rect are simply skipped when rendering; their
+  // underlying text/attach data is left untouched so unmerging restores
+  // whatever was there before, rather than being lost.
+  function ensureTableMerges(node) {
+    if (!node.table) return [];
+    if (!Array.isArray(node.table.merges)) node.table.merges = [];
+    return node.table.merges;
+  }
+  function getCellMerge(node, r, c) {
+    return ensureTableMerges(node).find(m => r >= m.r0 && r <= m.r1 && c >= m.c0 && c <= m.c1) || null;
+  }
+  function isMergeOrigin(node, r, c) {
+    const m = getCellMerge(node, r, c);
+    return !m || (m.r0 === r && m.c0 === c);
+  }
+  function cellSpan(node, r, c) {
+    const m = getCellMerge(node, r, c);
+    return m ? { rowSpan: m.r1 - m.r0 + 1, colSpan: m.c1 - m.c0 + 1 } : { rowSpan: 1, colSpan: 1 };
+  }
+  // Merges the rectangle between two corner cells. Any existing merge
+  // that overlaps the new rectangle is dropped first — merging a
+  // selection that partly overlaps other merged blocks folds everything
+  // into one new block instead of leaving stale, now-inconsistent ones
+  // behind.
+  function mergeCellRange(node, r0, c0, r1, c1) {
+    const merges = ensureTableMerges(node);
+    const nr0 = Math.min(r0, r1), nr1 = Math.max(r0, r1);
+    const nc0 = Math.min(c0, c1), nc1 = Math.max(c0, c1);
+    node.table.merges = merges.filter(m => m.r1 < nr0 || m.r0 > nr1 || m.c1 < nc0 || m.c0 > nc1);
+    node.table.merges.push({ r0: nr0, c0: nc0, r1: nr1, c1: nc1 });
+  }
+  function unmergeCellAt(node, r, c) {
+    const merges = ensureTableMerges(node);
+    const idx = merges.findIndex(m => r >= m.r0 && r <= m.r1 && c >= m.c0 && c <= m.c1);
+    if (idx !== -1) merges.splice(idx, 1);
   }
   function getCellAttach(node, r, c) {
     const a = ensureTableAttach(node)[r][c];
@@ -2422,6 +2479,13 @@
                           // land on that cell's photos instead of the
                           // selected node's own (see the paste handler
                           // below and handleCellPhotoFiles).
+    cellRangeAnchor: null, // {nodeId, r, c} of the last *non*-shift cell
+                          // click — the fixed corner a shift-click range
+                          // is measured from (see handleTableCellClick).
+    cellRange: null,      // {nodeId, r0, c0, r1, c1} rectangle of table
+                          // cells currently selected via shift-click, or
+                          // null — drives the range highlight and is what
+                          // "Merge cells" (see mergeCellRange) acts on.
     scale: 1, tx: 60, ty: 60,
     undoStack: [],
     redoStack: []
@@ -2886,6 +2950,8 @@
     state.current.links = snap.links || [];
     state.selectedId = null;
     state.selectedCell = null;
+    state.cellRangeAnchor = null;
+    state.cellRange = null;
     renderAll();
     persist();
   }
@@ -2899,6 +2965,8 @@
     state.current.links = snap.links || [];
     state.selectedId = null;
     state.selectedCell = null;
+    state.cellRangeAnchor = null;
+    state.cellRange = null;
     renderAll();
     persist();
   }
@@ -3009,6 +3077,8 @@
     await loadPhotoCacheForMap(state.current.id);
     state.selectedId = null;
     state.selectedCell = null;
+    state.cellRangeAnchor = null;
+    state.cellRange = null;
     state.editingId = null;
     state.linkFromId = null;
     state.moveSourceId = null;
@@ -4755,6 +4825,31 @@
       const label = wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game";
       items.push([label, () => openAffirmationGame(node.id, r, c)]);
     }
+    // "Merge cells" only shows up once a multi-cell rectangle is actually
+    // selected in this same table (see state.cellRange/handleTableCellClick,
+    // set by shift-clicking a second cell) — merging folds that whole
+    // rectangle into the cell this menu was opened on, whichever one that
+    // is, since mergeCellRange always uses the rectangle's own top-left
+    // corner as the origin regardless of which cell you clicked. "Unmerge"
+    // instead shows up whenever this cell is already part of an existing
+    // merge (see getCellMerge), letting a merged block be split back
+    // apart from any of its cells' own "+" menu.
+    if (state.cellRange && state.cellRange.nodeId === node.id &&
+        (state.cellRange.r1 > state.cellRange.r0 || state.cellRange.c1 > state.cellRange.c0)) {
+      const rr = state.cellRange;
+      const mergeRows = rr.r1 - rr.r0 + 1, mergeCols = rr.c1 - rr.c0 + 1;
+      items.push([`Merge cells (${mergeRows}×${mergeCols})`, () => {
+        pushUndo();
+        mergeCellRange(node, rr.r0, rr.c0, rr.r1, rr.c1);
+        state.cellRange = null;
+        renderAll();
+        persist();
+      }]);
+    }
+    const currentMerge = getCellMerge(node, r, c);
+    if (currentMerge && (currentMerge.r1 > currentMerge.r0 || currentMerge.c1 > currentMerge.c0)) {
+      items.push(["Unmerge cells", () => { pushUndo(); unmergeCellAt(node, r, c); renderAll(); persist(); }]);
+    }
     items.forEach(([label, fn]) => {
       const it = document.createElement("div");
       it.className = "ctx-item";
@@ -4765,6 +4860,34 @@
       it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     });
+
+    // Same swatch picker as a node's own "Node color"/"Branch color" row
+    // (see openContextMenu) — stored on this cell's attach record instead,
+    // so filling one cell doesn't touch the rest of the table (see the
+    // cell-building loop's td.style.background, and note the fill is
+    // painted on the whole merged block's single <td> when this cell is
+    // part of one — see cellSpan/isMergeOrigin).
+    {
+      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "Fill color";
+      ctxMenu.appendChild(label);
+      const sw = document.createElement("div"); sw.className = "ctx-swatches";
+      const resetSwatch = document.createElement("span");
+      resetSwatch.className = "ctx-swatch ctx-swatch-reset" + (!a.fillColor ? " active" : "");
+      resetSwatch.title = "Default";
+      resetSwatch.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fillColor = null; closeContextMenu(); renderAll(); persist(); });
+      sw.appendChild(resetSwatch);
+      PALETTE.forEach(c => {
+        const s = document.createElement("span");
+        s.className = "ctx-swatch" + (a.fillColor === c ? " active" : "");
+        s.style.background = c;
+        s.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fillColor = c; closeContextMenu(); renderAll(); persist(); });
+        sw.appendChild(s);
+      });
+      ctxMenu.appendChild(sw);
+    }
 
     // Same per-cell text-color override as a node's own "Font color" row
     // (see openContextMenu) — stored on this cell's attach record instead
@@ -4979,19 +5102,38 @@
       const tr = document.createElement("tr");
       tr.style.height = (rowHeights[r] || TABLE_CELL_MIN_H) + "px";
       for (let c = 0; c < cols; c++) {
+        // A cell covered by another cell's merge (see mergeCellRange)
+        // renders no <td> of its own at all — the origin cell's rowSpan/
+        // colSpan below covers this spot instead.
+        if (!isMergeOrigin(node, r, c)) continue;
+        const span = cellSpan(node, r, c);
+        const a = getCellAttach(node, r, c);
         const td = document.createElement("td");
         td.className = "node-table-cell";
         td.dataset.r = String(r);
         td.dataset.c = String(c);
-        td.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id, { nodeId: node.id, r, c }); });
+        if (span.rowSpan > 1) td.rowSpan = span.rowSpan;
+        if (span.colSpan > 1) td.colSpan = span.colSpan;
+        if (a.fillColor) td.style.background = a.fillColor;
+        if (state.cellRange && state.cellRange.nodeId === node.id &&
+            r >= state.cellRange.r0 && r <= state.cellRange.r1 &&
+            c >= state.cellRange.c0 && c <= state.cellRange.c1) {
+          td.classList.add("range-selected");
+        }
+        td.addEventListener("click", (e) => { e.stopPropagation(); handleTableCellClick(node, r, c, e.shiftKey); });
+        td.addEventListener("contextmenu", (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (!requireSignIn()) return;
+          openCellAddMenu(node, r, c, e.clientX, e.clientY);
+        });
 
         const textEl = document.createElement("div");
         textEl.className = "node-table-cell-text";
         textEl.contentEditable = "true";
         textEl.spellcheck = false;
         textEl.textContent = row[c] || "";
-        textEl.style.color = getCellAttach(node, r, c).fontColor || "";
-        textEl.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id, { nodeId: node.id, r, c }); });
+        textEl.style.color = a.fontColor || "";
+        textEl.addEventListener("click", (e) => { e.stopPropagation(); handleTableCellClick(node, r, c, e.shiftKey); });
         textEl.addEventListener("blur", () => {
           const newText = textEl.textContent;
           if (newText === (cells[r][c] || "")) return;
@@ -5009,6 +5151,35 @@
     });
     table.appendChild(tbody);
     div.appendChild(table);
+  }
+
+  // Click handling for a table cell, shared by the cell's <td> and its
+  // text div. A plain click selects just that one cell and plants a new
+  // range anchor there (see state.cellRangeAnchor); a shift-click, as
+  // long as the anchor belongs to this same table, extends the
+  // selection into a rectangle between the anchor and the clicked cell
+  // (see state.cellRange) — that rectangle is what "Merge cells" (in
+  // openCellAddMenu) acts on. Always a full renderAll() (rather than the
+  // lighter updateSelectedClasses path selectNode can take) since a
+  // range highlight needs the whole grid redrawn either way, whether one
+  // is being drawn or an old one is being cleared.
+  function handleTableCellClick(node, r, c, shiftKey) {
+    if (shiftKey && state.cellRangeAnchor && state.cellRangeAnchor.nodeId === node.id) {
+      const anchor = state.cellRangeAnchor;
+      state.cellRange = {
+        nodeId: node.id,
+        r0: Math.min(anchor.r, r), r1: Math.max(anchor.r, r),
+        c0: Math.min(anchor.c, c), c1: Math.max(anchor.c, c),
+      };
+      state.selectedId = node.id;
+      state.selectedCell = { nodeId: node.id, r, c };
+      renderAll();
+      return;
+    }
+    state.cellRangeAnchor = { nodeId: node.id, r, c };
+    state.cellRange = null;
+    selectNode(node.id, { nodeId: node.id, r, c });
+    renderAll();
   }
 
   function renderNode(node, ox, oy) {
@@ -7085,6 +7256,8 @@
     viewportEl.classList.add("panning");
     state.selectedId = null;
     state.selectedCell = null;
+    state.cellRangeAnchor = null;
+    state.cellRange = null;
     state.editingId = null;
     // Deliberately NOT clearing linkFromId/moveSourceId here. Both
     // "pick the other end"/"pick the destination" modes are meant to
@@ -7491,6 +7664,8 @@
     state.current.layout = layoutSelect.value;
     state.selectedId = null;
     state.selectedCell = null;
+    state.cellRangeAnchor = null;
+    state.cellRange = null;
     renderAll();
     persist();
   });

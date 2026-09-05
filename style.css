@@ -663,6 +663,13 @@ body.signed-out #title-input{ visibility:hidden; }
   vertical-align: top;
   cursor: default;
 }
+/* Shift-click range selection (see state.cellRange/handleTableCellClick
+   in app.js) — an inset outline rather than a background tint so it
+   stays visible on top of any fill color (see .node-table-cell's own
+   inline background, set from a.fillColor) instead of covering it. */
+.node-table-cell.range-selected{
+  box-shadow: inset 0 0 0 2px #33b3f0;
+}
 /* The editable text part of a cell — everything the plain <td> rule used
    to be, just scoped to this inner div now that the icon strip below
    sits alongside it in the same cell instead of inside the editable
@@ -1540,6 +1547,16 @@ kbd{
   box-sizing: border-box;
 }
 .modal.hidden{ display:none; }
+/* The note editor can be opened from on top of another already-open
+   modal (e.g. the note button on a task row inside #tasks-modal, or a
+   day's task list inside the calendar day modal). Since all modals
+   share the same base z-index above, whichever one is later in the
+   HTML source wins the stacking order regardless of which was opened
+   more recently — which put #tasks-modal (defined after #note-modal
+   in index.html) visually in front of the note editor, blurred and
+   unusable, instead of the note editor showing on top like it should.
+   Bumping #note-modal's z-index above the shared 100 fixes that. */
+#note-modal{ z-index: 150; }
 .modal-card{
   background: var(--panel);
   border: 1px solid var(--border);
