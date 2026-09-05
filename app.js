@@ -6661,7 +6661,7 @@
   document.addEventListener("keydown", (e) => {
     if (!state.current) return;
     const activeIsEditable = document.activeElement && document.activeElement.isContentEditable;
-    const activeIsInput = document.activeElement && (document.activeElement.tagName === "INPUT");
+    const activeIsInput = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA");
     if (activeIsEditable || activeIsInput) return; // handled by node/title listeners
 
     if (state.linkFromId && e.key === "Escape") {
@@ -8163,6 +8163,7 @@
   }
   videoModalCommentInput.addEventListener("blur", saveVideoModalComment);
   videoModalCommentInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); videoModalCommentInput.blur(); }
   });
   videoModalCommentInput.addEventListener("input", () => autoGrowTextarea(videoModalCommentInput));
@@ -8199,6 +8200,7 @@
   linkCommentModalCloseBtn.addEventListener("click", closeLinkCommentModal);
   linkCommentModal.addEventListener("click", (e) => { if (e.target === linkCommentModal) closeLinkCommentModal(); });
   linkCommentModalInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); closeLinkCommentModal(); }
     if (e.key === "Escape") { e.preventDefault(); closeLinkCommentModal(); }
   });
