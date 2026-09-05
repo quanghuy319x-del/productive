@@ -394,10 +394,21 @@
       // above.
       if (node.table && Array.isArray(node.table.attach)) {
         node.table.attach.forEach(row => (row || []).forEach((a) => {
-          if (a && typeof a.image === "string" && a.image.startsWith("data:")) {
+          if (!a) return;
+          if (typeof a.image === "string" && a.image.startsWith("data:")) {
             const id = uid();
             puts.push(PhotoDB.put({ id, mapId: map.id, data: a.image }));
             a.image = id;
+          }
+          if (Array.isArray(a.images) && a.images.length) {
+            a.images = a.images.map((val) => {
+              if (typeof val === "string" && val.startsWith("data:")) {
+                const id = uid();
+                puts.push(PhotoDB.put({ id, mapId: map.id, data: val }));
+                return id;
+              }
+              return val;
+            });
           }
         }));
       }
@@ -430,7 +441,9 @@
       }
       if (node.table && Array.isArray(node.table.attach)) {
         node.table.attach.forEach(row => (row || []).forEach((a) => {
-          if (a && a.image) a.image = lookup.get(a.image) || a.image;
+          if (!a) return;
+          if (a.image) a.image = lookup.get(a.image) || a.image;
+          if (Array.isArray(a.images)) a.images = a.images.map(id => lookup.get(id) || id);
         }));
       }
       (node.children || []).forEach(walk);
@@ -1399,7 +1412,7 @@
     return ensureTableAttach(node)[r][c];
   }
   function cellAttachHasAny(a) {
-    return !!(a && (a.image || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.task && a.task.text) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
+    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.task && a.task.text) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
   }
 
   // A handful of features (the affirmation typing game, the countdown
@@ -1436,7 +1449,7 @@
   function getCellImageIds(node) {
     if (!node || !node.table || !Array.isArray(node.table.attach)) return [];
     const ids = [];
-    node.table.attach.forEach(row => (row || []).forEach(a => { if (a && a.image) ids.push(a.image); }));
+    node.table.attach.forEach(row => (row || []).forEach(a => ids.push(...getCellPhotoIds(a))));
     return ids;
   }
 
@@ -1623,6 +1636,25 @@
   }
   function cellHasNotes(a) {
     return getCellNotes(a).length > 0;
+  }
+
+  // A table cell's photos use the exact same multi-photo model as a
+  // node's own photos (see getNodeImageIds/getNodeImages above) — an
+  // array of PhotoDB ids — just scoped to one cell's attach record
+  // instead of the whole node. Reads either the old single plain `image`
+  // id (from before this existed) or the new `images` array, same
+  // fallback shape as getNodeImageIds.
+  function getCellPhotoIds(a) {
+    if (!a) return [];
+    if (Array.isArray(a.images) && a.images.length) return a.images;
+    if (a.image) return [a.image];
+    return [];
+  }
+  function getCellPhotos(a) {
+    return getCellPhotoIds(a).map(id => (typeof id === "string" && id.startsWith("data:")) ? id : photoUrl(id));
+  }
+  function cellHasImages(a) {
+    return getCellPhotoIds(a).length > 0;
   }
 
   // Short label for a note, for the menus below — its title if it has
@@ -2334,6 +2366,11 @@
                           // transient view setting, never persisted (see
                           // the `persist` function below, which only
                           // saves `state.current`)
+    selectedCell: null,   // {nodeId, r, c} of the last-clicked table cell,
+                          // or null — lets a paste anywhere on the page
+                          // land on that cell's photos instead of the
+                          // selected node's own (see the paste handler
+                          // below and handleCellPhotoFiles).
     scale: 1, tx: 60, ty: 60,
     undoStack: [],
     redoStack: []
@@ -2774,6 +2811,7 @@
     state.current.root = snap.root;
     state.current.links = snap.links || [];
     state.selectedId = null;
+    state.selectedCell = null;
     renderAll();
     persist();
   }
@@ -2786,6 +2824,7 @@
     state.current.root = snap.root;
     state.current.links = snap.links || [];
     state.selectedId = null;
+    state.selectedCell = null;
     renderAll();
     persist();
   }
@@ -2895,6 +2934,7 @@
     if (!state.current._photosMigrated) await ensurePhotosMigrated(state.current);
     await loadPhotoCacheForMap(state.current.id);
     state.selectedId = null;
+    state.selectedCell = null;
     state.editingId = null;
     state.linkFromId = null;
     state.moveSourceId = null;
@@ -4260,11 +4300,23 @@
   // from the source so it reads as a move rather than a duplication.
   function completeMarkerDrop(targetId, copy) {
     if (!markerDragState) return;
-    const { type, sourceNodeId, photoIndex, overflowFrom } = markerDragState;
+    const { type, sourceNodeId, photoIndex, overflowFrom, sourceR, sourceC } = markerDragState;
     if (sourceNodeId === targetId) return;
-    const source = findNode(sourceNodeId);
+    const sourceNode = findNode(sourceNodeId);
     const target = findNode(targetId);
-    if (!source || !target) return;
+    if (!sourceNode || !target) return;
+    // A photo drag started on a table cell (see the cell photo strip
+    // below) carries sourceR/sourceC — resolve the actual photo host to
+    // that cell's attach record instead of the node itself. Cell attach
+    // records share the same {images, image} shape as a node (see
+    // getCellPhotoIds/getNodeImageIds), so every photo branch below
+    // works unchanged either way; only tags/photoNotes are node-only
+    // (carryPhotoTags/carryPhotoNotes safely no-op when the source has
+    // neither field, which a cell attach record never does).
+    const source = (type.startsWith("photo") && sourceR != null && sourceC != null)
+      ? getCellAttach(sourceNode, sourceR, sourceC)
+      : sourceNode;
+    if (!source) return;
 
     if (type === "tasks") {
       const srcTasks = getNodeTasks(source);
@@ -4395,27 +4447,48 @@
   const cellImageInput = document.createElement("input");
   cellImageInput.type = "file";
   cellImageInput.accept = "image/*";
+  cellImageInput.multiple = true;
   cellImageInput.style.display = "none";
   document.body.appendChild(cellImageInput);
-  cellImageInput.addEventListener("change", () => {
-    const file = cellImageInput.files && cellImageInput.files[0];
-    cellImageInput.value = "";
-    const pending = pendingCellPhoto;
-    pendingCellPhoto = null;
-    if (!file || !pending) return;
-    const node = findNode(pending.nodeId);
-    if (!node || !node.table) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const a = getCellAttach(node, pending.r, pending.c);
-      pushUndo();
-      if (a.image && !String(a.image).startsWith("data:")) deletePhotoRecord(a.image);
-      a.image = addPhotoRecord(reader.result);
-      renderAll();
-      persist();
+
+  // Adds one or more photos to a cell's attach record — exactly
+  // handleNodePhotoFiles below, scoped to one cell's `images` array
+  // instead of the whole node's.
+  function handleCellPhotoFiles(nodeId, r, c, fileList) {
+    const node = findNode(nodeId);
+    const files = Array.from(fileList || []).filter(f => f && f.type && f.type.startsWith("image/"));
+    if (!node || !node.table || !files.length) return;
+    const a = getCellAttach(node, r, c);
+    if (!Array.isArray(a.images)) a.images = getCellPhotoIds(a);
+    pushUndo();
+    let remaining = files.length;
+    let hadError = false;
+    const done = () => {
+      remaining--;
+      if (remaining === 0) {
+        a.image = null; // fully migrated onto the images array
+        renderAll();
+        persist();
+        if (hadError) alert("Some images couldn't be read.");
+      }
     };
-    reader.onerror = () => alert("That image couldn't be read.");
-    reader.readAsDataURL(file);
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        a.images.push(addPhotoRecord(reader.result));
+        done();
+      };
+      reader.onerror = () => { hadError = true; done(); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  cellImageInput.addEventListener("change", () => {
+    if (cellImageInput.files && cellImageInput.files.length && pendingCellPhoto) {
+      handleCellPhotoFiles(pendingCellPhoto.nodeId, pendingCellPhoto.r, pendingCellPhoto.c, cellImageInput.files);
+    }
+    cellImageInput.value = ""; // reset so picking the same file again still fires change
+    pendingCellPhoto = null;
   });
   function openCellPhotoPicker(node, r, c) {
     if (!requireSignIn()) return;
@@ -4580,10 +4653,20 @@
     resetContextMenu();
     const a = getCellAttach(node, r, c);
     const items = [];
-    items.push([a.image ? "Replace photo…" : "Add photo…", () => openCellPhotoPicker(node, r, c)]);
-    if (a.image) items.push(["Remove photo", () => {
+    items.push(["Add photo…", () => openCellPhotoPicker(node, r, c)]);
+    if (cellHasImages(a)) {
+      // No cell-aware openPhotoModal yet (see the deferred item on
+      // generalizing photoModalState to carry r/c) — until that lands,
+      // this just opens the first photo in a new tab, same as clicking a
+      // thumbnail does, so the menu at least has an entry here matching
+      // the node menu's "View photo(s)…" for parity.
+      const cellPhotos = getCellPhotos(a);
+      items.push([cellPhotos.length > 1 ? "View photo(s)…" : "View photo…", () => window.open(cellPhotos[0], "_blank", "noopener")]);
+    }
+    if (cellHasImages(a)) items.push(["Remove all photos", () => {
       pushUndo();
-      if (!String(a.image).startsWith("data:")) deletePhotoRecord(a.image);
+      getCellPhotoIds(a).forEach(id => { if (!String(id).startsWith("data:")) deletePhotoRecord(id); });
+      a.images = null;
       a.image = null;
       renderAll();
       persist();
@@ -4630,14 +4713,55 @@
     strip.addEventListener("pointerdown", (e) => e.stopPropagation());
     strip.addEventListener("click", (e) => e.stopPropagation());
 
-    if (a.image) {
-      const thumb = document.createElement("span");
-      thumb.className = "node-table-cell-icon node-table-cell-photo";
-      const src = (typeof a.image === "string" && a.image.startsWith("data:")) ? a.image : photoUrl(a.image);
-      thumb.style.backgroundImage = `url("${src}")`;
-      thumb.title = "Click to view — use + to replace or remove";
-      thumb.addEventListener("click", () => window.open(src, "_blank", "noopener"));
-      strip.appendChild(thumb);
+    // One thumbnail per photo (capped, with a "+N" overflow badge past
+    // the cap), same treatment as the node-level photo strip (see
+    // renderNode) — click to view, drag onto a node to move/copy it
+    // there (see startMarkerDrag/completeMarkerDrop), right-click a
+    // single thumbnail to remove just that one.
+    const cellImages = getCellPhotos(a);
+    if (cellImages.length) {
+      const overflow = cellImages.length > 4;
+      const shownCount = overflow ? 1 : cellImages.length;
+      for (let i = 0; i < shownCount; i++) {
+        const thumb = document.createElement("span");
+        thumb.className = "node-table-cell-icon node-table-cell-photo";
+        const fullSrc = cellImages[i];
+        const cachedThumb = getMarkerThumb(fullSrc, () => {
+          const liveThumb = nodesLayer.querySelector(`.node[data-id="${node.id}"] .node-table-cell[data-r="${r}"][data-c="${c}"] .node-table-cell-photo[data-src-index="${i}"]`);
+          if (liveThumb) liveThumb.style.backgroundImage = `url("${nodeThumbCache.get(fullSrc)}")`;
+        });
+        thumb.dataset.srcIndex = String(i);
+        thumb.style.backgroundImage = `url("${cachedThumb || fullSrc}")`;
+        thumb.draggable = true;
+        thumb.addEventListener("dragend", endMarkerDrag);
+        thumb.addEventListener("click", (e) => { e.stopPropagation(); window.open(fullSrc, "_blank", "noopener"); });
+        if (overflow) {
+          thumb.title = `${cellImages.length} photos — click to view the first, drag to move them all onto a node (hold Alt to copy)`;
+          thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photos", { sourceR: r, sourceC: c }));
+          const badge = document.createElement("span");
+          badge.className = "node-marker-count";
+          badge.textContent = String(cellImages.length);
+          thumb.appendChild(badge);
+        } else {
+          thumb.title = "Click to view — drag onto a node to move it there (hold Alt to copy) — right-click to remove";
+          thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photo", { photoIndex: i, sourceR: r, sourceC: c }));
+          thumb.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!requireSignIn()) return;
+            pushUndo();
+            const ids = getCellPhotoIds(a).slice();
+            const removedId = ids[i];
+            ids.splice(i, 1);
+            a.images = ids;
+            a.image = null;
+            if (!String(removedId).startsWith("data:")) deletePhotoRecord(removedId);
+            renderAll();
+            persist();
+          });
+        }
+        strip.appendChild(thumb);
+      }
     }
     if (cellHasNotes(a)) {
       const noteIcon = document.createElement("span");
@@ -4764,14 +4888,14 @@
         td.className = "node-table-cell";
         td.dataset.r = String(r);
         td.dataset.c = String(c);
-        td.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id); });
+        td.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id, { nodeId: node.id, r, c }); });
 
         const textEl = document.createElement("div");
         textEl.className = "node-table-cell-text";
         textEl.contentEditable = "true";
         textEl.spellcheck = false;
         textEl.textContent = row[c] || "";
-        textEl.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id); });
+        textEl.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id, { nodeId: node.id, r, c }); });
         textEl.addEventListener("blur", () => {
           const newText = textEl.textContent;
           if (newText === (cells[r][c] || "")) return;
@@ -5859,12 +5983,13 @@
     }
   }
 
-  function selectNode(id) {
-    if (state.editingId === id) return; // a click inside the box being edited is just caret placement, not a request to stop editing
+  function selectNode(id, cellPos) {
+    if (state.editingId === id) { state.selectedCell = cellPos || null; return; } // a click inside the box being edited is just caret placement, not a request to stop editing
     const wasEditing = !!state.editingId;
     commitEditIfActive({ render: false });
     const prevId = state.selectedId;
     state.selectedId = id;
+    state.selectedCell = cellPos || null;
     if (wasEditing) {
       // Text/size may have just changed, which can shift the whole
       // layout — needs the real thing.
@@ -6833,6 +6958,7 @@
     panStart = { x: clientX, y: clientY, tx: state.tx, ty: state.ty };
     viewportEl.classList.add("panning");
     state.selectedId = null;
+    state.selectedCell = null;
     state.editingId = null;
     // Deliberately NOT clearing linkFromId/moveSourceId here. Both
     // "pick the other end"/"pick the destination" modes are meant to
@@ -7238,6 +7364,7 @@
     if (!state.current) return;
     state.current.layout = layoutSelect.value;
     state.selectedId = null;
+    state.selectedCell = null;
     renderAll();
     persist();
   });
@@ -7603,14 +7730,16 @@
   });
 
   // Paste a screenshot (or any copied image) straight onto the selected
-  // node as a photo — no need to save it to disk first and go through
-  // "Add photo…". Only kicks in when the paste isn't headed for a text
-  // field (typing into a node, a modal, the title bar, etc. — those get
-  // to handle their own paste, e.g. the note editor's own image-paste
-  // support) and no modal is currently open, so it can't hijack a paste
-  // the person meant for something else.
+  // node — or, if a table cell was last clicked (see state.selectedCell/
+  // handleCellPhotoFiles), onto that cell instead — as a new photo, no
+  // need to save it to disk first and go through "Add photo…". Only
+  // kicks in when the paste isn't headed for a text field (typing into
+  // a node, a cell, a modal, the title bar, etc. — those get to handle
+  // their own paste, e.g. the note editor's own image-paste support) and
+  // no modal is currently open, so it can't hijack a paste the person
+  // meant for something else.
   document.addEventListener("paste", (e) => {
-    if (!state.current || !state.selectedId || state.editingId) return;
+    if (!state.current) return;
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     if (document.querySelector(".modal:not(.hidden)")) return;
@@ -7620,6 +7749,12 @@
     if (!imageItem) return;
     const file = imageItem.getAsFile();
     if (!file) return;
+    if (state.selectedCell) {
+      e.preventDefault();
+      handleCellPhotoFiles(state.selectedCell.nodeId, state.selectedCell.r, state.selectedCell.c, [file]);
+      return;
+    }
+    if (!state.selectedId || state.editingId) return;
     e.preventDefault();
     handleNodePhotoFiles(state.selectedId, [file]);
   });

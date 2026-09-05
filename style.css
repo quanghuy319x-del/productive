@@ -769,24 +769,6 @@ body.signed-out #title-input{ visibility:hidden; }
   pointer-events: none;
 }
 
-/* The textarea in the cell-note popover (see editCellNote in app.js) —
-   styled to match the existing ctx-distance-input field rather than
-   introducing a new input look. */
-.ctx-cell-note-input{
-  width: 100%;
-  box-sizing: border-box;
-  margin: 4px 0 6px;
-  padding: 6px 8px;
-  font: inherit;
-  font-size: 12.5px;
-  resize: vertical;
-  border-radius: 6px;
-  border: 1px solid var(--border, rgba(127,127,127,0.4));
-  background: var(--bg, #fff);
-  color: inherit;
-}
-.ctx-cell-note-input:focus{ outline: none; border-color: var(--accent); }
-
 /* Selection ring: an outline sitting outside the box (not a border-color
    change) so it stays visible no matter the node's own fill/border color —
    e.g. a depth-1 node whose border is already the same hue as its fill. */
