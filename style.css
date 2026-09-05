@@ -732,6 +732,7 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-table-cell-icon svg{ width: 100%; height: 100%; }
 .node-table-cell-icon:hover{ transform: scale(1.2); }
+.node-table-cell-icon.marker-dragging{ opacity: .4; transform: none; }
 .node-table-cell-photo{
   border: 1px solid rgba(0,0,0,0.35);
 }
@@ -902,6 +903,17 @@ body.signed-out #title-input{ visibility:hidden; }
   outline-offset: 3px;
   box-shadow: 0 0 0 3px rgba(51,179,240,0.25);
   transform: scale(1.04);
+}
+
+/* Same highlight, scoped to a single table cell — shown while a
+   photo/note/link/task marker dragged from a node or another cell is
+   hovering over this one specifically (see the td dragover/drop
+   handlers in renderTableGrid). No transform: scale here, since
+   scaling one <td> would distort the table's grid layout. */
+.node-table-cell.marker-drop-target{
+  outline: 2px dashed #33b3f0 !important;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 3px rgba(51,179,240,0.25);
 }
 
 #viewport.linking .node{ cursor: crosshair; }

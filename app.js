@@ -4570,31 +4570,41 @@
   function endMarkerDrag(e) {
     e.currentTarget.classList.remove("marker-dragging");
     markerDragState = null;
-    nodesLayer.querySelectorAll(".node.marker-drop-target").forEach(d => d.classList.remove("marker-drop-target"));
+    nodesLayer.querySelectorAll(".node.marker-drop-target, .node-table-cell.marker-drop-target").forEach(d => d.classList.remove("marker-drop-target"));
   }
 
   // Applies a completed marker drop: merges the dragged data onto the
-  // target node, then (unless the user held Alt/Option to copy) clears it
-  // from the source so it reads as a move rather than a duplication.
-  function completeMarkerDrop(targetId, copy) {
+  // target (a whole node, or — when targetR/targetC are given — one
+  // specific table cell of that node), then (unless the user held Alt/
+  // Option to copy) clears it from the source so it reads as a move
+  // rather than a duplication. The source is likewise either a whole
+  // node or one of its cells, per markerDragState.sourceR/sourceC (set
+  // by startMarkerDrag — see the cell icon strip and the node-level
+  // strip below). Node and cell attach records share the same field
+  // shapes (images/notes/urls/tasks/linkTitles — see getCellAttach and
+  // the getNode*/getCell* pairs above), so every branch below reads and
+  // writes `source`/`target` without caring which kind either one is —
+  // that's what makes node→cell, cell→node, and cell→cell drags all
+  // fall out of the same code as the original node→node case.
+  function completeMarkerDrop(targetId, copy, targetR, targetC) {
     if (!markerDragState) return;
     const { type, sourceNodeId, photoIndex, overflowFrom, sourceR, sourceC } = markerDragState;
-    if (sourceNodeId === targetId) return;
+    const hasTargetCell = targetR != null && targetC != null;
+    const hasSourceCell = sourceR != null && sourceC != null;
+    // Dropping something exactly back where it came from is a no-op —
+    // same node AND same cell (or same node with neither side scoped to
+    // a cell, i.e. a whole-node marker dropped on its own node).
+    if (sourceNodeId === targetId &&
+        (hasSourceCell === hasTargetCell) &&
+        (!hasSourceCell || (sourceR === targetR && sourceC === targetC))) {
+      return;
+    }
     const sourceNode = findNode(sourceNodeId);
-    const target = findNode(targetId);
-    if (!sourceNode || !target) return;
-    // A photo drag started on a table cell (see the cell photo strip
-    // below) carries sourceR/sourceC — resolve the actual photo host to
-    // that cell's attach record instead of the node itself. Cell attach
-    // records share the same {images, image} shape as a node (see
-    // getCellPhotoIds/getNodeImageIds), so every photo branch below
-    // works unchanged either way; only tags/photoNotes are node-only
-    // (carryPhotoTags/carryPhotoNotes safely no-op when the source has
-    // neither field, which a cell attach record never does).
-    const source = ((type.startsWith("photo") || type === "tasks") && sourceR != null && sourceC != null)
-      ? getCellAttach(sourceNode, sourceR, sourceC)
-      : sourceNode;
-    if (!source) return;
+    const targetNode = findNode(targetId);
+    if (!sourceNode || !targetNode) return;
+    const source = hasSourceCell ? getCellAttach(sourceNode, sourceR, sourceC) : sourceNode;
+    const target = hasTargetCell ? getCellAttach(targetNode, targetR, targetC) : targetNode;
+    if (!source || !target) return;
 
     if (type === "tasks") {
       const srcTasks = getNodeTasks(source);
@@ -4663,6 +4673,16 @@
         // Same cleanup as the bulk "photos" case above.
         carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); });
       }
+    } else if (type === "notes") {
+      // A cell's notes move as one unit, since a cell shows a single
+      // combined note icon rather than one icon per note (contrast
+      // "note-single", used for the node-level per-note icons).
+      const srcNotes = getNodeNotes(source);
+      if (!srcNotes.length) return;
+      pushUndo();
+      target.notes = getNodeNotes(target).concat(srcNotes);
+      target.note = "";
+      if (!copy) { source.notes = []; source.note = ""; }
     } else if (type === "note-single") {
       // A single note, dragged by its index in the source's notes — same
       // shape as the "photo" single-thumbnail case above, since each note
@@ -5108,14 +5128,14 @@
         thumb.addEventListener("dragend", endMarkerDrag);
         thumb.addEventListener("click", (e) => { e.stopPropagation(); window.open(fullSrc, "_blank", "noopener"); });
         if (overflow) {
-          thumb.title = `${cellImages.length} photos — click to view the first, drag to move them all onto a node (hold Alt to copy)`;
+          thumb.title = `${cellImages.length} photos — click to view the first, drag to move them all onto a node or cell (hold Alt to copy)`;
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photos", { sourceR: r, sourceC: c }));
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
           badge.textContent = String(cellImages.length);
           thumb.appendChild(badge);
         } else {
-          thumb.title = "Click to view — drag onto a node to move it there (hold Alt to copy) — right-click to remove";
+          thumb.title = "Click to view — drag onto a node or cell to move it there (hold Alt to copy) — right-click to remove";
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photo", { photoIndex: i, sourceR: r, sourceC: c }));
           thumb.addEventListener("contextmenu", (e) => {
             e.preventDefault();
@@ -5140,8 +5160,11 @@
       noteIcon.className = "node-table-cell-icon node-table-cell-note";
       noteIcon.innerHTML = CELL_NOTE_ICON_SVG;
       const notes = getCellNotes(a);
-      noteIcon.title = notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0]);
+      noteIcon.title = (notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0])) + " — drag onto a node or cell to move (hold Alt to copy)";
+      noteIcon.draggable = true;
       noteIcon.addEventListener("click", () => editCellNote(node, r, c));
+      noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes", { sourceR: r, sourceC: c }));
+      noteIcon.addEventListener("dragend", endMarkerDrag);
       strip.appendChild(noteIcon);
     }
     // One icon per link (instead of a single icon), same treatment as
@@ -5152,12 +5175,15 @@
       linkIcon.className = "node-table-cell-icon node-table-cell-link";
       linkIcon.innerHTML = linkIconFor(u);
       const linkTitle = getCellLinkTitle(a, u);
-      linkIcon.title = linkTitle || u;
+      linkIcon.title = (linkTitle || u) + " — drag onto a node or cell to move (hold Alt to copy)";
+      linkIcon.draggable = true;
       attachLinkCommentTooltip(linkIcon, () => getCellLinkComment(getCellAttach(node, r, c), u));
       linkIcon.addEventListener("click", () => openLinkSmart(u, {
         get: () => getCellLinkComment(getCellAttach(node, r, c), u),
         set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
       }));
+      linkIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i, sourceR: r, sourceC: c }));
+      linkIcon.addEventListener("dragend", endMarkerDrag);
       linkIcon.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         openCellUrlManageMenu(node, r, c, i, e.clientX, e.clientY);
@@ -5176,7 +5202,7 @@
       const taskEl = document.createElement("span");
       taskEl.className = "node-table-cell-icon node-table-cell-tasks" + (cellTaskProg.pct >= 1 ? " done" : "");
       taskEl.textContent = `✓${cellTaskProg.done}/${cellTaskProg.total}`;
-      taskEl.title = `${cellTaskProg.done} of ${cellTaskProg.total} tasks done — click to open, drag onto a node to move them there (hold Alt to copy)`;
+      taskEl.title = `${cellTaskProg.done} of ${cellTaskProg.total} tasks done — click to open, drag onto a node or cell to move them there (hold Alt to copy)`;
       taskEl.draggable = true;
       taskEl.addEventListener("click", (e) => { e.stopPropagation(); openTasksModal(node.id, r, c); });
       taskEl.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
@@ -5283,6 +5309,31 @@
           e.preventDefault(); e.stopPropagation();
           if (!requireSignIn()) return;
           openCellAddMenu(node, r, c, e.clientX, e.clientY);
+        });
+
+        // Accept a photo/note/link/task marker dragged from a node or
+        // another cell (see startMarkerDrag/completeMarkerDrop) — stops
+        // propagation so it lands on this one cell instead of also
+        // bubbling up to the whole-node drop handler below.
+        td.addEventListener("dragover", (e) => {
+          if (!markerDragState) return;
+          if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR === r && markerDragState.sourceC === c) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+          td.classList.add("marker-drop-target");
+        });
+        td.addEventListener("dragleave", (e) => {
+          if (e.relatedTarget && td.contains(e.relatedTarget)) return;
+          td.classList.remove("marker-drop-target");
+        });
+        td.addEventListener("drop", (e) => {
+          if (!markerDragState) return;
+          if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR === r && markerDragState.sourceC === c) return;
+          e.preventDefault();
+          e.stopPropagation();
+          td.classList.remove("marker-drop-target");
+          completeMarkerDrop(node.id, e.altKey, r, c);
         });
 
         const textEl = document.createElement("div");
