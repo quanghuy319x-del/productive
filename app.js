@@ -1315,7 +1315,19 @@
     // value overrides it for just this hop. Both are set from the
     // combined "Connector style" picker on the connector's own
     // right-click menu, or in bulk from a parent node's menu.
-    return { id: uid(), text: text || "", children: [], collapsed: false, color: null, struck: false, note: "", notes: [], image: null, images: [], url: null, urls: [], side: null, xGap: null, connectorStyle: null, connectorShape: null };
+    return { id: uid(), text: text || "", children: [], collapsed: false, color: null, struck: false, note: "", notes: [], image: null, images: [], url: null, urls: [], side: null, xGap: null, connectorStyle: null, connectorShape: null, table: null };
+  }
+
+  // A "table" node swaps its normal text label for a small editable grid
+  // (node.table.cells, a rows x cols array of strings) — everything else
+  // about it (drag, color, notes, photos, tasks, connectors...) works the
+  // same as any other node. See addTableChild / computeTableBox / the
+  // table-rendering branch of renderNode.
+  function nodeIsTable(node) {
+    return !!(node && node.table && Array.isArray(node.table.cells) && node.table.cells.length);
+  }
+  function defaultTableCells() {
+    return [["", ""], ["", ""]];
   }
 
   // Nodes used to hold a single `image` data-URL; they now hold an `images`
@@ -3314,23 +3326,78 @@
   // Computes and caches this node's rendered box size (node._w / node._h)
   // based on its current text, so long text wraps and grows the node
   // instead of being clipped or overflowing it.
+
+  // Estimates the pixel size of a table node's grid (see nodeIsTable) by
+  // wrapping each cell's text the same way computeNodeBox wraps a normal
+  // node's label, then taking the widest cell in each column / tallest
+  // cell in each row — the same shape of estimate as the text path below,
+  // just per-cell instead of per-node. The per-column/row pixel widths it
+  // returns are stashed on the node (see computeNodeBox) so renderNode can
+  // build a real <table> whose <col>/<tr> sizes match this estimate
+  // exactly, instead of the two drifting apart.
+  const TABLE_CELL_PAD_X = 16;
+  const TABLE_CELL_PAD_Y = 10;
+  const TABLE_CELL_MIN_W = 44;
+  const TABLE_CELL_MAX_W = 140;
+  const TABLE_CELL_LINE_H = 16;
+  const TABLE_CELL_MIN_H = 26;
+  function computeTableBox(node) {
+    measureCtx.font = `400 12.5px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
+    const cells = node.table.cells;
+    const rows = cells.length;
+    const cols = Math.max(1, ...cells.map(r => r.length));
+    const colWidths = new Array(cols).fill(TABLE_CELL_MIN_W);
+    const rowHeights = new Array(rows).fill(TABLE_CELL_MIN_H);
+    const maxTextW = TABLE_CELL_MAX_W - TABLE_CELL_PAD_X;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cellText = (cells[r] && cells[r][c]) || "";
+        const lines = wrapText(cellText, maxTextW);
+        const widest = Math.max(0, ...lines.map(l => measureW(l)));
+        const w = clamp(Math.ceil(widest) + TABLE_CELL_PAD_X, TABLE_CELL_MIN_W, TABLE_CELL_MAX_W);
+        const h = Math.max(TABLE_CELL_MIN_H, lines.length * TABLE_CELL_LINE_H + TABLE_CELL_PAD_Y);
+        colWidths[c] = Math.max(colWidths[c], w);
+        rowHeights[r] = Math.max(rowHeights[r], h);
+      }
+    }
+    const BORDER = 1;
+    const tableW = colWidths.reduce((a, b) => a + b, 0) + (cols + 1) * BORDER;
+    const tableH = rowHeights.reduce((a, b) => a + b, 0) + (rows + 1) * BORDER;
+    return { tableW, tableH, colWidths, rowHeights };
+  }
+
   function computeNodeBox(node) {
     const depth = node._depth || 0;
+    const padX = depth === 0 ? 56 : 32;
+    const vPad = depth === 0 ? 28 : 16;
+    const baseH = depth === 0 ? ROOT_H : NODE_H;
+    const minW = depth === 0 ? 130 : 56;
+
+    let w, h, lines;
+    if (nodeIsTable(node)) {
+      const tbox = computeTableBox(node);
+      node._tableColWidths = tbox.colWidths;
+      node._tableRowHeights = tbox.rowHeights;
+      // +6 mirrors the SAFETY buffer the text path below uses — a small
+      // cushion so the outer box's own 2px border always fully encloses
+      // the <table> built to these exact column/row pixel widths, instead
+      // of clipping it by a couple of stray pixels.
+      w = Math.max(tbox.tableW + padX + 6, minW);
+      h = Math.max(tbox.tableH + vPad + 6, baseH);
+      lines = [];
+    } else {
     const fontWeight = depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400;
     const fontSize = depth === 0 ? 21 : depth === 3 ? 12.5 : 13.5;
     measureCtx.font = `${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const text = node.text || "(untitled)";
-    const padX = depth === 0 ? 56 : 32;
     // Small safety buffer so a slight mismatch between canvas-measured width
     // and actual rendered width never causes the CSS wrap to break a word
     // mid-letter (e.g. "Risk" -> "Ris"/"k").
     const SAFETY = 6;
     const maxBoxW = depth === 0 ? 340 : 230;
     const maxTextW = maxBoxW - padX;
-    const minW = depth === 0 ? 130 : 56;
 
     const oneLineW = Math.ceil(measureW(text)) + padX + SAFETY;
-    let w, lines;
     if (oneLineW <= maxBoxW && !/\n/.test(text)) {
       w = clamp(oneLineW, minW, maxBoxW);
       lines = [text];
@@ -3341,9 +3408,8 @@
     }
 
     const lineHeight = depth === 0 ? 24 : depth === 3 ? 16 : 17;
-    const vPad = depth === 0 ? 28 : 16;
-    const baseH = depth === 0 ? ROOT_H : NODE_H;
-    const h = Math.max(baseH, Math.ceil(lines.length * lineHeight + vPad));
+    h = Math.max(baseH, Math.ceil(lines.length * lineHeight + vPad));
+    }
 
     // Reserve room inside the box for the combined note/link/photo strip,
     // which renders in normal flow below the text (see renderNode) instead
@@ -4119,6 +4185,61 @@
     persist();
   }
 
+  // Builds the actual <table> for a table node (see nodeIsTable) inside
+  // its div, using the exact column widths / row heights computeNodeBox
+  // (via computeTableBox) already worked out — so what's on screen always
+  // matches the box the layout/connector code positioned it with. Every
+  // cell is its own small contentEditable field; edits commit on blur
+  // (see the "blur" listener below) rather than live per-keystroke, which
+  // keeps this simple at the cost of the box only resizing to fit new
+  // text once you click away from the cell.
+  function renderTableGrid(div, node) {
+    const cells = node.table.cells;
+    const cols = Math.max(1, ...cells.map(r => r.length));
+    const colWidths = node._tableColWidths || new Array(cols).fill(TABLE_CELL_MIN_W);
+    const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
+
+    const table = document.createElement("table");
+    table.className = "node-table";
+    table.addEventListener("mousedown", (e) => e.stopPropagation());
+    table.addEventListener("pointerdown", (e) => e.stopPropagation());
+    table.addEventListener("dblclick", (e) => e.stopPropagation());
+
+    const colgroup = document.createElement("colgroup");
+    colWidths.forEach((w) => {
+      const col = document.createElement("col");
+      col.style.width = w + "px";
+      colgroup.appendChild(col);
+    });
+    table.appendChild(colgroup);
+
+    const tbody = document.createElement("tbody");
+    cells.forEach((row, r) => {
+      const tr = document.createElement("tr");
+      tr.style.height = (rowHeights[r] || TABLE_CELL_MIN_H) + "px";
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement("td");
+        td.contentEditable = "true";
+        td.spellcheck = false;
+        td.textContent = row[c] || "";
+        td.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id); });
+        td.addEventListener("blur", () => {
+          const newText = td.textContent;
+          if (newText === (cells[r][c] || "")) return;
+          if (!requireSignIn()) { td.textContent = cells[r][c] || ""; return; }
+          pushUndo();
+          cells[r][c] = newText;
+          renderAll();
+          persist();
+        });
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    div.appendChild(table);
+  }
+
   function renderNode(node, ox, oy) {
     const depth = node._depth;
     const w = node._w || NODE_H;
@@ -4203,6 +4324,9 @@
     // plain contentEditable text node exactly like every other node, so
     // typing, caret placement, and autosizeEditingBox keep working
     // unchanged.
+    if (nodeIsTable(node)) {
+      renderTableGrid(div, node);
+    } else {
     if (depth === 0 && node.id !== state.editingId) {
       const titleMarquee = document.createElement("span");
       titleMarquee.className = "node-title-marquee";
@@ -4233,6 +4357,7 @@
         e.preventDefault();
         handleNodePhotoFiles(node.id, [file]);
       });
+    }
     }
 
     // The root node doubles as a small live clock — current time,
@@ -5262,6 +5387,35 @@
     return n;
   }
 
+  // Same idea as addChild, but the new node holds a small editable grid
+  // (see nodeIsTable) instead of a plain text label — offered from the
+  // node right-click menu as "Add table child".
+  function addTableChild(parentId) {
+    if (!requireSignIn()) return null;
+    const parent = findNode(parentId);
+    if (!parent) return null;
+    pushUndo();
+    const n = newNode("");
+    n.table = { cells: defaultTableCells() };
+    parent.children.push(n);
+    parent.collapsed = false;
+    return n;
+  }
+
+  function tableAddRow(node) {
+    const cols = (node.table.cells[0] || [""]).length;
+    node.table.cells.push(new Array(cols).fill(""));
+  }
+  function tableAddColumn(node) {
+    node.table.cells.forEach(row => row.push(""));
+  }
+  function tableRemoveRow(node) {
+    if (node.table.cells.length > 1) node.table.cells.pop();
+  }
+  function tableRemoveColumn(node) {
+    if (node.table.cells[0].length > 1) node.table.cells.forEach(row => row.pop());
+  }
+
   function addSibling(nodeId) {
     if (!requireSignIn()) return null;
     const node = findNode(nodeId);
@@ -5577,7 +5731,9 @@
     // keyboard, but neither is reliable on a touchscreen — a double-tap
     // doesn't always synthesize a dblclick event, and there's no F2 key.
     // Long-press already opens this menu on touch, so put Rename here too.
-    items.push(["Rename", () => startEdit(node.id)]);
+    if (!nodeIsTable(node)) {
+      items.push(["Rename", () => startEdit(node.id)]);
+    }
     // Move-to-new-parent, as an alternative to dragging the node across
     // the canvas (handy when the destination is far away or off-screen).
     // The root has no parent, so it can never be the thing being moved —
@@ -5600,6 +5756,20 @@
     items.push([state.highlightId === node.id ? "Remove highlight" : "Highlight branch", () => setHighlight(node.id)]);
     if (node.ox || node.oy) {
       items.push(["Reset position", () => { pushUndo(); delete node.ox; delete node.oy; renderAll(); persist(); }]);
+    }
+    items.push(["Add table child", () => {
+      const n = addTableChild(node.id);
+      if (n) { state.selectedId = n.id; renderAll(); persist(); }
+    }]);
+    if (nodeIsTable(node)) {
+      items.push(["Add row", () => { pushUndo(); tableAddRow(node); renderAll(); persist(); }]);
+      items.push(["Add column", () => { pushUndo(); tableAddColumn(node); renderAll(); persist(); }]);
+      if (node.table.cells.length > 1) {
+        items.push(["Remove row", () => { pushUndo(); tableRemoveRow(node); renderAll(); persist(); }]);
+      }
+      if (node.table.cells[0].length > 1) {
+        items.push(["Remove column", () => { pushUndo(); tableRemoveColumn(node); renderAll(); persist(); }]);
+      }
     }
     items.push(["Add link…", () => addNodeUrl(node.id)]);
     items.push([nodeHasNotes(node) ? `Notes (${getNodeNotes(node).length})…` : "Add note…", () => openNoteModal(node.id)]);
@@ -5999,7 +6169,9 @@
   function nodeBranchToOutline(node) {
     const lines = [];
     (function walk(n, depth) {
-      const label = (n.text || "(untitled)").trim() || "(untitled)";
+      const label = nodeIsTable(n)
+        ? n.table.cells.map(row => row.map(c => c || "").join(" | ")).join(" / ") || "(empty table)"
+        : ((n.text || "(untitled)").trim() || "(untitled)");
       const indent = "  ".repeat(depth);
       const marker = depth ? "- " : "";
       lines.push(indent + marker + label);

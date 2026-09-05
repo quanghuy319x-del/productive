@@ -642,6 +642,39 @@ body.signed-out #title-input{ visibility:hidden; }
   touch-action: manipulation;
 }
 
+/* A "table" node (see nodeIsTable in app.js) swaps the usual text label
+   for this grid. table-layout:fixed plus the JS-set <col> widths/<tr>
+   heights (matching computeTableBox's estimate) keep it from reflowing
+   away from the size the layout/connector code positioned the node's box
+   with. Border color rides on --sel-color (set alongside the node's own
+   branch-color styling above) so the grid lines pick up the branch color
+   automatically instead of needing their own per-depth rule. */
+.node-table{
+  border-collapse: collapse;
+  table-layout: fixed;
+  cursor: default;
+  user-select: text;
+  touch-action: manipulation;
+}
+.node-table td{
+  border: 1px solid var(--sel-color, currentColor);
+  opacity: 1;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  line-height: 16px;
+  font-weight: 400;
+  color: inherit;
+  vertical-align: top;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  outline: none;
+  cursor: text;
+}
+.node-table td:focus{
+  background: rgba(255,255,255,0.10);
+}
+
 /* Selection ring: an outline sitting outside the box (not a border-color
    change) so it stays visible no matter the node's own fill/border color —
    e.g. a depth-1 node whose border is already the same hue as its fill. */

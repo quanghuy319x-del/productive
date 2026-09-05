@@ -207,6 +207,15 @@ only see files it created itself — never your other Drive files.
   helps if that folder itself is synced by something like Dropbox).
   Needs a one-time developer setup — see "Google Drive sync setup" above.
 
+- **Table nodes** — right-click any node and choose "Add table child" to
+  add a child that's a small editable grid (2×2 to start) instead of a
+  plain text label — handy for quick comparisons, specs, or any info
+  that reads better in rows and columns. Click into a cell to type;
+  the change saves once you click elsewhere. Right-click a table node
+  itself for "Add row" / "Add column" / "Remove row" / "Remove column".
+  Everything else about it works like any other node — drag it, color
+  its branch, collapse it, attach notes/photos/tasks to it, and so on.
+
 ## Notes
 
 - Google Drive sync keeps whichever copy of a map has the most recent
