@@ -3146,7 +3146,10 @@
     updateTrashBadge();
     for (const m of visibleMaps) {
       const li = document.createElement("li");
-      li.className = "map-item" + (state.current && m.id === state.current.id ? " active" : "");
+      const isMoveTarget = !!state.moveSourceId && (!state.current || m.id !== state.current.id);
+      li.className = "map-item"
+        + (state.current && m.id === state.current.id ? " active" : "")
+        + (isMoveTarget ? " move-target" : "");
       const star = document.createElement("span");
       star.className = "item-star" + (m.favorite ? " favorited" : "");
       star.textContent = m.favorite ? "★" : "☆";
@@ -3159,7 +3162,12 @@
       del.title = "Move to trash";
       del.addEventListener("click", (e) => { e.stopPropagation(); deleteMap(m.id); });
       li.append(star, dot, name, meta, del);
-      li.addEventListener("click", () => openMap(m.id));
+      if (isMoveTarget) {
+        li.title = "Move here";
+        li.addEventListener("click", () => completeMoveToMap(m.id));
+      } else {
+        li.addEventListener("click", () => openMap(m.id));
+      }
       listEl.appendChild(li);
     }
   }
@@ -6562,7 +6570,7 @@
     } else if (state.moveSourceId) {
       viewportEl.classList.remove("linking");
       viewportEl.classList.add("moving");
-      hintBar.innerHTML = `<span>Right-click the new parent and choose "Move to here" &middot; <kbd>Esc</kbd> cancel</span>`;
+      hintBar.innerHTML = `<span>Right-click the new parent and choose "Move to here" &middot; or click a different map in the sidebar to move it there &middot; <kbd>Esc</kbd> cancel</span>`;
     } else {
       viewportEl.classList.remove("linking");
       viewportEl.classList.remove("moving");
@@ -6601,12 +6609,14 @@
     state.linkFromId = null;
     state.editingId = null;
     renderAll();
+    renderSidebar(); // highlights every OTHER map as a drop target too (see completeMoveToMap)
   }
 
   function cancelMove() {
     if (!state.moveSourceId) return;
     state.moveSourceId = null;
     renderAll();
+    renderSidebar();
   }
 
   // Whether targetId is a legal drop point for the pending move: not the
@@ -6626,11 +6636,99 @@
 
   function completeMoveTo(targetId) {
     const srcId = state.moveSourceId;
-    if (!canMoveSourceTo(targetId)) { state.moveSourceId = null; renderAll(); return; }
+    if (!canMoveSourceTo(targetId)) { state.moveSourceId = null; renderAll(); renderSidebar(); return; }
     state.moveSourceId = null;
     pushUndo();
     reparentNode(srcId, targetId);
+    renderSidebar();
     persist();
+  }
+
+  // The cross-map counterpart of completeMoveTo: instead of picking a new
+  // parent within the same tree (right-click → "Move to here"), the person
+  // picks a whole different map from the sidebar while a move is pending
+  // (see renderSidebar's .move-target rows). The moved branch lands as a
+  // new top-level child of that map's root — same one-click simplicity as
+  // the same-map version. Once it's there, opening that map and dragging
+  // it deeper works exactly like any other reparent.
+  async function completeMoveToMap(targetMapId) {
+    const srcId = state.moveSourceId;
+    const src = findNode(srcId);
+    const parent = findParent(srcId);
+    const targetMap = state.maps.find(m => m.id === targetMapId);
+    state.moveSourceId = null;
+    if (!src || !parent || !targetMap || !state.current || targetMap.id === state.current.id) {
+      renderAll();
+      renderSidebar();
+      return;
+    }
+    pushUndo();
+
+    // Detach from the source map's tree (mirrors reparentNode's removal
+    // half) and drop any cross-links that touched the moved subtree — a
+    // link is two node ids inside ONE map's `links` array, so a link to a
+    // node about to live in a different map can't be expressed anymore.
+    const movedIds = new Set();
+    (function collect(n) { movedIds.add(n.id); (n.children || []).forEach(collect); })(src);
+    parent.children = parent.children.filter(c => c.id !== srcId);
+    if (state.current.links && state.current.links.length) {
+      state.current.links = state.current.links.filter(l => !movedIds.has(l.a) && !movedIds.has(l.b));
+    }
+    if (state.selectedId && movedIds.has(state.selectedId)) state.selectedId = parent.id;
+    if (state.highlightId && movedIds.has(state.highlightId)) state.highlightId = null;
+
+    // The destination map may not have been opened yet this session, so
+    // it could still be missing fields the running code assumes exist —
+    // bring it up to date with the same one-time migrations openMap()
+    // applies before writing into it.
+    ensureTheme(targetMap);
+    ensureLinks(targetMap);
+    ensureLayout(targetMap);
+    ensureFavorite(targetMap);
+    ensureTrash(targetMap);
+    ensureSidesRepaired(targetMap);
+    ensureAffirmationMigrated(targetMap);
+    if (!targetMap._photosMigrated) await ensurePhotosMigrated(targetMap);
+
+    // The moved subtree's own photos live in PhotoDB tagged with the
+    // source map's id (see PhotoDB/loadPhotoCacheForMap) — re-tag every
+    // one to the destination map so it isn't orphaned there and actually
+    // loads once that map is opened.
+    const photoIds = new Set();
+    (function collectPhotoIds(n) {
+      getNodeImageIds(n).forEach(id => photoIds.add(id));
+      getCellImageIds(n).forEach(id => photoIds.add(id));
+      (n.children || []).forEach(collectPhotoIds);
+    })(src);
+    for (const id of photoIds) {
+      const data = photoCache.get(id);
+      if (data === undefined) continue; // already gone/never loaded — nothing to carry over
+      try {
+        await PhotoDB.put({ id, mapId: targetMap.id, data });
+        photoCache.delete(id); // no longer part of the currently-open (source) map
+      } catch (e) { console.error("Moving photo to new map failed", e); }
+    }
+
+    // Same reset reparentNode applies when a branch lands under a new
+    // parent — a manual nudge offset, an explicit left/right or Timeline
+    // above/below override, a custom connector distance, and a top-level
+    // branch color all only ever made sense relative to the old map, not
+    // this one.
+    targetMap.root.collapsed = false;
+    if (!targetMap.root.children) targetMap.root.children = [];
+    targetMap.root.children.push(src);
+    src.ox = 0; src.oy = 0; src.side = null; src.vSide = null; src._autoSide = null; src.xGap = null; src.color = null;
+    collectDescendants(src).forEach(d => { d.ox = 0; d.oy = 0; d._autoSide = null; d.color = null; });
+
+    try {
+      await DB.put(targetMap);
+      await FolderDB.save(targetMap);
+      await DriveDB.save(targetMap);
+    } catch (e) { console.error("Saving the moved-to map failed", e); }
+
+    renderAll();
+    renderSidebar();
+    persist(); // saves state.current (the source map) with the branch removed
   }
 
   function linkExists(aId, bId) {
@@ -8157,25 +8255,150 @@
   // youtubeVideoId and the urlIcon/linkIcon click handlers). Any other
   // link still opens normally with window.open.
   const videoModal = $("#video-modal");
+  const videoModalCard = $(".video-modal-card");
   const videoModalIframe = $("#video-modal-iframe");
+  const linkPreviewIframe = $("#link-preview-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
   const videoModalCloseBtn = $("#video-modal-close");
   const videoModalCommentRow = $("#video-modal-comment-row");
   const videoModalCommentInput = $("#video-modal-comment-input");
   let videoModalCommentCtx = null;
-  function openVideoModal(url, ytId, commentCtx) {
-    videoModalIframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(ytId)}?autoplay=1`;
+
+  // Remembers where each video was last playing, keyed by YouTube video
+  // id, so reopening the same video resumes instead of starting over.
+  // This lives in localStorage rather than the map's own data (persist())
+  // since it's a per-browser playback preference, not part of the map
+  // itself — no reason to sync it via Google Drive or undo/redo.
+  const YT_POSITIONS_KEY = "branchline:yt-positions";
+  function loadYtPositions() {
+    try { return JSON.parse(localStorage.getItem(YT_POSITIONS_KEY)) || {}; }
+    catch { return {}; }
+  }
+  function getYtPosition(ytId) {
+    return loadYtPositions()[ytId] || 0;
+  }
+  function saveYtPosition(ytId, seconds) {
+    if (!ytId || !Number.isFinite(seconds)) return;
+    const positions = loadYtPositions();
+    positions[ytId] = Math.max(0, Math.floor(seconds));
+    try { localStorage.setItem(YT_POSITIONS_KEY, JSON.stringify(positions)); } catch {}
+  }
+
+  // Lazily loads the YouTube IFrame Player API — only needed the first
+  // time a video is actually opened. A plain <iframe src="...embed/...">
+  // (the old approach) has no way to report back the current playback
+  // time, so tracking position requires the real player object.
+  let ytApiReadyPromise = null;
+  function ensureYtApi() {
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    if (ytApiReadyPromise) return ytApiReadyPromise;
+    ytApiReadyPromise = new Promise((resolve) => {
+      const prevReady = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prevReady) prevReady(); resolve(); };
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
+    });
+    return ytApiReadyPromise;
+  }
+
+  // One player instance is created and reused across opens (loadVideoById
+  // swaps the video in place) rather than tearing it down each time.
+  let ytPlayer = null;
+  let ytPlayerCurrentId = null;
+  let ytSaveTimer = null;
+  function startYtSaveTimer() {
+    stopYtSaveTimer();
+    ytSaveTimer = setInterval(() => {
+      if (ytPlayer && ytPlayerCurrentId && typeof ytPlayer.getCurrentTime === "function") {
+        try { saveYtPosition(ytPlayerCurrentId, ytPlayer.getCurrentTime()); } catch {}
+      }
+    }, 4000);
+  }
+  function stopYtSaveTimer() {
+    if (ytSaveTimer) { clearInterval(ytSaveTimer); ytSaveTimer = null; }
+  }
+  function handleYtStateChange(e) {
+    if (!ytPlayerCurrentId) return;
+    if (e.data === YT.PlayerState.PAUSED) {
+      try { saveYtPosition(ytPlayerCurrentId, ytPlayer.getCurrentTime()); } catch {}
+    } else if (e.data === YT.PlayerState.ENDED) {
+      // Finished videos resume from the start next time, not the last frame.
+      saveYtPosition(ytPlayerCurrentId, 0);
+    }
+  }
+
+  // Opens the shared modal for any link — a YouTube video/short gets the
+  // resumable player above; anything else gets previewed in a sandboxed
+  // iframe right in the modal instead of jumping to a new tab. The two
+  // preview modes use separate <iframe> elements (video-modal-iframe /
+  // link-preview-iframe) so the YouTube player object, once created, can
+  // stay attached to its own iframe permanently — swapping that same
+  // element's .src to an arbitrary site would leave the player object
+  // pointed at a page that no longer understands its postMessage calls.
+  async function openVideoModal(url, ytId, commentCtx) {
     videoModalOpenLink.href = url;
+    videoModalOpenLink.textContent = ytId ? "Open on YouTube ↗" : "Open in new tab ↗";
     videoModalCommentCtx = commentCtx || null;
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     videoModal.classList.remove("hidden");
+    videoModalCard.classList.toggle("is-page-preview", !ytId);
     if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
+
+    if (!ytId) {
+      // Plain link: no player API involved, just embed the page. Pause
+      // (don't destroy) any YouTube player so its own iframe is left
+      // intact and ready to resume next time a video link is opened.
+      if (ytPlayer && typeof ytPlayer.pauseVideo === "function") {
+        try { ytPlayer.pauseVideo(); } catch {}
+      }
+      stopYtSaveTimer();
+      ytPlayerCurrentId = null;
+      videoModalIframe.classList.add("hidden");
+      linkPreviewIframe.classList.remove("hidden");
+      linkPreviewIframe.src = url;
+      return;
+    }
+
+    linkPreviewIframe.classList.add("hidden");
+    linkPreviewIframe.src = "";
+    videoModalIframe.classList.remove("hidden");
+
+    ytPlayerCurrentId = ytId;
+    const startSeconds = getYtPosition(ytId);
+    await ensureYtApi();
+    // Bail if the modal was closed or switched to a different video while
+    // the API script was still loading.
+    if (ytPlayerCurrentId !== ytId || videoModal.classList.contains("hidden")) return;
+
+    if (ytPlayer && typeof ytPlayer.loadVideoById === "function") {
+      ytPlayer.loadVideoById({ videoId: ytId, startSeconds });
+      startYtSaveTimer();
+    } else {
+      ytPlayer = new YT.Player(videoModalIframe, {
+        videoId: ytId,
+        host: "https://www.youtube-nocookie.com",
+        playerVars: { autoplay: 1, start: Math.floor(startSeconds), playsinline: 1 },
+        events: {
+          onReady: () => startYtSaveTimer(),
+          onStateChange: handleYtStateChange,
+        },
+      });
+    }
   }
   function closeVideoModal() {
+    if (ytPlayer && ytPlayerCurrentId && typeof ytPlayer.getCurrentTime === "function") {
+      try { saveYtPosition(ytPlayerCurrentId, ytPlayer.getCurrentTime()); } catch {}
+    }
+    stopYtSaveTimer();
+    if (ytPlayer && typeof ytPlayer.stopVideo === "function") {
+      try { ytPlayer.stopVideo(); } catch {} // stop playback
+    }
+    linkPreviewIframe.src = ""; // stop loading/any media on generic pages
     videoModal.classList.add("hidden");
-    videoModalIframe.src = ""; // stop playback
     videoModalCommentCtx = null;
+    ytPlayerCurrentId = null;
   }
   videoModalCloseBtn.addEventListener("click", closeVideoModal);
   videoModal.addEventListener("click", (e) => { if (e.target === videoModal) closeVideoModal(); });
@@ -8237,16 +8460,17 @@
   linkCommentModalInput.addEventListener("input", () => autoGrowTextarea(linkCommentModalInput));
 
   // Shared by every link click handler (node links, table-cell links):
-  // opens the in-app player for a YouTube URL, otherwise falls back to
-  // the normal new-tab behavior. `commentCtx` (optional) is a
-  // { get, set } pair scoped to that one link's comment (see
-  // getLinkComment/setLinkComment and their cell equivalents), letting
-  // the modal's comment box read and save without knowing whether the
-  // link lives on a node or inside a table cell.
+  // opens every link inside the mind map via the shared modal — YouTube
+  // videos/shorts get the resumable player, everything else gets a
+  // sandboxed preview iframe (with an "Open in new tab ↗" escape hatch
+  // for the — fairly common — sites that refuse to be framed at all).
+  // `commentCtx` (optional) is a { get, set } pair scoped to that one
+  // link's comment (see getLinkComment/setLinkComment and their cell
+  // equivalents), letting the modal's comment box read and save without
+  // knowing whether the link lives on a node or inside a table cell.
   function openLinkSmart(url, commentCtx) {
     const ytId = youtubeVideoId(url);
-    if (ytId) openVideoModal(url, ytId, commentCtx);
-    else window.open(url, "_blank", "noopener");
+    openVideoModal(url, ytId, commentCtx);
   }
 
   function openNodePhotoPicker(nodeId) {

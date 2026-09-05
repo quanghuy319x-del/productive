@@ -154,6 +154,19 @@ html,body{
   color: var(--text);
   border-color: color-mix(in srgb, var(--accent) 35%, transparent);
 }
+/* Shown on every OTHER map while a node move is pending (see
+   state.moveSourceId) — clicking one drops the node there instead of the
+   row's usual "open this map" behavior. Solid gold dashed outline matches
+   the .node.drop-target treatment used for reparenting within one map. */
+.map-item.move-target{
+  cursor: alias;
+  border-color: var(--accent);
+  border-style: dashed;
+}
+.map-item.move-target:hover{
+  background: rgba(224,176,74,0.14);
+  box-shadow: 0 0 0 2px rgba(224,176,74,0.35);
+}
 .map-item .dot{
   width:6px; height:6px; border-radius:50%;
   background: var(--text-faint);
@@ -2987,6 +3000,15 @@ kbd{
   width: 100%;
   height: 100%;
   border: 0;
+}
+#link-preview-iframe.hidden{ display:none; }
+/* Regular web pages don't fit a 16:9 box the way a video does — when
+   previewing a non-YouTube link, the modal opens taller so there's
+   actually room to read/use the page. */
+.video-modal-card.is-page-preview{ width: 1100px; }
+.video-modal-card.is-page-preview .video-modal-frame-wrap{
+  aspect-ratio: auto;
+  height: 80vh;
 }
 .video-modal-actions{
   display:flex;
