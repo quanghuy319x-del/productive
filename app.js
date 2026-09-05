@@ -1859,6 +1859,20 @@
   function getLinkTitle(node, url) {
     return (node && node.linkTitles && node.linkTitles[url]) || "";
   }
+  // A short freeform note about one specific link, independent of its
+  // title — stored the same way as linkTitles (an { [url]: text } map on
+  // the node), and surfaced as a tooltip when hovering the link's icon
+  // (see attachLinkCommentTooltip) rather than inside any menu text.
+  function getLinkComment(node, url) {
+    return (node && node.linkComments && node.linkComments[url]) || "";
+  }
+  function setLinkComment(node, url, comment) {
+    if (!node || !url) return;
+    if (!node.linkComments) node.linkComments = {};
+    const clean = (comment || "").trim();
+    if (clean) node.linkComments[url] = clean;
+    else delete node.linkComments[url];
+  }
   function setLinkTitle(node, url, title) {
     if (!node || !url) return;
     if (!node.linkTitles) node.linkTitles = {};
@@ -2152,6 +2166,18 @@
     if (clean) a.linkTitles[url] = clean;
     else delete a.linkTitles[url];
   }
+  // Same per-link comment as getLinkComment/setLinkComment above, just
+  // scoped to a table cell's own attach record.
+  function getCellLinkComment(a, url) {
+    return (a && a.linkComments && a.linkComments[url]) || "";
+  }
+  function setCellLinkComment(a, url, comment) {
+    if (!a || !url) return;
+    if (!a.linkComments) a.linkComments = {};
+    const clean = (comment || "").trim();
+    if (clean) a.linkComments[url] = clean;
+    else delete a.linkComments[url];
+  }
   // Same "[icon] title" row-label builder as linkRowFragment above, just
   // reading a cell's own linkTitles instead of a node's.
   function cellLinkRowFragment(u, a) {
@@ -2317,6 +2343,12 @@
     rename.title = "Rename";
     rename.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); renameNodeUrl(nodeId, index); });
     it.appendChild(rename);
+    const comment = document.createElement("span");
+    comment.className = "ctx-item-remove ctx-item-comment";
+    comment.textContent = "💬";
+    comment.title = "Comment";
+    comment.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); commentOnNodeUrl(nodeId, index); });
+    it.appendChild(comment);
     const rm = document.createElement("span");
     rm.className = "ctx-item-remove";
     rm.textContent = "✕";
@@ -2326,6 +2358,26 @@
     it.addEventListener("click", () => { closeContextMenu(); editNodeUrl(nodeId, index); });
     ctxMenu.appendChild(it);
     positionContextMenu(x, y);
+  }
+
+  // Native prompt for adding/editing a link's comment (see
+  // getLinkComment/setLinkComment) — the "💬" button next to a link's
+  // rename/remove buttons in its right-click menu. The comment only
+  // ever shows as a hover tooltip on the link's own icon (see
+  // attachLinkCommentTooltip); it has no other effect on the link.
+  function commentOnNodeUrl(nodeId, index) {
+    if (!requireSignIn()) return;
+    const node = findNode(nodeId);
+    if (!node) return;
+    const urls = getNodeUrls(node);
+    const u = urls[index];
+    if (!u) return;
+    const input = window.prompt("Comment for this link (shown on hover, leave blank to remove):", getLinkComment(node, u));
+    if (input === null) return; // cancelled
+    pushUndo();
+    setLinkComment(node, u, input);
+    renderAll();
+    persist();
   }
 
   function newMindMap(title) {
@@ -2543,6 +2595,51 @@
     ctxMenu.style.top = top + "px";
   }
   const hintBar = $("#hint-bar");
+
+  // Floating tooltip for a link's comment (see getLinkComment/
+  // getCellLinkComment) — a single shared element reused for every link
+  // icon rather than one per icon, shown on mouseenter and hidden on
+  // mouseleave. Deliberately not the native `title` attribute: that's
+  // already used for the link's own title/URL, and the native tooltip
+  // can't be styled or hold multi-line text comfortably.
+  let linkCommentTooltipEl = null;
+  function getLinkCommentTooltipEl() {
+    if (!linkCommentTooltipEl) {
+      linkCommentTooltipEl = document.createElement("div");
+      linkCommentTooltipEl.className = "link-comment-tooltip";
+      document.body.appendChild(linkCommentTooltipEl);
+    }
+    return linkCommentTooltipEl;
+  }
+  function hideLinkCommentTooltip() {
+    if (linkCommentTooltipEl) linkCommentTooltipEl.classList.remove("visible");
+  }
+  function showLinkCommentTooltip(anchorEl, text) {
+    const tip = getLinkCommentTooltipEl();
+    tip.textContent = text;
+    tip.classList.add("visible");
+    const margin = 8;
+    const rect = anchorEl.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    let left = rect.left + rect.width / 2 - tipRect.width / 2;
+    left = clamp(left, margin, Math.max(margin, window.innerWidth - tipRect.width - margin));
+    let top = rect.top - tipRect.height - 8;
+    if (top < margin) top = rect.bottom + 8; // flip below if no room above
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  }
+  // Wires up the hover-to-show-comment behavior on one link icon element.
+  // `getComment` is called fresh on every hover (rather than the comment
+  // being baked in once) so an edit made through the right-click menu is
+  // reflected the next time the same icon is hovered, without needing a
+  // full re-render.
+  function attachLinkCommentTooltip(el, getComment) {
+    el.addEventListener("mouseenter", () => {
+      const comment = getComment();
+      if (comment) showLinkCommentTooltip(el, comment);
+    });
+    el.addEventListener("mouseleave", hideLinkCommentTooltip);
+  }
 
   /* ---------------- persistence flow ---------------- */
 
@@ -4761,6 +4858,12 @@
     rename.title = "Rename";
     rename.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); renameCellUrl(node, r, c, index); });
     it.appendChild(rename);
+    const comment = document.createElement("span");
+    comment.className = "ctx-item-remove ctx-item-comment";
+    comment.textContent = "💬";
+    comment.title = "Comment";
+    comment.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); commentOnCellUrl(node, r, c, index); });
+    it.appendChild(comment);
     const rm = document.createElement("span");
     rm.className = "ctx-item-remove";
     rm.textContent = "✕";
@@ -4770,6 +4873,22 @@
     it.addEventListener("click", () => { closeContextMenu(); editCellUrlByIndex(node, r, c, index); });
     ctxMenu.appendChild(it);
     positionContextMenu(x, y);
+  }
+
+  // Same comment prompt as commentOnNodeUrl, scoped to one table cell's
+  // link (see getCellLinkComment/setCellLinkComment).
+  function commentOnCellUrl(node, r, c, index) {
+    if (!requireSignIn()) return;
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a);
+    const u = urls[index];
+    if (!u) return;
+    const input = window.prompt("Comment for this link (shown on hover, leave blank to remove):", getCellLinkComment(a, u));
+    if (input === null) return; // cancelled
+    pushUndo();
+    setCellLinkComment(a, u, input);
+    renderAll();
+    persist();
   }
 
   // The "+" button's menu — same reused ctx-menu the node right-click
@@ -4999,7 +5118,8 @@
       linkIcon.innerHTML = linkIconFor(u);
       const linkTitle = getCellLinkTitle(a, u);
       linkIcon.title = linkTitle || u;
-      linkIcon.addEventListener("click", () => window.open(u, "_blank", "noopener"));
+      attachLinkCommentTooltip(linkIcon, () => getCellLinkComment(getCellAttach(node, r, c), u));
+      linkIcon.addEventListener("click", () => openLinkSmart(u));
       linkIcon.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         openCellUrlManageMenu(node, r, c, i, e.clientX, e.clientY);
@@ -5489,12 +5609,13 @@
         urlIcon.innerHTML = linkIconFor(u);
         const linkTitle = getLinkTitle(node, u);
         urlIcon.title = linkTitle || u;
+        attachLinkCommentTooltip(urlIcon, () => getLinkComment(findNode(node.id) || node, u));
         urlIcon.draggable = true;
         urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i }));
         urlIcon.addEventListener("dragend", endMarkerDrag);
         urlIcon.addEventListener("click", (e) => {
           e.stopPropagation();
-          window.open(u, "_blank", "noopener");
+          openLinkSmart(u);
         });
         urlIcon.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -7987,6 +8108,37 @@
   const photoModal = $("#photo-modal");
   const photoModalImg = $("#photo-modal-img");
   let pendingPhotoNodeId = null;
+
+  // Embedded YouTube player modal — opened in place of a new tab when a
+  // link icon whose URL is a YouTube video/short is clicked (see
+  // youtubeVideoId and the urlIcon/linkIcon click handlers). Any other
+  // link still opens normally with window.open.
+  const videoModal = $("#video-modal");
+  const videoModalIframe = $("#video-modal-iframe");
+  const videoModalOpenLink = $("#video-modal-open-link");
+  const videoModalCloseBtn = $("#video-modal-close");
+  function openVideoModal(url, ytId) {
+    videoModalIframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(ytId)}?autoplay=1`;
+    videoModalOpenLink.href = url;
+    videoModal.classList.remove("hidden");
+  }
+  function closeVideoModal() {
+    videoModal.classList.add("hidden");
+    videoModalIframe.src = ""; // stop playback
+  }
+  videoModalCloseBtn.addEventListener("click", closeVideoModal);
+  videoModal.addEventListener("click", (e) => { if (e.target === videoModal) closeVideoModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !videoModal.classList.contains("hidden")) closeVideoModal();
+  });
+  // Shared by every link click handler (node links, table-cell links):
+  // opens the in-app player for a YouTube URL, otherwise falls back to
+  // the normal new-tab behavior.
+  function openLinkSmart(url) {
+    const ytId = youtubeVideoId(url);
+    if (ytId) openVideoModal(url, ytId);
+    else window.open(url, "_blank", "noopener");
+  }
 
   function openNodePhotoPicker(nodeId) {
     if (!requireSignIn()) return;
