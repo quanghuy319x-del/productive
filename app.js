@@ -5119,7 +5119,10 @@
       const linkTitle = getCellLinkTitle(a, u);
       linkIcon.title = linkTitle || u;
       attachLinkCommentTooltip(linkIcon, () => getCellLinkComment(getCellAttach(node, r, c), u));
-      linkIcon.addEventListener("click", () => openLinkSmart(u));
+      linkIcon.addEventListener("click", () => openLinkSmart(u, {
+        get: () => getCellLinkComment(getCellAttach(node, r, c), u),
+        set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
+      }));
       linkIcon.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         openCellUrlManageMenu(node, r, c, i, e.clientX, e.clientY);
@@ -5615,7 +5618,10 @@
         urlIcon.addEventListener("dragend", endMarkerDrag);
         urlIcon.addEventListener("click", (e) => {
           e.stopPropagation();
-          openLinkSmart(u);
+          openLinkSmart(u, {
+            get: () => getLinkComment(findNode(node.id) || node, u),
+            set: (v) => setLinkComment(findNode(node.id) || node, u, v),
+          });
         });
         urlIcon.addEventListener("contextmenu", (e) => {
           e.preventDefault();
@@ -8117,26 +8123,50 @@
   const videoModalIframe = $("#video-modal-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
   const videoModalCloseBtn = $("#video-modal-close");
-  function openVideoModal(url, ytId) {
+  const videoModalCommentRow = $("#video-modal-comment-row");
+  const videoModalCommentInput = $("#video-modal-comment-input");
+  let videoModalCommentCtx = null;
+  function openVideoModal(url, ytId, commentCtx) {
     videoModalIframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(ytId)}?autoplay=1`;
     videoModalOpenLink.href = url;
+    videoModalCommentCtx = commentCtx || null;
+    videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
+    videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     videoModal.classList.remove("hidden");
   }
   function closeVideoModal() {
     videoModal.classList.add("hidden");
     videoModalIframe.src = ""; // stop playback
+    videoModalCommentCtx = null;
   }
   videoModalCloseBtn.addEventListener("click", closeVideoModal);
   videoModal.addEventListener("click", (e) => { if (e.target === videoModal) closeVideoModal(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !videoModal.classList.contains("hidden")) closeVideoModal();
   });
+  // Saves on blur (clicking/tabbing away) and on Ctrl/Cmd+Enter, same
+  // "commit when you're done typing" feel as the rest of the app's plain
+  // text inputs — no explicit Save button needed for a single field.
+  function saveVideoModalComment() {
+    if (!videoModalCommentCtx) return;
+    pushUndo();
+    videoModalCommentCtx.set(videoModalCommentInput.value);
+    persist();
+  }
+  videoModalCommentInput.addEventListener("blur", saveVideoModalComment);
+  videoModalCommentInput.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); videoModalCommentInput.blur(); }
+  });
   // Shared by every link click handler (node links, table-cell links):
   // opens the in-app player for a YouTube URL, otherwise falls back to
-  // the normal new-tab behavior.
-  function openLinkSmart(url) {
+  // the normal new-tab behavior. `commentCtx` (optional) is a
+  // { get, set } pair scoped to that one link's comment (see
+  // getLinkComment/setLinkComment and their cell equivalents), letting
+  // the modal's comment box read and save without knowing whether the
+  // link lives on a node or inside a table cell.
+  function openLinkSmart(url, commentCtx) {
     const ytId = youtubeVideoId(url);
-    if (ytId) openVideoModal(url, ytId);
+    if (ytId) openVideoModal(url, ytId, commentCtx);
     else window.open(url, "_blank", "noopener");
   }
 

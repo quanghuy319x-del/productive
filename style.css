@@ -3011,6 +3011,28 @@ kbd{
   cursor: pointer;
 }
 .video-modal-close:hover{ background: rgba(255,255,255,0.22); }
+.video-modal-comment-row{
+  width: 100%;
+}
+.video-modal-comment-input{
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 40px;
+  max-height: 160px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.video-modal-comment-input:focus{
+  outline: none;
+  border-color: var(--accent);
+}
 
 .photo-modal-card img{
   display:block;
