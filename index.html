@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=29">
+<link rel="stylesheet" href="style.css?v=30">
 </head>
 <body>
 <div id="app">
@@ -207,6 +207,17 @@
     <button id="photo-modal-zoom-out" class="photo-modal-zoom photo-modal-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
     <button id="photo-modal-delete" class="photo-modal-delete" title="Delete this photo" aria-label="Delete this photo">🗑</button>
     <button id="photo-modal-close" class="photo-modal-close" title="Close" aria-label="Close">✕</button>
+  </div>
+</div>
+
+<div id="link-comment-modal" class="modal hidden">
+  <div class="modal-card link-comment-modal-card">
+    <div class="link-comment-modal-head">
+      <h2>Comment</h2>
+      <button id="link-comment-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div id="link-comment-modal-url" class="link-comment-modal-url"></div>
+    <textarea id="link-comment-modal-input" class="video-modal-comment-input" rows="4" maxlength="2000" placeholder="Add a comment about this link… (shown on hover). Press Enter for a new paragraph."></textarea>
   </div>
 </div>
 
@@ -472,6 +483,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=40"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>

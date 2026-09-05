@@ -2360,11 +2360,12 @@
     positionContextMenu(x, y);
   }
 
-  // Native prompt for adding/editing a link's comment (see
-  // getLinkComment/setLinkComment) — the "💬" button next to a link's
-  // rename/remove buttons in its right-click menu. The comment only
-  // ever shows as a hover tooltip on the link's own icon (see
-  // attachLinkCommentTooltip); it has no other effect on the link.
+  // Opens the same paragraph-friendly comment editor as the video
+  // modal's inline comment box (see openLinkCommentModal) — the "💬"
+  // button next to a link's rename/remove buttons in its right-click
+  // menu. The comment only ever shows as a hover tooltip on the link's
+  // own icon (see attachLinkCommentTooltip); it has no other effect on
+  // the link.
   function commentOnNodeUrl(nodeId, index) {
     if (!requireSignIn()) return;
     const node = findNode(nodeId);
@@ -2372,12 +2373,10 @@
     const urls = getNodeUrls(node);
     const u = urls[index];
     if (!u) return;
-    const input = window.prompt("Comment for this link (shown on hover, leave blank to remove):", getLinkComment(node, u));
-    if (input === null) return; // cancelled
-    pushUndo();
-    setLinkComment(node, u, input);
-    renderAll();
-    persist();
+    openLinkCommentModal(u, {
+      get: () => getLinkComment(findNode(nodeId) || node, u),
+      set: (v) => setLinkComment(findNode(nodeId) || node, u, v),
+    });
   }
 
   function newMindMap(title) {
@@ -4875,7 +4874,7 @@
     positionContextMenu(x, y);
   }
 
-  // Same comment prompt as commentOnNodeUrl, scoped to one table cell's
+  // Same comment editor as commentOnNodeUrl, scoped to one table cell's
   // link (see getCellLinkComment/setCellLinkComment).
   function commentOnCellUrl(node, r, c, index) {
     if (!requireSignIn()) return;
@@ -4883,12 +4882,10 @@
     const urls = getCellUrls(a);
     const u = urls[index];
     if (!u) return;
-    const input = window.prompt("Comment for this link (shown on hover, leave blank to remove):", getCellLinkComment(a, u));
-    if (input === null) return; // cancelled
-    pushUndo();
-    setCellLinkComment(a, u, input);
-    renderAll();
-    persist();
+    openLinkCommentModal(u, {
+      get: () => getCellLinkComment(getCellAttach(node, r, c), u),
+      set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
+    });
   }
 
   // The "+" button's menu — same reused ctx-menu the node right-click
@@ -8115,6 +8112,16 @@
   const photoModalImg = $("#photo-modal-img");
   let pendingPhotoNodeId = null;
 
+  // Generic "grow to fit a paragraph" behavior shared by every comment
+  // textarea in the app (video modal's inline box, and the standalone
+  // link-comment modal below) — Enter just inserts a newline like any
+  // textarea; this only keeps the whole thing visible without an inner
+  // scrollbar kicking in early.
+  function autoGrowTextarea(el) {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
   // Embedded YouTube player modal — opened in place of a new tab when a
   // link icon whose URL is a YouTube video/short is clicked (see
   // youtubeVideoId and the urlIcon/linkIcon click handlers). Any other
@@ -8133,7 +8140,7 @@
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     videoModal.classList.remove("hidden");
-    if (commentCtx) requestAnimationFrame(autoGrowVideoModalComment);
+    if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
   }
   function closeVideoModal() {
     videoModal.classList.add("hidden");
@@ -8158,15 +8165,45 @@
   videoModalCommentInput.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); videoModalCommentInput.blur(); }
   });
-  // Grows the box taller as the comment runs to multiple lines/paragraphs
-  // (plain Enter just inserts a newline, same as any textarea — this
-  // only makes the whole paragraph stay visible instead of scrolling),
-  // same "grows as you type" feel as the task-list boxes elsewhere.
-  function autoGrowVideoModalComment() {
-    videoModalCommentInput.style.height = "auto";
-    videoModalCommentInput.style.height = videoModalCommentInput.scrollHeight + "px";
+  videoModalCommentInput.addEventListener("input", () => autoGrowTextarea(videoModalCommentInput));
+
+  // Standalone comment editor — opened by the right-click "💬" button on
+  // any link icon (see openUrlSingleManageMenu/openCellUrlManageMenu),
+  // including non-YouTube links that never touch the video modal above.
+  // Same auto-growing paragraph textarea and save-on-blur/Ctrl+Enter
+  // behavior as the video modal's inline comment box, just in its own
+  // small modal.
+  const linkCommentModal = $("#link-comment-modal");
+  const linkCommentModalUrl = $("#link-comment-modal-url");
+  const linkCommentModalInput = $("#link-comment-modal-input");
+  const linkCommentModalCloseBtn = $("#link-comment-modal-close");
+  let linkCommentModalCtx = null;
+  function openLinkCommentModal(url, commentCtx) {
+    linkCommentModalCtx = commentCtx;
+    linkCommentModalUrl.textContent = url;
+    linkCommentModalInput.value = commentCtx.get();
+    linkCommentModal.classList.remove("hidden");
+    requestAnimationFrame(() => { autoGrowTextarea(linkCommentModalInput); linkCommentModalInput.focus(); });
   }
-  videoModalCommentInput.addEventListener("input", autoGrowVideoModalComment);
+  function saveLinkCommentModal() {
+    if (!linkCommentModalCtx) return;
+    pushUndo();
+    linkCommentModalCtx.set(linkCommentModalInput.value);
+    persist();
+  }
+  function closeLinkCommentModal() {
+    saveLinkCommentModal();
+    linkCommentModal.classList.add("hidden");
+    linkCommentModalCtx = null;
+  }
+  linkCommentModalCloseBtn.addEventListener("click", closeLinkCommentModal);
+  linkCommentModal.addEventListener("click", (e) => { if (e.target === linkCommentModal) closeLinkCommentModal(); });
+  linkCommentModalInput.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); closeLinkCommentModal(); }
+    if (e.key === "Escape") { e.preventDefault(); closeLinkCommentModal(); }
+  });
+  linkCommentModalInput.addEventListener("input", () => autoGrowTextarea(linkCommentModalInput));
+
   // Shared by every link click handler (node links, table-cell links):
   // opens the in-app player for a YouTube URL, otherwise falls back to
   // the normal new-tab behavior. `commentCtx` (optional) is a
