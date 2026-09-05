@@ -3942,7 +3942,7 @@
       const overflow = nodeImages.length > 10;
       const shownCount = overflow ? 1 : nodeImages.length;
       const itemCount = stripIconCountForBox + shownCount;
-      const large = itemCount < 6;
+      const large = itemCount <= 10;
       const thumb = large ? 18 : 9;
       const gap = large ? 3 : 2;
       const cols = Math.min(itemCount, 5);
@@ -5565,7 +5565,7 @@
       const overflow = nodeImages.length > 10;
       const shownCount = overflow ? 1 : nodeImages.length;
       const itemCount = stripIconCount + shownCount;
-      const large = itemCount < 6;
+      const large = itemCount <= 10;
       strip.className = "node-photo-strip" + (large ? " large" : "");
       strip.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       strip.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
