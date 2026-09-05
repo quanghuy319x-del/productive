@@ -8561,7 +8561,10 @@
 
   // Shared by every link click handler (node links, table-cell links):
   // YouTube videos/shorts open in the resumable in-app player modal;
-  // every other link just opens directly in a new tab.
+  // every other link opens in its own sized, centered popup window (see
+  // openUrlAsPopup below) rather than a plain new tab — so following a
+  // link never navigates away from/covers up the mindmap tab itself,
+  // letting you browse alongside the map instead of losing your place.
   // `commentCtx` (optional) is a { get, set } pair scoped to that one
   // link's comment (see getLinkComment/setLinkComment and their cell
   // equivalents), letting the modal's comment box read and save without
@@ -8569,7 +8572,7 @@
   function openLinkSmart(url, commentCtx) {
     const ytId = youtubeVideoId(url);
     if (!ytId) {
-      window.open(url, "_blank", "noopener");
+      openUrlAsPopup(url);
       return;
     }
     openVideoModal(url, ytId, commentCtx);
