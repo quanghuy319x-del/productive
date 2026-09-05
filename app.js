@@ -6210,8 +6210,8 @@
 
   function completeMoveTo(targetId) {
     const srcId = state.moveSourceId;
+    if (!canMoveSourceTo(targetId)) { state.moveSourceId = null; renderAll(); return; }
     state.moveSourceId = null;
-    if (!canMoveSourceTo(targetId)) { renderAll(); return; }
     pushUndo();
     reparentNode(srcId, targetId);
     persist();

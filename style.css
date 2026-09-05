@@ -686,9 +686,10 @@ body.signed-out #title-input{ visibility:hidden; }
 
 /* The photo/note/link/task strip under a cell's text (see
    buildCellIconStrip in app.js) — same idea as the node-level
-   .node-photo-strip, just smaller and always visible (rather than
-   appearing only once something's attached) since the trailing "+" tile
-   needs to always be reachable to add the first attachment. */
+   .node-photo-strip, just smaller. Existing attachment icons stay
+   always visible; the trailing "+" tile (see .node-table-cell-add
+   below) only fades in on hover so an empty cell doesn't show a
+   permanent "+" badge. */
 .node-table-cell-icons{
   display: flex;
   align-items: center;
@@ -729,10 +730,11 @@ body.signed-out #title-input{ visibility:hidden; }
   font-size: 11px;
   line-height: 1;
   color: var(--text-faint, currentColor);
-  opacity: 0.55;
+  opacity: 0;
   font-weight: 700;
   background: rgba(127,127,127,0.15);
 }
+.node-table-cell:hover .node-table-cell-add{ opacity: 0.55; }
 .node-table-cell-add:hover{ opacity: 1; }
 /* Cell-scale versions of the node-level affirmation/timer markers (see
    .node-affirmation-marker / .node-timer-badge above) — same colors and
