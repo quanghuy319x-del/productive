@@ -1399,7 +1399,35 @@
     return ensureTableAttach(node)[r][c];
   }
   function cellAttachHasAny(a) {
-    return !!(a && (a.image || a.note || a.url || (a.task && a.task.text)));
+    return !!(a && (a.image || a.note || a.url || (a.task && a.task.text) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
+  }
+
+  // A handful of features (the affirmation typing game, the countdown
+  // "time played" timer) originally only ever lived on a whole node —
+  // every one of their functions takes a node and reads/writes a couple
+  // of plain fields on it (node.affirmation, node.timePlayedSec). A table
+  // cell's attachment record (see getCellAttach above) is just as plain
+  // an object, so instead of duplicating all of that logic for cells,
+  // every call site now goes through a "target" — {nodeId, r, c}, with r
+  // and c omitted for the node-level case — and resolveHost() below
+  // returns whichever plain object (the node itself, or one cell's
+  // attach record) that target actually refers to. Everything downstream
+  // (getNodeAffirmation, getNodeTimePlayed, the game, the timer) keeps
+  // working completely unchanged on top of whatever object comes back.
+  function resolveHost(nodeId, r, c) {
+    const node = findNode(nodeId);
+    if (!node) return null;
+    if (r == null || c == null) return node;
+    if (!node.table) return null;
+    return getCellAttach(node, r, c);
+  }
+  // Compares two targets ({nodeId, r, c}) for equality — used wherever a
+  // running timer/game needs to check "is this the same target I'm
+  // already showing/tracking", since two plain objects with the same
+  // shape are never === to each other.
+  function sameTarget(t1, t2) {
+    if (!t1 || !t2) return t1 === t2;
+    return t1.nodeId === t2.nodeId && (t1.r ?? null) === (t2.r ?? null) && (t1.c ?? null) === (t2.c ?? null);
   }
   // Every photo id currently attached to any cell of this node's table —
   // used alongside getNodeImageIds() wherever a node's photos need to be
@@ -4385,8 +4413,11 @@
   // The "+" button's menu — same reused ctx-menu the node right-click
   // menu and the note/link picker popups use (see openContextMenu /
   // openNoteManageMenu), just scoped to one cell instead of a whole
-  // node. Lets you add, replace, or remove each of the four attachment
-  // kinds a cell can carry.
+  // node. Lets you add, replace, or remove each of the six attachment
+  // kinds a cell can carry: photo, note, link, task, timer, and the
+  // affirmation game — the last two reuse the exact same modal/interface
+  // as their node-level counterparts (see openTimerModal/openAffirmationGame),
+  // just aimed at this one cell instead of the whole node.
   function openCellAddMenu(node, r, c, x, y) {
     if (!requireSignIn()) return;
     resetContextMenu();
@@ -4406,6 +4437,17 @@
     if (a.url) items.push(["Remove link", () => { pushUndo(); a.url = null; renderAll(); persist(); }]);
     items.push([(a.task && a.task.text) ? "Edit task…" : "Add task…", () => editCellTask(node, r, c)]);
     if (a.task && a.task.text) items.push(["Remove task", () => { pushUndo(); a.task = null; renderAll(); persist(); }]);
+    {
+      const played = getNodeTimePlayed(a);
+      const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
+      items.push([label, () => openTimerModal(node.id, r, c)]);
+      if (played) items.push(["Remove timer", () => { pushUndo(); a.timePlayedSec = 0; renderAll(); persist(); }]);
+    }
+    {
+      const wins = nodeAffirmationWins(a);
+      const label = wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game";
+      items.push([label, () => openAffirmationGame(node.id, r, c)]);
+    }
     items.forEach(([label, fn]) => {
       const it = document.createElement("div");
       it.className = "ctx-item";
@@ -4477,11 +4519,41 @@
       taskEl.appendChild(cb);
       strip.appendChild(taskEl);
     }
+    const cellAffirmationWins = nodeAffirmationWins(a);
+    if (cellAffirmationWins) {
+      // Same checkmark-with-count marker as the node-level strip (see
+      // renderNode) — click jumps straight into a new round for this cell.
+      const affIcon = document.createElement("span");
+      affIcon.className = "node-table-cell-icon node-table-cell-affirmation";
+      affIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg>';
+      affIcon.title = `Affirmation game — ${cellAffirmationWins} round${cellAffirmationWins === 1 ? "" : "s"} completed. Click to play again.`;
+      affIcon.addEventListener("click", () => openAffirmationGame(node.id, r, c));
+      if (cellAffirmationWins > 1) {
+        const affCount = document.createElement("span");
+        affCount.className = "node-marker-count";
+        affCount.textContent = String(cellAffirmationWins);
+        affIcon.appendChild(affCount);
+      }
+      strip.appendChild(affIcon);
+    }
+    const cellTimePlayed = getNodeTimePlayed(a);
+    if (cellTimePlayed) {
+      // Same "logged time" badge as the node-level strip (see renderNode)
+      // — click opens the timer modal for this cell.
+      const tbadge = document.createElement("span");
+      tbadge.className = "node-table-cell-icon node-table-cell-timer";
+      tbadge.title = `${formatTimePlayed(cellTimePlayed)} logged — click to add more`;
+      tbadge.addEventListener("click", () => openTimerModal(node.id, r, c));
+      const tlabel = document.createElement("span");
+      tlabel.textContent = formatTimePlayed(cellTimePlayed);
+      tbadge.appendChild(tlabel);
+      strip.appendChild(tbadge);
+    }
 
     const addBtn = document.createElement("span");
     addBtn.className = "node-table-cell-icon node-table-cell-add";
     addBtn.textContent = "+";
-    addBtn.title = "Add a photo, note, link, or task to this cell";
+    addBtn.title = "Add a photo, note, link, task, timer, or affirmation game to this cell";
     addBtn.addEventListener("click", (e) => openCellAddMenu(node, r, c, e.clientX, e.clientY));
     strip.appendChild(addBtn);
 
@@ -4526,6 +4598,8 @@
       for (let c = 0; c < cols; c++) {
         const td = document.createElement("td");
         td.className = "node-table-cell";
+        td.dataset.r = String(r);
+        td.dataset.c = String(c);
         td.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id); });
 
         const textEl = document.createElement("div");
@@ -10607,30 +10681,31 @@
   const affirmationProgressBar = $("#affirmation-progress-bar");
   const affirmationProgressLabel = $("#affirmation-progress-label");
   const affirmationFeedback = $("#affirmation-feedback");
-  let affirmationNodeId = null;
+  let affirmationTarget = null; // {nodeId, r, c} — r/c omitted for a node-level game, both given for a table-cell game
 
-  function getAffirmationNode() {
-    return findNode(affirmationNodeId);
+  function getAffirmationHost() {
+    return affirmationTarget ? resolveHost(affirmationTarget.nodeId, affirmationTarget.r, affirmationTarget.c) : null;
   }
 
-  // Opens the game for a node, from the right-click menu. Resumes an
-  // in-progress round if one exists on the node already; otherwise picks
-  // a fresh random line and starts a new one.
-  function openAffirmationGame(nodeId) {
-    const node = findNode(nodeId);
-    if (!node) return;
+  // Opens the game for a node (r/c omitted) or one of its table cells
+  // (r/c given), from the right-click / "+" menu. Resumes an in-progress
+  // round if one exists on the target already; otherwise picks a fresh
+  // random line and starts a new one.
+  function openAffirmationGame(nodeId, r, c) {
+    const host = resolveHost(nodeId, r, c);
+    if (!host) return;
     if (!affirmationQuotesList.length) {
       openAffirmationQuotesModal();
       return;
     }
-    if (!node.affirmation) node.affirmation = { wins: 0, quote: null, count: 0, target: AFFIRMATION_TARGET };
-    if (!node.affirmation.quote) {
-      node.affirmation.quote = affirmationQuotesList[Math.floor(Math.random() * affirmationQuotesList.length)];
-      node.affirmation.count = 0;
-      node.affirmation.target = AFFIRMATION_TARGET;
+    if (!host.affirmation) host.affirmation = { wins: 0, quote: null, count: 0, target: AFFIRMATION_TARGET };
+    if (!host.affirmation.quote) {
+      host.affirmation.quote = affirmationQuotesList[Math.floor(Math.random() * affirmationQuotesList.length)];
+      host.affirmation.count = 0;
+      host.affirmation.target = AFFIRMATION_TARGET;
       persist();
     }
-    affirmationNodeId = nodeId;
+    affirmationTarget = { nodeId, r, c };
     affirmationFeedback.textContent = "";
     affirmationFeedback.className = "affirmation-feedback";
     renderAffirmationModal();
@@ -10642,13 +10717,13 @@
     affirmationModal.classList.add("hidden");
     affirmationInput.value = "";
     affirmationInput.classList.remove("shake");
-    affirmationNodeId = null;
+    affirmationTarget = null;
     renderAll();
   }
 
   function renderAffirmationModal() {
-    const node = getAffirmationNode();
-    const a = getNodeAffirmation(node);
+    const host = getAffirmationHost();
+    const a = getNodeAffirmation(host);
     if (!a) { closeAffirmationGame(); return; }
     affirmationQuoteEl.textContent = a.quote || "";
     const target = a.target || AFFIRMATION_TARGET;
@@ -10687,8 +10762,8 @@
   }
 
   function submitAffirmationAttempt() {
-    const node = getAffirmationNode();
-    const a = getNodeAffirmation(node);
+    const host = getAffirmationHost();
+    const a = getNodeAffirmation(host);
     if (!a) return;
     const target = a.target || AFFIRMATION_TARGET;
     if ((a.count || 0) >= target) return;
@@ -10726,7 +10801,7 @@
   }
 
   affirmationInput.addEventListener("input", () => {
-    const a = getNodeAffirmation(getAffirmationNode());
+    const a = getNodeAffirmation(getAffirmationHost());
     if (!a) return;
     renderAffirmationProgress(a, affirmationInput.value);
   });
@@ -10763,14 +10838,14 @@
   const timerStopBtn = $("#timer-stop-btn");
   const timerExtendBtn = $("#timer-extend-btn");
   const timerDoneLabel = $("#timer-done-label");
-  let timerEditingId = null;
+  let timerEditingId = null; // {nodeId, r, c} — r/c omitted for a node-level timer, both given for a table-cell timer
 
-  // Only one node countdown can run at a time (mirrors the per-task focus
+  // Only one countdown can run at a time (mirrors the per-task focus
   // timer) but, like that one, it keeps running via setInterval even if
   // this modal is closed or a different node/map is opened, so switching
   // away doesn't quietly cancel a session that's in progress.
-  let nodeTimer = null; // { nodeId, remaining, duration, paused, intervalId }
-  let nodeTimerJustCompleted = null; // nodeId, shown briefly in the modal after a session finishes
+  let nodeTimer = null; // { target: {nodeId, r, c}, remaining, duration, paused, intervalId }
+  let nodeTimerJustCompleted = null; // {nodeId, r, c}, shown briefly in the modal after a session finishes
 
   function getNodeTimePlayed(node) {
     return (node && typeof node.timePlayedSec === "number" && node.timePlayedSec > 0) ? node.timePlayedSec : 0;
@@ -10785,12 +10860,12 @@
     return `${m}m`;
   }
 
-  function openTimerModal(nodeId) {
-    const node = findNode(nodeId);
-    if (!node) return;
+  function openTimerModal(nodeId, r, c) {
+    const host = resolveHost(nodeId, r, c);
+    if (!host) return;
     commitEditIfActive();
     closeContextMenu();
-    timerEditingId = nodeId;
+    timerEditingId = { nodeId, r, c };
     renderTimerModal();
     timerModal.classList.remove("hidden");
   }
@@ -10802,17 +10877,21 @@
   }
 
   function renderTimerModal() {
-    const node = findNode(timerEditingId);
-    if (!node) { closeTimerModal(); return; }
-    timerNodeLabel.textContent = node.text || "(untitled)";
-    const total = getNodeTimePlayed(node);
+    const t = timerEditingId;
+    const host = t ? resolveHost(t.nodeId, t.r, t.c) : null;
+    if (!host) { closeTimerModal(); return; }
+    const node = findNode(t.nodeId);
+    const cellText = (t.r != null && node && node.table && node.table.cells[t.r]) ? node.table.cells[t.r][t.c] : null;
+    timerNodeLabel.textContent = t.r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${t.r + 1}, col ${t.c + 1})`);
+    const total = getNodeTimePlayed(host);
     timerTotalDisplay.textContent = formatTimePlayed(total);
     timerResetBtn.style.visibility = total ? "visible" : "hidden";
 
-    const runningHere = nodeTimer && nodeTimer.nodeId === timerEditingId;
+    const runningHere = nodeTimer && sameTarget(nodeTimer.target, t);
     timerCountdownRow.classList.toggle("hidden", !runningHere);
-    timerDoneLabel.classList.toggle("hidden", nodeTimerJustCompleted !== timerEditingId);
-    timerStartRow.style.display = (runningHere || nodeTimerJustCompleted === timerEditingId) ? "none" : "flex";
+    const justCompletedHere = nodeTimerJustCompleted && sameTarget(nodeTimerJustCompleted, t);
+    timerDoneLabel.classList.toggle("hidden", !justCompletedHere);
+    timerStartRow.style.display = (runningHere || justCompletedHere) ? "none" : "flex";
 
     if (runningHere) {
       timerCountdownDisplay.textContent = formatFocusTime(nodeTimer.remaining);
@@ -10823,45 +10902,49 @@
   }
 
   // Cheap live update used on every tick: pushes the new total straight
-  // into the node's badge on the canvas (and this modal, if open for the
-  // same node) without a full renderAll() — a per-second re-layout of the
-  // whole map would be wasteful, especially on a large mind map.
-  function updateNodeTimerLiveUI(nodeId) {
-    const node = findNode(nodeId);
-    if (!node) return;
-    const total = getNodeTimePlayed(node);
-    const badgeLabel = nodesLayer.querySelector(`.node[data-id="${nodeId}"] .node-timer-badge span`);
+  // into the node's (or table cell's) badge on the canvas — and this
+  // modal, if open for the same target — without a full renderAll() — a
+  // per-second re-layout of the whole map would be wasteful, especially
+  // on a large mind map.
+  function updateNodeTimerLiveUI(target) {
+    if (!target) return;
+    const host = resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
+    const total = getNodeTimePlayed(host);
+    const badgeLabel = target.r == null
+      ? nodesLayer.querySelector(`.node[data-id="${target.nodeId}"] .node-timer-badge span`)
+      : nodesLayer.querySelector(`.node[data-id="${target.nodeId}"] .node-table-cell[data-r="${target.r}"][data-c="${target.c}"] .node-table-cell-timer span`);
     if (badgeLabel) {
       badgeLabel.textContent = formatTimePlayed(total);
       badgeLabel.parentElement.title = `${formatTimePlayed(total)} logged — click to add more`;
-    } else if (total && node.id !== state.editingId && nodeTimer && nodeTimer.nodeId === nodeId && !nodeTimer.badgeRenderAttempted) {
-      // The badge doesn't exist yet in the DOM — either this node had no
-      // logged time before the countdown started, or the node isn't
+    } else if (total && target.nodeId !== state.editingId && nodeTimer && sameTarget(nodeTimer.target, target) && !nodeTimer.badgeRenderAttempted) {
+      // The badge doesn't exist yet in the DOM — either this target had
+      // no logged time before the countdown started, or it isn't
       // currently rendered at all (e.g. inside a collapsed branch, or
       // off in a part of the tree not mounted). A one-time full render
       // will create it if it's visible; badgeRenderAttempted makes sure
       // this only ever fires once per session instead of on every tick
-      // forever when the node simply isn't on screen (a collapsed
+      // forever when the target simply isn't on screen (a collapsed
       // branch, for instance, never gets a DOM node to find, and
       // calling renderAll() every second was crashing the tab).
       nodeTimer.badgeRenderAttempted = true;
       renderAll();
     }
-    if (timerEditingId === nodeId && !timerModal.classList.contains("hidden")) {
+    if (timerEditingId && sameTarget(timerEditingId, target) && !timerModal.classList.contains("hidden")) {
       timerTotalDisplay.textContent = formatTimePlayed(total);
       timerResetBtn.style.visibility = total ? "visible" : "hidden";
     }
   }
 
-  function startNodeTimer(nodeId, durationSec = NODE_TIMER_DEFAULT_SEC) {
-    const node = findNode(nodeId);
-    if (!node) return;
+  function startNodeTimer(target, durationSec = NODE_TIMER_DEFAULT_SEC) {
+    const host = resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
     stopNodeTimerInterval();
     stopFocusChime();
     nodeTimerJustCompleted = null;
     pushUndo();
     nodeTimer = {
-      nodeId,
+      target,
       remaining: durationSec,
       duration: durationSec,
       paused: false,
@@ -10873,7 +10956,7 @@
 
   // How often the countdown writes its running total to disk while it's
   // actually ticking. This is a *cheap* in-memory update every second
-  // (node.timePlayedSec++), but persist() triggers this app's full save
+  // (host.timePlayedSec++), but persist() triggers this app's full save
   // path — which re-embeds every photo's bytes into JSON for the folder
   // mirror/Drive upload — so calling it every single second would re-run
   // that heavy work once a second for as long as the timer runs and can
@@ -10886,22 +10969,22 @@
   function nodeTimerTick() {
     if (!nodeTimer || nodeTimer.paused) return;
     nodeTimer.remaining--;
-    const node = findNode(nodeTimer.nodeId);
-    if (node) {
-      node.timePlayedSec = getNodeTimePlayed(node) + 1;
+    const host = resolveHost(nodeTimer.target.nodeId, nodeTimer.target.r, nodeTimer.target.c);
+    if (host) {
+      host.timePlayedSec = getNodeTimePlayed(host) + 1;
       unsavedEdits = true;
       nodeTimer.ticksSincePersist++;
       if (nodeTimer.ticksSincePersist >= NODE_TIMER_PERSIST_EVERY_SEC) {
         nodeTimer.ticksSincePersist = 0;
         persist();
       }
-      updateNodeTimerLiveUI(nodeTimer.nodeId);
+      updateNodeTimerLiveUI(nodeTimer.target);
     }
     if (nodeTimer.remaining <= 0) {
       nodeTimerComplete();
       return;
     }
-    if (timerEditingId === nodeTimer.nodeId) renderTimerModal();
+    if (timerEditingId && sameTarget(timerEditingId, nodeTimer.target)) renderTimerModal();
   }
 
   function toggleNodeTimerPause() {
@@ -10933,8 +11016,8 @@
     stopNodeTimerInterval();
     if (prev) {
       persist();
-      updateNodeTimerLiveUI(prev.nodeId);
-      if (timerEditingId === prev.nodeId) renderTimerModal();
+      updateNodeTimerLiveUI(prev.target);
+      if (timerEditingId && sameTarget(timerEditingId, prev.target)) renderTimerModal();
     }
   }
 
@@ -10943,14 +11026,14 @@
     stopNodeTimerInterval();
     if (!finished) return;
     persist();
-    updateNodeTimerLiveUI(finished.nodeId);
+    updateNodeTimerLiveUI(finished.target);
     startFocusChime();
-    nodeTimerJustCompleted = finished.nodeId;
-    if (timerEditingId === finished.nodeId) renderTimerModal();
+    nodeTimerJustCompleted = finished.target;
+    if (timerEditingId && sameTarget(timerEditingId, finished.target)) renderTimerModal();
     setTimeout(() => {
-      if (nodeTimerJustCompleted === finished.nodeId) {
+      if (nodeTimerJustCompleted && sameTarget(nodeTimerJustCompleted, finished.target)) {
         nodeTimerJustCompleted = null;
-        if (timerEditingId === finished.nodeId) renderTimerModal();
+        if (timerEditingId && sameTarget(timerEditingId, finished.target)) renderTimerModal();
       }
     }, 4000);
   }
@@ -10964,13 +11047,15 @@
   timerExtendBtn.addEventListener("click", (e) => { e.stopPropagation(); extendNodeTimer(NODE_TIMER_EXTEND_SEC); });
 
   timerResetBtn.addEventListener("click", () => {
-    const node = findNode(timerEditingId);
-    if (!node || !getNodeTimePlayed(node)) return;
+    const t = timerEditingId;
+    if (!t) return;
+    const host = resolveHost(t.nodeId, t.r, t.c);
+    if (!host || !getNodeTimePlayed(host)) return;
     pushUndo();
-    node.timePlayedSec = 0;
+    host.timePlayedSec = 0;
     persist();
     renderTimerModal();
-    updateNodeTimerLiveUI(timerEditingId);
+    updateNodeTimerLiveUI(t);
   });
 
   $("#timer-back").addEventListener("click", closeTimerModal);

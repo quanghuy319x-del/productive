@@ -734,6 +734,40 @@ body.signed-out #title-input{ visibility:hidden; }
   background: rgba(127,127,127,0.15);
 }
 .node-table-cell-add:hover{ opacity: 1; }
+/* Cell-scale versions of the node-level affirmation/timer markers (see
+   .node-affirmation-marker / .node-timer-badge above) — same colors and
+   shape, just sized to match the other 12px cell icons instead of the
+   larger 9-18px node strip. */
+.node-table-cell-affirmation{
+  position: relative;
+  background: rgba(94, 230, 168, 0.18);
+  border: 1px solid rgba(94, 230, 168, 0.4);
+  color: #5ee6a8;
+}
+.node-table-cell-affirmation:hover{
+  background: rgba(94, 230, 168, 0.32);
+  color: #8af0c0;
+}
+.node-table-cell-affirmation svg{ width: 70%; height: 70%; }
+.node-table-cell-timer{
+  position: relative;
+  width: auto;
+  min-width: 12px;
+  padding: 0 2px;
+  background: rgba(245, 162, 92, 0.18);
+  border: 1px solid rgba(245, 162, 92, 0.55);
+  border-radius: 999px;
+  color: #f5a25c;
+  font-weight: 800;
+  line-height: 1;
+}
+.node-table-cell-timer:hover{ background: rgba(245, 162, 92, 0.32); }
+.node-table-cell-timer span{
+  font-size: 8px;
+  transform: scale(0.85);
+  white-space: nowrap;
+  pointer-events: none;
+}
 
 /* The textarea in the cell-note popover (see editCellNote in app.js) —
    styled to match the existing ctx-distance-input field rather than
