@@ -1409,10 +1409,23 @@
     return attach;
   }
   function getCellAttach(node, r, c) {
-    return ensureTableAttach(node)[r][c];
+    const a = ensureTableAttach(node)[r][c];
+    // A cell used to hold a single task as a.task = {text, done}. Tasks
+    // are now a full list (a.tasks = [{id, text, done, stars, due,
+    // subtasks, notes}]) matching node.tasks exactly, so a getNodeTasks/
+    // nodeTaskProgress/the whole Tasks modal work unchanged on a cell —
+    // this lazily upgrades an old single task into a one-item list the
+    // first time the cell is touched, same spirit as the photo/note
+    // migrations elsewhere in this file.
+    if (a && a.task && a.task.text) {
+      if (!Array.isArray(a.tasks)) a.tasks = [];
+      a.tasks.push({ id: uid(), text: a.task.text, done: !!a.task.done, stars: 0, due: null });
+    }
+    if (a && a.task) a.task = null;
+    return a;
   }
   function cellAttachHasAny(a) {
-    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.task && a.task.text) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
+    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.tasks && a.tasks.length) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
   }
 
   // A handful of features (the affirmation typing game, the countdown
@@ -4313,7 +4326,7 @@
     // works unchanged either way; only tags/photoNotes are node-only
     // (carryPhotoTags/carryPhotoNotes safely no-op when the source has
     // neither field, which a cell attach record never does).
-    const source = (type.startsWith("photo") && sourceR != null && sourceC != null)
+    const source = ((type.startsWith("photo") || type === "tasks") && sourceR != null && sourceC != null)
       ? getCellAttach(sourceNode, sourceR, sourceC)
       : sourceNode;
     if (!source) return;
@@ -4628,18 +4641,6 @@
     positionContextMenu(x, y);
   }
 
-  function editCellTask(node, r, c) {
-    if (!requireSignIn()) return;
-    const a = getCellAttach(node, r, c);
-    const val = window.prompt("Task text for this cell:", (a.task && a.task.text) || "");
-    if (val === null) return;
-    const trimmed = val.trim();
-    pushUndo();
-    a.task = trimmed ? { text: trimmed, done: !!(a.task && a.task.done) } : null;
-    renderAll();
-    persist();
-  }
-
   // The "+" button's menu — same reused ctx-menu the node right-click
   // menu and the note/link picker popups use (see openContextMenu /
   // openNoteManageMenu), just scoped to one cell instead of a whole
@@ -4674,8 +4675,14 @@
     items.push([cellHasNotes(a) ? "Edit note…" : "Add note…", () => editCellNote(node, r, c)]);
     if (cellHasNotes(a)) items.push(["Remove note", () => { pushUndo(); a.note = null; a.notes = null; renderAll(); persist(); }]);
     items.push(["Add link…", () => addCellUrl(node, r, c)]);
-    items.push([(a.task && a.task.text) ? "Edit task…" : "Add task…", () => editCellTask(node, r, c)]);
-    if (a.task && a.task.text) items.push(["Remove task", () => { pushUndo(); a.task = null; renderAll(); persist(); }]);
+    {
+      // Full task list for this cell — the exact same modal a node's
+      // "Tasks…" menu entry opens (see openTasksModal), just scoped to
+      // this cell's own attach record instead of the node.
+      const prog = nodeTaskProgress(a);
+      const label = prog.total ? `Tasks… (${prog.done}/${prog.total})` : "Add tasks…";
+      items.push([label, () => openTasksModal(node.id, r, c)]);
+    }
     {
       const played = getNodeTimePlayed(a);
       const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
@@ -4788,23 +4795,23 @@
       });
       strip.appendChild(linkIcon);
     });
-    if (a.task && a.task.text) {
-      const taskEl = document.createElement("label");
-      taskEl.className = "node-table-cell-icon node-table-cell-task" + (a.task.done ? " done" : "");
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!a.task.done;
-      cb.addEventListener("click", (e) => e.stopPropagation());
-      cb.addEventListener("change", () => {
-        if (!requireSignIn()) { cb.checked = !!a.task.done; return; }
-        pushUndo();
-        a.task.done = cb.checked;
-        taskEl.classList.toggle("done", cb.checked);
-        persist();
-      });
-      taskEl.title = a.task.text + " — double-click to edit";
-      taskEl.addEventListener("dblclick", (e) => { e.stopPropagation(); editCellTask(node, r, c); });
-      taskEl.appendChild(cb);
+    // Same task list a node carries (see getNodeTasks/openTasksModal) —
+    // this cell just shows it as a compact "done/total" pill instead of
+    // the full progress bar a node's box has room for (see the
+    // .node-progress-row block in renderNode below); clicking it opens
+    // the exact same Tasks modal, scoped to this cell. Draggable onto
+    // another node to move the whole list there (hold Alt to copy),
+    // mirroring the node-level progress row's own drag behavior.
+    const cellTaskProg = nodeTaskProgress(a);
+    if (cellTaskProg.total) {
+      const taskEl = document.createElement("span");
+      taskEl.className = "node-table-cell-icon node-table-cell-tasks" + (cellTaskProg.pct >= 1 ? " done" : "");
+      taskEl.textContent = `✓${cellTaskProg.done}/${cellTaskProg.total}`;
+      taskEl.title = `${cellTaskProg.done} of ${cellTaskProg.total} tasks done — click to open, drag onto a node to move them there (hold Alt to copy)`;
+      taskEl.draggable = true;
+      taskEl.addEventListener("click", (e) => { e.stopPropagation(); openTasksModal(node.id, r, c); });
+      taskEl.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
+      taskEl.addEventListener("dragend", endMarkerDrag);
       strip.appendChild(taskEl);
     }
     const cellAffirmationWins = nodeAffirmationWins(a);
@@ -8905,10 +8912,16 @@
     noteEditingPhotoId = photoId || null;
     noteEditingTaskId = taskId || null;
     noteEditingCellPos = cellPos || null;
-    const existing = noteEditingCellPos
+    // A task's own notes take priority over the cellPos check below even
+    // when both are set — that combination means "a task living inside
+    // this cell's task list" (see the Tasks modal's note button, opened
+    // with both a taskId and this cell's {r, c}), not a plain cell note.
+    // cellPos still gets used to resolve which task list to search.
+    const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
+    const existing = noteEditingTaskId
+      ? getTaskNotes(getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId))
+      : noteEditingCellPos
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
-      : noteEditingTaskId
-      ? getTaskNotes(getNodeTasks(node).find(x => x.id === noteEditingTaskId))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
     noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html }));
     const wantsNew = index != null && index >= noteWorkingList.length;
@@ -8930,13 +8943,14 @@
     const node = findNode(noteEditingId);
     const current = noteWorkingList[noteActiveIndex];
     noteTitleInput.value = current.title || "";
-    if (noteEditingCellPos) {
-      noteTextarea.dataset.placeholder = "Note for this cell…";
-      noteNavAdd.title = "Start a new note on this cell";
-    } else if (noteEditingTaskId) {
-      const t = node && getNodeTasks(node).find(x => x.id === noteEditingTaskId);
+    if (noteEditingTaskId) {
+      const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
+      const t = taskHost && getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
       noteTextarea.dataset.placeholder = `Note for task "${t ? (t.text || "(untitled task)") : ""}"…`;
       noteNavAdd.title = "Start a new note on this task";
+    } else if (noteEditingCellPos) {
+      noteTextarea.dataset.placeholder = "Note for this cell…";
+      noteNavAdd.title = "Start a new note on this cell";
     } else if (noteEditingPhotoId) {
       noteTextarea.dataset.placeholder = "Note on this photo…";
       noteNavAdd.title = "Start a new note on this photo";
@@ -9041,21 +9055,9 @@
     if (!node) return;
     captureActiveNote();
     const cleaned = noteWorkingList.filter(n => (n.title && n.title.trim()) || (n.html && n.html.trim()));
-    if (noteEditingCellPos) {
-      const a = getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c);
-      const before = JSON.stringify(getCellNotes(a));
-      const after = JSON.stringify(cleaned);
-      if (before !== after) {
-        pushUndo();
-        a.notes = cleaned.length ? cleaned : null;
-        a.note = null;
-        renderAll();
-        persist();
-      }
-      return;
-    }
     if (noteEditingTaskId) {
-      const t = getNodeTasks(node).find(x => x.id === noteEditingTaskId);
+      const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
+      const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
       if (!t) return;
       const before = JSON.stringify(getTaskNotes(t));
       const after = JSON.stringify(cleaned);
@@ -9066,6 +9068,19 @@
         renderAll();
         persist();
         if (!tasksModal.classList.contains("hidden")) renderTasksModal();
+      }
+      return;
+    }
+    if (noteEditingCellPos) {
+      const a = getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c);
+      const before = JSON.stringify(getCellNotes(a));
+      const after = JSON.stringify(cleaned);
+      if (before !== after) {
+        pushUndo();
+        a.notes = cleaned.length ? cleaned : null;
+        a.note = null;
+        renderAll();
+        persist();
       }
       return;
     }
@@ -9511,7 +9526,7 @@
   const tasksProgressLabel = $("#tasks-progress-label");
   const tasksSortStarsBtn = $("#tasks-sort-stars");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
-  let tasksEditingId = null;
+  let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
   // Which tasks have their subtask checklist explicitly collapsed in the
   // tasks modal — subtasks are expanded by default, so this only tracks
   // the ones someone has double-clicked closed. Keyed by task id, kept
@@ -9527,8 +9542,8 @@
   // instead of committing to a long duration up front.
   const FOCUS_DURATION = 1 * 60; // 1 minute
   const FOCUS_EXTEND = 1 * 60; // added per "+1m" click
-  let focusTimer = null; // { nodeId, taskId, subtaskId, taskText, remaining, duration, paused, intervalId } — subtaskId is null for a task-level timer
-  let focusJustCompleted = null; // { nodeId, taskId, subtaskId } — shown briefly after a session finishes
+  let focusTimer = null; // { target: {nodeId, r, c}, taskId, subtaskId, taskText, remaining, duration, paused, intervalId } — subtaskId is null for a task-level timer
+  let focusJustCompleted = null; // { target, taskId, subtaskId } — shown briefly after a session finishes
   let lastFocusTaskText = ""; // kept around so the "Time's up!" tab title can still name the task once focusTimer itself is cleared
 
   // The browser tab title mirrors the countdown, so the time is visible
@@ -9612,31 +9627,31 @@
       startBtn.textContent = "⏱";
       startBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        startFocusTimer(tasksEditingId, null, "Focus session");
+        startFocusTimer(tasksEditingTarget, null, "Focus session");
       });
       tasksFocusTimerEl.appendChild(startBtn);
     }
   }
 
-  function refreshTasksModalIfOpen(nodeId) {
-    if (!tasksModal.classList.contains("hidden") && tasksEditingId === nodeId) {
+  function refreshTasksModalIfOpen(target) {
+    if (!tasksModal.classList.contains("hidden") && sameTarget(tasksEditingTarget, target)) {
       renderTasksModal();
     }
   }
 
-  function startFocusTimer(nodeId, taskId, taskText, subtaskId = null) {
+  function startFocusTimer(target, taskId, taskText, subtaskId = null) {
     stopFocusTimer();
     stopFocusChime();
     focusJustCompleted = null;
     focusTimer = {
-      nodeId, taskId, subtaskId, taskText,
+      target, taskId, subtaskId, taskText,
       remaining: FOCUS_DURATION,
       duration: FOCUS_DURATION,
       paused: false,
       intervalId: setInterval(focusTimerTick, 1000),
     };
     updateFocusTitle();
-    refreshTasksModalIfOpen(nodeId);
+    refreshTasksModalIfOpen(target);
   }
 
   function focusTimerTick() {
@@ -9647,14 +9662,14 @@
       return;
     }
     updateFocusTitle();
-    refreshTasksModalIfOpen(focusTimer.nodeId);
+    refreshTasksModalIfOpen(focusTimer.target);
   }
 
   function toggleFocusPause() {
     if (!focusTimer) return;
     focusTimer.paused = !focusTimer.paused;
     updateFocusTitle();
-    refreshTasksModalIfOpen(focusTimer.nodeId);
+    refreshTasksModalIfOpen(focusTimer.target);
   }
 
   // Stacks more time onto a running (or paused) timer, e.g. from a "+1m"
@@ -9665,7 +9680,7 @@
     focusTimer.remaining += seconds;
     focusTimer.duration += seconds;
     updateFocusTitle();
-    refreshTasksModalIfOpen(focusTimer.nodeId);
+    refreshTasksModalIfOpen(focusTimer.target);
   }
 
   function stopFocusTimer() {
@@ -9673,7 +9688,7 @@
     const prev = focusTimer;
     focusTimer = null;
     updateFocusTitle();
-    if (prev) refreshTasksModalIfOpen(prev.nodeId);
+    if (prev) refreshTasksModalIfOpen(prev.target);
   }
 
   function focusTimerComplete() {
@@ -9684,12 +9699,12 @@
     startFocusChime();
     updateFocusTitle();
     if (finished) {
-      focusJustCompleted = { nodeId: finished.nodeId, taskId: finished.taskId, subtaskId: finished.subtaskId };
-      refreshTasksModalIfOpen(finished.nodeId);
+      focusJustCompleted = { target: finished.target, taskId: finished.taskId, subtaskId: finished.subtaskId };
+      refreshTasksModalIfOpen(finished.target);
       setTimeout(() => {
         if (focusJustCompleted && focusJustCompleted.taskId === finished.taskId && focusJustCompleted.subtaskId === finished.subtaskId) {
           focusJustCompleted = null;
-          refreshTasksModalIfOpen(finished.nodeId);
+          refreshTasksModalIfOpen(finished.target);
         }
       }, 4000);
     }
@@ -9782,21 +9797,23 @@
   // view-only toggle, so the new order sticks and can be undone.
   function sortTasksByStars() {
     if (!requireSignIn()) return;
-    const node = findNode(tasksEditingId);
-    if (!node) return;
-    const tasks = getNodeTasks(node);
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
+    const tasks = getNodeTasks(host);
     if (tasks.length < 2) return;
     const sorted = tasks.slice().sort((a, b) => getTaskStars(b) - getTaskStars(a));
     pushUndo();
-    node.tasks = sorted;
+    host.tasks = sorted;
     persist();
     renderTasksModal();
   }
 
   function reorderTask(sourceTaskId, targetTaskId, before) {
-    const node = findNode(tasksEditingId);
-    if (!node || sourceTaskId === targetTaskId) return;
-    const tasks = getNodeTasks(node).slice();
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host || sourceTaskId === targetTaskId) return;
+    const tasks = getNodeTasks(host).slice();
     const fromIdx = tasks.findIndex(x => x.id === sourceTaskId);
     if (fromIdx === -1) return;
     const [moved] = tasks.splice(fromIdx, 1);
@@ -9807,7 +9824,7 @@
       tasks.splice(before ? toIdx : toIdx + 1, 0, moved);
     }
     pushUndo();
-    node.tasks = tasks;
+    host.tasks = tasks;
     persist();
     renderTasksModal();
   }
@@ -9848,10 +9865,11 @@
   // (e.g. when it's dropped on the task's row rather than one of its
   // existing subtasks).
   function moveSubtask(sourceTaskId, sourceSubtaskId, targetTaskId, targetSubtaskId, before) {
-    const node = findNode(tasksEditingId);
-    if (!node) return;
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
     if (sourceTaskId === targetTaskId && sourceSubtaskId === targetSubtaskId) return;
-    const tasks = getNodeTasks(node);
+    const tasks = getNodeTasks(host);
     const sourceTask = tasks.find(x => x.id === sourceTaskId);
     const targetTask = tasks.find(x => x.id === targetTaskId);
     if (!sourceTask || !targetTask) return;
@@ -9883,13 +9901,16 @@
     renderTasksModal();
   }
 
-  function openTasksModal(nodeId) {
-    const node = findNode(nodeId);
-    if (!node) return;
+  function openTasksModal(nodeId, r, c) {
+    const host = resolveHost(nodeId, r, c);
+    if (!host) return;
     commitEditIfActive();
     closeContextMenu();
-    tasksEditingId = nodeId;
-    tasksModalTitle.textContent = `Tasks — ${node.text || "(untitled)"}`;
+    tasksEditingTarget = { nodeId, r, c };
+    const node = findNode(nodeId);
+    const cellText = (r != null && node && node.table && node.table.cells[r]) ? node.table.cells[r][c] : null;
+    const label = r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${r + 1}, col ${c + 1})`);
+    tasksModalTitle.textContent = `Tasks — ${label}`;
     renderTasksModal();
     tasksModal.classList.remove("hidden");
     requestAnimationFrame(() => { tasksNewInput.focus(); autosizeTextarea(tasksNewInput); });
@@ -9897,7 +9918,7 @@
 
   function closeTasksModal() {
     tasksModal.classList.add("hidden");
-    tasksEditingId = null;
+    tasksEditingTarget = null;
     subtaskAddOpenFor.clear();
     renderAll();
   }
@@ -10116,10 +10137,13 @@
   }
 
   function renderTasksModal() {
-    const node = findNode(tasksEditingId);
-    if (!node) return;
+    const target = tasksEditingTarget;
+    if (!target) return;
+    const node = findNode(target.nodeId);
+    const host = resolveHost(target.nodeId, target.r, target.c);
+    if (!node || !host) { closeTasksModal(); return; }
     renderFocusTimerWidget();
-    const tasks = getNodeTasks(node);
+    const tasks = getNodeTasks(host);
     tasksListEl.innerHTML = "";
     tasks.forEach((t) => {
       const li = document.createElement("li");
@@ -10311,7 +10335,7 @@
       noteBtn.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       noteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openNoteModal(node.id, undefined, null, t.id);
+        openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null);
       });
 
       const del = document.createElement("button");
@@ -10322,7 +10346,7 @@
         if (!requireSignIn()) return;
         if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
         pushUndo();
-        node.tasks = getNodeTasks(node).filter(x => x !== t);
+        host.tasks = getNodeTasks(host).filter(x => x !== t);
         persist();
         renderTasksModal();
       });
@@ -10340,7 +10364,7 @@
       if (subExpanded) tasksListEl.appendChild(renderSubtaskPanel(node, t));
     });
 
-    const prog = nodeTaskProgress(node);
+    const prog = nodeTaskProgress(host);
     tasksProgressBar.style.width = Math.round(prog.pct * 100) + "%";
     tasksProgressBar.classList.toggle("done", prog.pct >= 1);
     tasksProgressLabel.textContent = prog.total ? `${prog.done} of ${prog.total} done` : "No tasks yet";
@@ -10348,13 +10372,14 @@
   }
 
   function addTaskFromModal() {
-    const node = findNode(tasksEditingId);
-    if (!node) return;
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
     const val = tasksNewInput.value.trim();
     if (!val) return;
     pushUndo();
-    if (!Array.isArray(node.tasks)) node.tasks = [];
-    node.tasks = node.tasks.concat([{ id: uid(), text: val, done: false, stars: 0, due: null }]);
+    if (!Array.isArray(host.tasks)) host.tasks = [];
+    host.tasks = host.tasks.concat([{ id: uid(), text: val, done: false, stars: 0, due: null }]);
     tasksNewInput.value = "";
     autosizeTextarea(tasksNewInput);
     persist();
@@ -10433,7 +10458,12 @@
     const out = [];
     if (!state.current) return out;
     (function walk(n) {
-      getNodeTasks(n).forEach(t => out.push({ task: t, node: n }));
+      getNodeTasks(n).forEach(t => out.push({ task: t, node: n, r: null, c: null }));
+      if (n.table && Array.isArray(n.table.attach)) {
+        n.table.attach.forEach((row, r) => (row || []).forEach((a, c) => {
+          getNodeTasks(a).forEach(t => out.push({ task: t, node: n, r, c }));
+        }));
+      }
       (n.children || []).forEach(walk);
     })(state.current.root);
     return out;
@@ -10562,7 +10592,7 @@
      whole tree), so each row keeps a small hover-reveal pill to jump
      to that node, and drag-reorder only takes effect between two tasks
      on the *same* node — a drop across nodes is a no-op. */
-  let calDayTaskDragState = null; // { taskId, nodeId }
+  let calDayTaskDragState = null; // { taskId, nodeId, r, c }
   let calDaySubtaskDragState = null; // { taskId, subtaskId } — reorder within one task's own list
 
   function openCalDayModal(iso) {
@@ -10589,8 +10619,8 @@
       dayEntries = dayEntries.slice().sort((a, b) => getTaskStars(b.task) - getTaskStars(a.task));
     }
     calDayModalList.innerHTML = "";
-    dayEntries.forEach(({ task: t, node }) => {
-      calDayModalList.appendChild(buildCalDayTaskRow(t, node));
+    dayEntries.forEach(({ task: t, node, r, c }) => {
+      calDayModalList.appendChild(buildCalDayTaskRow(t, node, r, c));
       const subProg = taskSubtaskProgress(t);
       const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
       if (subExpanded) calDayModalList.appendChild(renderCalDaySubtaskPanel(node, t));
@@ -10599,14 +10629,17 @@
     calDaySortBtn.disabled = dayEntries.length < 2;
   }
 
-  function buildCalDayTaskRow(t, node) {
+  function buildCalDayTaskRow(t, node, r, c) {
     const li = document.createElement("li");
+    const host = resolveHost(node.id, r, c);
     const subProg = taskSubtaskProgress(t);
     const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
     li.className = "task-row" + (t.done ? " done" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (subExpanded ? " has-open-subtasks" : "");
 
+    const sameList = (state) => state && state.nodeId === node.id && (state.r ?? null) === (r ?? null) && (state.c ?? null) === (c ?? null);
+
     li.addEventListener("dragover", (e) => {
-      if (!calDayTaskDragState || calDayTaskDragState.taskId === t.id || calDayTaskDragState.nodeId !== node.id) return;
+      if (!calDayTaskDragState || calDayTaskDragState.taskId === t.id || !sameList(calDayTaskDragState)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       const rect = li.getBoundingClientRect();
@@ -10619,12 +10652,12 @@
       li.classList.remove("drag-over-top", "drag-over-bottom");
     });
     li.addEventListener("drop", (e) => {
-      if (!calDayTaskDragState || calDayTaskDragState.taskId === t.id || calDayTaskDragState.nodeId !== node.id) return;
+      if (!calDayTaskDragState || calDayTaskDragState.taskId === t.id || !sameList(calDayTaskDragState)) return;
       e.preventDefault();
       const rect = li.getBoundingClientRect();
       const before = (e.clientY - rect.top) < rect.height / 2;
       li.classList.remove("drag-over-top", "drag-over-bottom");
-      reorderCalDayTask(node, calDayTaskDragState.taskId, t.id, before);
+      reorderCalDayTask(host, calDayTaskDragState.taskId, t.id, before);
     });
 
     const handle = document.createElement("span");
@@ -10636,7 +10669,7 @@
     handle.addEventListener("dragstart", (e) => {
       e.stopPropagation();
       if (!requireSignIn()) { e.preventDefault(); return; }
-      calDayTaskDragState = { taskId: t.id, nodeId: node.id };
+      calDayTaskDragState = { taskId: t.id, nodeId: node.id, r: r ?? null, c: c ?? null };
       e.dataTransfer.effectAllowed = "move";
       try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
       li.classList.add("task-dragging");
@@ -10707,7 +10740,7 @@
       if (!requireSignIn()) return;
       if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
       pushUndo();
-      node.tasks = getNodeTasks(node).filter(x => x !== t);
+      host.tasks = getNodeTasks(host).filter(x => x !== t);
       persist();
       renderCalDayModal();
       renderCalendar();
@@ -10751,9 +10784,9 @@
     return li;
   }
 
-  function reorderCalDayTask(node, sourceTaskId, targetTaskId, before) {
+  function reorderCalDayTask(host, sourceTaskId, targetTaskId, before) {
     if (sourceTaskId === targetTaskId) return;
-    const tasks = getNodeTasks(node).slice();
+    const tasks = getNodeTasks(host).slice();
     const fromIdx = tasks.findIndex(x => x.id === sourceTaskId);
     if (fromIdx === -1) return;
     const [moved] = tasks.splice(fromIdx, 1);
@@ -10761,7 +10794,7 @@
     pushUndo();
     if (toIdx === -1) tasks.push(moved);
     else tasks.splice(before ? toIdx : toIdx + 1, 0, moved);
-    node.tasks = tasks;
+    host.tasks = tasks;
     persist();
     renderCalDayModal();
   }

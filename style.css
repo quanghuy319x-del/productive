@@ -768,6 +768,31 @@ body.signed-out #title-input{ visibility:hidden; }
   white-space: nowrap;
   pointer-events: none;
 }
+/* Cell-scale "done/total" pill for a cell's task list — same gradient
+   family as the node-level .node-progress-fill bar (see that block
+   below), just condensed to a single small chip since a cell has no
+   room for a full progress bar. */
+.node-table-cell-tasks{
+  position: relative;
+  width: auto;
+  min-width: 12px;
+  padding: 0 3px;
+  background: rgba(51, 179, 240, 0.18);
+  border: 1px solid rgba(51, 179, 240, 0.55);
+  border-radius: 999px;
+  color: #33b3f0;
+  font-weight: 800;
+  font-size: 8px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.node-table-cell-tasks:hover{ background: rgba(51, 179, 240, 0.32); }
+.node-table-cell-tasks.done{
+  background: rgba(255, 215, 106, 0.2);
+  border-color: rgba(245, 162, 92, 0.6);
+  color: #f5a25c;
+}
+.node-table-cell-tasks.done:hover{ background: rgba(255, 215, 106, 0.35); }
 
 /* Selection ring: an outline sitting outside the box (not a border-color
    change) so it stays visible no matter the node's own fill/border color —
