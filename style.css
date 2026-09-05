@@ -3095,6 +3095,60 @@ kbd{
   word-break: break-all;
   margin-top: -6px;
 }
+/* "🪟 Popup" toolbar button + its modal — lets you open any URL (typed,
+   pasted, or auto-filled from the clipboard) in a separate, sized and
+   centered browser window instead of a plain new tab. Same idea as the
+   right-click "🪟" action on a node/cell link (see .ctx-item-popup) but
+   for a URL that isn't attached to any node. */
+.popup-opener-modal-card{
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.popup-opener-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.popup-opener-input{
+  flex:1;
+  min-width:0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+}
+.popup-opener-input::placeholder{ color: var(--text-faint); }
+.popup-opener-open-btn{ flex:none; }
+.popup-opener-clip-tag{
+  display:flex; align-items:center; gap:4px;
+  font-size: 11px; color: #3fb950;
+  background: rgba(63,185,80,0.08);
+  border: 1px solid rgba(63,185,80,0.4);
+  border-radius: 6px; padding: 3px 8px; width: fit-content;
+  margin-top: -2px;
+}
+.popup-opener-clip-tag.hidden{ display:none; }
+.popup-opener-error{
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: -2px;
+}
+.popup-opener-error.hidden{ display:none; }
+.popup-opener-blank-btn{ width:100%; text-align:center; }
+.popup-opener-hint{
+  margin:0;
+  font-size: 11.5px;
+  line-height:1.6;
+  color: var(--text-dim);
+}
+.popup-opener-hint strong{ color: var(--text); }
+
+.ctx-item-popup{ font-size: 12px; }
+
 .video-modal-comment-row{
   width: 100%;
 }

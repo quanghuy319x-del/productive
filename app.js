@@ -2367,6 +2367,12 @@
     labelSpan.className = "ctx-item-label";
     labelSpan.appendChild(linkRowFragment(u, node));
     it.appendChild(labelSpan);
+    const popup = document.createElement("span");
+    popup.className = "ctx-item-remove ctx-item-popup";
+    popup.textContent = "🪟";
+    popup.title = "Open in popup window (1368×720)";
+    popup.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); openUrlAsPopup(u); });
+    it.appendChild(popup);
     const rename = document.createElement("span");
     rename.className = "ctx-item-remove ctx-item-rename";
     rename.textContent = "✎";
@@ -4931,6 +4937,12 @@
     labelSpan.className = "ctx-item-label";
     labelSpan.appendChild(cellLinkRowFragment(u, a));
     it.appendChild(labelSpan);
+    const popup = document.createElement("span");
+    popup.className = "ctx-item-remove ctx-item-popup";
+    popup.textContent = "🪟";
+    popup.title = "Open in popup window (1368×720)";
+    popup.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); openUrlAsPopup(u); });
+    it.appendChild(popup);
     const rename = document.createElement("span");
     rename.className = "ctx-item-remove ctx-item-rename";
     rename.textContent = "✎";
@@ -8563,6 +8575,118 @@
     openVideoModal(url, ytId, commentCtx);
   }
 
+  // Opens a URL in its own sized, centered browser window rather than a
+  // plain new tab — same idea as the "Popup Link Opener" browser
+  // extension (a fixed 1368×720 window you can keep beside the map for
+  // a runner sheet, doc, or video). Ported in-app as a right-click "🪟"
+  // action on any node/cell link (see openUrlSingleManageMenu/
+  // openCellUrlManageMenu) and as the standalone "🪟 Popup" toolbar
+  // button/modal for a URL that isn't attached to any node.
+  //
+  // Centers on the CURRENT browser window (screenX/Y + outerWidth/
+  // Height) rather than the whole screen — the closest a plain webpage
+  // can get to the extension's "center on current window" behavior
+  // without any extension APIs. Including sizing features in the
+  // window.open() call (rather than none at all) is also what gets
+  // Chrome/Edge to actually open this as a distinct popup-style window
+  // instead of a new tab.
+  const POPUP_OPENER_W = 1368, POPUP_OPENER_H = 720;
+  function openUrlAsPopup(url) {
+    if (!url) return;
+    const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || screen.width) - POPUP_OPENER_W) / 2));
+    const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || screen.height) - POPUP_OPENER_H) / 2));
+    const features = `popup=1,width=${POPUP_OPENER_W},height=${POPUP_OPENER_H},left=${left},top=${top},noopener`;
+    window.open(url, "_blank", features);
+  }
+
+  // Standalone "🪟 Popup" toolbar button + modal — a URL box you can type
+  // or paste into (auto-filled from the clipboard when available, same
+  // as the Popup Link Opener extension it's modeled on) to send any link
+  // through openUrlAsPopup() above, even one that isn't attached to any
+  // node yet.
+  const popupOpenerModal = $("#popup-opener-modal");
+  const popupOpenerInput = $("#popup-opener-input");
+  const popupOpenerOpenBtn = $("#popup-opener-open");
+  const popupOpenerBlankBtn = $("#popup-opener-blank");
+  const popupOpenerCloseBtn = $("#popup-opener-close");
+  const popupOpenerClipTag = $("#popup-opener-clip-tag");
+  const popupOpenerErrorEl = $("#popup-opener-error");
+
+  function normaliseForPopupOpener(s) {
+    const trimmed = (s || "").trim();
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (/^localhost(:\d+)?$|^\d{1,3}(\.\d{1,3}){3}/i.test(trimmed)) return "http://" + trimmed;
+    return "https://" + trimmed;
+  }
+  function isValidPopupOpenerUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch (e) { return false; }
+  }
+  function showPopupOpenerError(msg) {
+    popupOpenerErrorEl.textContent = "⚠ " + msg;
+    popupOpenerErrorEl.classList.remove("hidden");
+    popupOpenerClipTag.classList.add("hidden");
+  }
+  function hidePopupOpenerStatus() {
+    popupOpenerErrorEl.classList.add("hidden");
+    popupOpenerClipTag.classList.add("hidden");
+  }
+
+  async function openPopupOpenerModal() {
+    hidePopupOpenerStatus();
+    popupOpenerInput.value = "";
+    popupOpenerModal.classList.remove("hidden");
+    // Best-effort clipboard auto-fill, same as the extension this is
+    // modeled on — quietly does nothing if the browser denies clipboard
+    // read (e.g. no permission prompt shown yet, or an insecure origin).
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (text && isValidPopupOpenerUrl(normaliseForPopupOpener(text))) {
+        popupOpenerInput.value = text;
+        popupOpenerClipTag.classList.remove("hidden");
+      }
+    } catch (e) { /* clipboard denied/unavailable — fall through silently */ }
+    requestAnimationFrame(() => { popupOpenerInput.focus(); popupOpenerInput.select(); });
+  }
+  function closePopupOpenerModal() {
+    popupOpenerModal.classList.add("hidden");
+  }
+  function openFromPopupOpenerInput() {
+    const raw = popupOpenerInput.value.trim();
+    if (!raw) { showPopupOpenerError("Please enter a URL"); return; }
+    const url = normaliseForPopupOpener(raw);
+    if (!isValidPopupOpenerUrl(url)) { showPopupOpenerError("Enter a valid URL (http / https)"); return; }
+    hidePopupOpenerStatus();
+    openUrlAsPopup(url);
+    closePopupOpenerModal();
+  }
+
+  $("#btn-popup-opener").addEventListener("click", openPopupOpenerModal);
+  popupOpenerOpenBtn.addEventListener("click", openFromPopupOpenerInput);
+  popupOpenerInput.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") openFromPopupOpenerInput(); });
+  popupOpenerInput.addEventListener("input", hidePopupOpenerStatus);
+  popupOpenerBlankBtn.addEventListener("click", () => { openUrlAsPopup("about:blank"); closePopupOpenerModal(); });
+  popupOpenerCloseBtn.addEventListener("click", closePopupOpenerModal);
+  popupOpenerModal.addEventListener("click", (e) => { if (e.target === popupOpenerModal) closePopupOpenerModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !popupOpenerModal.classList.contains("hidden")) { closePopupOpenerModal(); return; }
+    // Ctrl/Cmd+Shift+O — same hotkey as the Popup Link Opener extension.
+    // Skipped while typing anywhere (contenteditable/input/textarea) so
+    // it can't hijack an "O" typed into a node or field.
+    const activeIsTyping = document.activeElement && (
+      document.activeElement.isContentEditable ||
+      document.activeElement.tagName === "INPUT" ||
+      document.activeElement.tagName === "TEXTAREA"
+    );
+    if (!activeIsTyping && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "o") {
+      e.preventDefault();
+      openPopupOpenerModal();
+    }
+  });
+
   function openNodePhotoPicker(nodeId) {
     if (!requireSignIn()) return;
     pendingPhotoNodeId = nodeId;
@@ -9764,6 +9888,14 @@
     Array.from(noteTextarea.children).forEach(noteSyncLineChecked);
   }
 
+  // Standing template for a task named "DRC" (Daily Report Card) — see
+  // openNoteModal below, which drops this into that task's first note
+  // instead of a blank editor. Plain text with real newlines, same shape
+  // noteHtmlFromRaw already expects (blank lines become empty <div><br></div>
+  // lines, ready to type straight into).
+  const DRC_NOTE_TEMPLATE =
+    "Overview:\n\nGood:\n\nBad:\n\nChange from tomorrow:\n\nTrades in details:\n\n";
+
   // Opens the note editor for a node, or (with `photoId`) for one photo
   // on that node, or (with `taskId`) for one task on that node, or (with
   // `cellPos`, {r, c}) for one table cell on that node instead — same
@@ -9793,6 +9925,18 @@
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
     noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html }));
+    // A task named "DRC" (Daily Report Card) gets its very first note
+    // pre-filled with the standing review template below, instead of a
+    // blank editor — only when this is genuinely the first note on that
+    // task (noteWorkingList was empty going in); adding a second note to
+    // the same task, or reopening an already-written one, is untouched.
+    const isFreshTaskNote = noteEditingTaskId && !noteWorkingList.length;
+    if (isFreshTaskNote) {
+      const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
+      if (t && (t.text || "").trim().toUpperCase() === "DRC") {
+        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
+      }
+    }
     const wantsNew = index != null && index >= noteWorkingList.length;
     if (!noteWorkingList.length || wantsNew) {
       noteWorkingList.push({ id: uid(), title: "", html: "" });
