@@ -1399,7 +1399,7 @@
     return ensureTableAttach(node)[r][c];
   }
   function cellAttachHasAny(a) {
-    return !!(a && (a.image || a.note || a.url || (a.task && a.task.text) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
+    return !!(a && (a.image || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.task && a.task.text) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
   }
 
   // A handful of features (the affirmation typing game, the countdown
@@ -1607,6 +1607,22 @@
   }
   function taskHasNotes(t) {
     return getTaskNotes(t).length > 0;
+  }
+
+  // A table cell's note uses the exact same rich, multi-entry note editor
+  // as a node's own notes (see getNodeNotes/openNoteModal) — title, rich
+  // text, multiple notes with paging, all of it — just scoped to one
+  // cell's attach record instead of the whole node. Reads either the old
+  // single plain-text `note` string (from before this existed) or the
+  // new `notes` array, same fallback shape as getNodeNotes/getTaskNotes.
+  function getCellNotes(a) {
+    if (!a) return [];
+    if (Array.isArray(a.notes) && a.notes.length) return a.notes;
+    if (a.note && a.note.trim()) return [{ id: uid(), title: "", html: a.note }];
+    return [];
+  }
+  function cellHasNotes(a) {
+    return getCellNotes(a).length > 0;
   }
 
   // Short label for a note, for the menus below — its title if it has
@@ -1969,6 +1985,70 @@
 
   function linkIconFor(u) {
     return LINK_ICON_SVGS[linkIconKey(u)];
+  }
+
+  // A table cell's links use the exact same multi-link model as a node's
+  // own links (see getNodeUrls/getLinkTitle above) — an array of URLs
+  // plus a { [url]: title } map for display names — just scoped to one
+  // cell's attach record instead of the whole node. Reads either the old
+  // single plain `url` string (from before this existed) or the new
+  // `urls` array, same fallback shape as getNodeUrls.
+  function getCellUrls(a) {
+    if (!a) return [];
+    if (Array.isArray(a.urls) && a.urls.length) return a.urls;
+    if (a.url) return [a.url];
+    return [];
+  }
+  function cellHasUrls(a) {
+    return getCellUrls(a).length > 0;
+  }
+  function getCellLinkTitle(a, url) {
+    return (a && a.linkTitles && a.linkTitles[url]) || "";
+  }
+  function setCellLinkTitle(a, url, title) {
+    if (!a || !url) return;
+    if (!a.linkTitles) a.linkTitles = {};
+    const clean = (title || "").trim();
+    if (clean) a.linkTitles[url] = clean;
+    else delete a.linkTitles[url];
+  }
+  // Same "[icon] title" row-label builder as linkRowFragment above, just
+  // reading a cell's own linkTitles instead of a node's.
+  function cellLinkRowFragment(u, a) {
+    const frag = document.createDocumentFragment();
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "ctx-item-link-icon";
+    iconSpan.innerHTML = linkIconFor(u);
+    frag.appendChild(iconSpan);
+    const label = getCellLinkTitle(a, u) || shortenUrlForMenu(u);
+    frag.appendChild(document.createTextNode(" " + label));
+    return frag;
+  }
+  // Same best-effort auto-title fetch as fetchLinkTitle above, scoped to
+  // one cell instead of a node — re-resolves the live cell by {nodeId,
+  // r, c} since several seconds may have passed before this resolves.
+  async function fetchCellLinkTitle(nodeId, r, c, url) {
+    let title = null;
+    const ytId = youtubeVideoId(url);
+    try {
+      if (ytId) {
+        const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+        if (res.ok) title = (await res.json()).title;
+      } else {
+        const res = await fetch(url, { mode: "cors" });
+        if (res.ok) title = new DOMParser().parseFromString(await res.text(), "text/html").title;
+      }
+    } catch (e) {
+      console.warn("Branchline: couldn't auto-fetch link title for", url, e);
+    }
+    title = (title || "").trim();
+    const liveNode = findNode(nodeId);
+    if (!liveNode || !liveNode.table) return;
+    const a = getCellAttach(liveNode, r, c);
+    if (!title || !getCellUrls(a).includes(url) || getCellLinkTitle(a, url)) return;
+    setCellLinkTitle(a, url, title.slice(0, 80));
+    renderAll();
+    persist();
   }
 
   // Native prompt for adding a new URL to a node — appends it to the
@@ -4343,59 +4423,136 @@
     cellImageInput.click();
   }
 
-  // Small popover (built on the same reused #ctx-menu element as every
-  // other right-click menu) for writing/editing a cell's note — a plain
-  // textarea rather than the full rich note editor (see openNoteModal),
-  // since a table cell's note is meant to be a quick line or two, not a
-  // whole document.
-  function editCellNote(node, r, c, x, y) {
+  // Opens a cell's note in the exact same rich note editor used for a
+  // node's own notes and a task's notes (see openNoteModal) — title,
+  // rich text, multiple notes with paging, all of it — just scoped to
+  // this one cell's attach record instead of the whole node.
+  function editCellNote(node, r, c) {
     if (!requireSignIn()) return;
-    const a = getCellAttach(node, r, c);
-    resetContextMenu();
-    const header = document.createElement("div");
-    header.className = "ctx-item ctx-item-header";
-    header.style.cursor = "default";
-    const headerLabel = document.createElement("span");
-    headerLabel.className = "ctx-item-label";
-    headerLabel.textContent = "Cell note";
-    header.appendChild(headerLabel);
-    ctxMenu.appendChild(header);
-    const ta = document.createElement("textarea");
-    ta.className = "ctx-cell-note-input";
-    ta.value = a.note || "";
-    ta.rows = 4;
-    ta.placeholder = "Note for this cell…";
-    ta.addEventListener("click", (e) => e.stopPropagation());
-    ta.addEventListener("mousedown", (e) => e.stopPropagation());
-    ta.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Escape") closeContextMenu();
-    });
-    ctxMenu.appendChild(ta);
-    const saveBtn = document.createElement("div");
-    saveBtn.className = "ctx-item";
-    saveBtn.textContent = "Save note";
-    saveBtn.addEventListener("click", () => {
-      pushUndo();
-      a.note = ta.value.trim() || null;
-      closeContextMenu();
-      renderAll();
-      persist();
-    });
-    ctxMenu.appendChild(saveBtn);
-    positionContextMenu(x, y);
-    requestAnimationFrame(() => ta.focus());
+    openNoteModal(node.id, undefined, null, null, { r, c });
   }
 
-  function editCellUrl(node, r, c) {
+  // Native prompt for adding a new URL to a cell — appends it to the
+  // cell's `urls` array, then immediately asks for an optional display
+  // name too. Exactly the node-level addNodeUrl flow above, just scoped
+  // to one cell's attach record instead of the whole node.
+  function addCellUrl(node, r, c) {
     if (!requireSignIn()) return;
-    const a = getCellAttach(node, r, c);
-    const val = window.prompt("Link URL for this cell:", a.url || "https://");
-    if (val === null) return;
+    const input = window.prompt("URL to add to this cell:", "https://");
+    if (input === null) return; // cancelled
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    const url = normalizeUrl(trimmed);
+    const name = window.prompt("Name for this link (leave blank to use the URL):", "");
     pushUndo();
-    a.url = val.trim() || null;
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a).slice();
+    urls.push(url);
+    a.urls = urls;
+    a.url = null; // fully migrated onto the array field
+    if (name && name.trim()) setCellLinkTitle(a, url, name);
     renderAll();
     persist();
+    if (!getCellLinkTitle(a, url)) fetchCellLinkTitle(node.id, r, c, url);
+  }
+
+  // Native prompt for editing (or, if cleared, removing) one existing URL
+  // by its index in the cell's `urls` array — exactly editNodeUrl above,
+  // scoped to a cell.
+  function editCellUrlByIndex(node, r, c, index) {
+    if (!requireSignIn()) return;
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a).slice();
+    if (index < 0 || index >= urls.length) return;
+    const oldUrl = urls[index];
+    const input = window.prompt("Edit URL (clear to remove):", oldUrl);
+    if (input === null) return; // cancelled
+    const trimmed = input.trim();
+    pushUndo();
+    if (trimmed) {
+      const newUrl = normalizeUrl(trimmed);
+      urls[index] = newUrl;
+      if (newUrl !== oldUrl) {
+        setCellLinkTitle(a, oldUrl, null);
+        a.urls = urls;
+        a.url = null;
+        renderAll();
+        persist();
+        fetchCellLinkTitle(node.id, r, c, newUrl);
+        return;
+      }
+    } else {
+      setCellLinkTitle(a, oldUrl, null);
+      urls.splice(index, 1);
+    }
+    a.urls = urls;
+    a.url = null;
+    renderAll();
+    persist();
+  }
+
+  // Native prompt for giving a cell's link its own custom name — exactly
+  // renameNodeUrl above, scoped to a cell.
+  function renameCellUrl(node, r, c, index) {
+    if (!requireSignIn()) return;
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a);
+    if (index < 0 || index >= urls.length) return;
+    const url = urls[index];
+    const input = window.prompt("Name for this link (leave blank to just show the URL):", getCellLinkTitle(a, url));
+    if (input === null) return; // cancelled
+    pushUndo();
+    setCellLinkTitle(a, url, input);
+    renderAll();
+    persist();
+  }
+
+  // Removes one URL from a cell by its index — exactly removeNodeUrl
+  // above, scoped to a cell.
+  function removeCellUrl(node, r, c, index) {
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a).slice();
+    if (index < 0 || index >= urls.length) return;
+    pushUndo();
+    setCellLinkTitle(a, urls[index], null);
+    urls.splice(index, 1);
+    a.urls = urls;
+    a.url = null;
+    renderAll();
+    persist();
+  }
+
+  // Right-click on one of a cell's link icons — exactly
+  // openUrlSingleManageMenu above, scoped to a cell: rename/remove this
+  // one link, click to edit its URL.
+  function openCellUrlManageMenu(node, r, c, index, x, y) {
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a);
+    const u = urls[index];
+    if (!u) return;
+    resetContextMenu();
+    const it = document.createElement("div");
+    it.className = "ctx-item";
+    it.title = u;
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "ctx-item-label";
+    labelSpan.appendChild(cellLinkRowFragment(u, a));
+    it.appendChild(labelSpan);
+    const rename = document.createElement("span");
+    rename.className = "ctx-item-remove ctx-item-rename";
+    rename.textContent = "✎";
+    rename.title = "Rename";
+    rename.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); renameCellUrl(node, r, c, index); });
+    it.appendChild(rename);
+    const rm = document.createElement("span");
+    rm.className = "ctx-item-remove";
+    rm.textContent = "✕";
+    rm.title = "Remove";
+    rm.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); removeCellUrl(node, r, c, index); });
+    it.appendChild(rm);
+    it.addEventListener("click", () => { closeContextMenu(); editCellUrlByIndex(node, r, c, index); });
+    ctxMenu.appendChild(it);
+    positionContextMenu(x, y);
   }
 
   function editCellTask(node, r, c) {
@@ -4431,10 +4588,9 @@
       renderAll();
       persist();
     }]);
-    items.push([a.note ? "Edit note…" : "Add note…", () => editCellNote(node, r, c, x, y)]);
-    if (a.note) items.push(["Remove note", () => { pushUndo(); a.note = null; renderAll(); persist(); }]);
-    items.push([a.url ? "Edit link…" : "Add link…", () => editCellUrl(node, r, c)]);
-    if (a.url) items.push(["Remove link", () => { pushUndo(); a.url = null; renderAll(); persist(); }]);
+    items.push([cellHasNotes(a) ? "Edit note…" : "Add note…", () => editCellNote(node, r, c)]);
+    if (cellHasNotes(a)) items.push(["Remove note", () => { pushUndo(); a.note = null; a.notes = null; renderAll(); persist(); }]);
+    items.push(["Add link…", () => addCellUrl(node, r, c)]);
     items.push([(a.task && a.task.text) ? "Edit task…" : "Add task…", () => editCellTask(node, r, c)]);
     if (a.task && a.task.text) items.push(["Remove task", () => { pushUndo(); a.task = null; renderAll(); persist(); }]);
     {
@@ -4483,23 +4639,31 @@
       thumb.addEventListener("click", () => window.open(src, "_blank", "noopener"));
       strip.appendChild(thumb);
     }
-    if (a.note) {
+    if (cellHasNotes(a)) {
       const noteIcon = document.createElement("span");
       noteIcon.className = "node-table-cell-icon node-table-cell-note";
       noteIcon.innerHTML = CELL_NOTE_ICON_SVG;
-      noteIcon.title = a.note;
-      noteIcon.addEventListener("click", (e) => editCellNote(node, r, c, e.clientX, e.clientY));
+      const notes = getCellNotes(a);
+      noteIcon.title = notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0]);
+      noteIcon.addEventListener("click", () => editCellNote(node, r, c));
       strip.appendChild(noteIcon);
     }
-    if (a.url) {
+    // One icon per link (instead of a single icon), same treatment as
+    // the node-level link markers (see renderNode) — each link is
+    // independently visible, clickable, and editable via right-click.
+    getCellUrls(a).forEach((u, i) => {
       const linkIcon = document.createElement("span");
       linkIcon.className = "node-table-cell-icon node-table-cell-link";
-      linkIcon.innerHTML = linkIconFor(a.url);
-      linkIcon.title = a.url + " — right-click to edit";
-      linkIcon.addEventListener("click", () => window.open(a.url, "_blank", "noopener"));
-      linkIcon.addEventListener("contextmenu", (e) => { e.preventDefault(); editCellUrl(node, r, c); });
+      linkIcon.innerHTML = linkIconFor(u);
+      const linkTitle = getCellLinkTitle(a, u);
+      linkIcon.title = linkTitle || u;
+      linkIcon.addEventListener("click", () => window.open(u, "_blank", "noopener"));
+      linkIcon.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        openCellUrlManageMenu(node, r, c, i, e.clientX, e.clientY);
+      });
       strip.appendChild(linkIcon);
-    }
+    });
     if (a.task && a.task.text) {
       const taskEl = document.createElement("label");
       taskEl.className = "node-table-cell-icon node-table-cell-task" + (a.task.done ? " done" : "");
@@ -8487,6 +8651,11 @@
   // live in that task's own `notes` array — see getTaskNotes). Mutually
   // exclusive with noteEditingPhotoId; at most one of the two is set.
   let noteEditingTaskId = null;
+  // Same idea again, but scoped to one table cell on the node instead
+  // (its notes live in that cell's attach record — see getCellNotes).
+  // {r, c}, or null. Mutually exclusive with the photo/task cases above —
+  // at most one of the three is ever set.
+  let noteEditingCellPos = null;
   let noteSaveTimer = null;
   let noteIsResizing = false;
   // A node can now hold several notes. While the modal is open,
@@ -8585,20 +8754,25 @@
   }
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
-  // on that node, or (with `taskId`) for one task on that node instead —
-  // same editor in all three cases, just a different backing list (see
-  // noteEditingPhotoId/noteEditingTaskId above). `index` picks which
-  // existing note to show: omit it to land on the last (most recently
-  // added) one, or pass notes.length (or any out-of-range index) to
-  // start a brand-new blank note instead of an existing one.
-  function openNoteModal(nodeId, index, photoId, taskId) {
+  // on that node, or (with `taskId`) for one task on that node, or (with
+  // `cellPos`, {r, c}) for one table cell on that node instead — same
+  // editor in all four cases, just a different backing list (see
+  // noteEditingPhotoId/noteEditingTaskId/noteEditingCellPos above).
+  // `index` picks which existing note to show: omit it to land on the
+  // last (most recently added) one, or pass notes.length (or any
+  // out-of-range index) to start a brand-new blank note instead of an
+  // existing one.
+  function openNoteModal(nodeId, index, photoId, taskId, cellPos) {
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
     noteEditingId = nodeId;
     noteEditingPhotoId = photoId || null;
     noteEditingTaskId = taskId || null;
-    const existing = noteEditingTaskId
+    noteEditingCellPos = cellPos || null;
+    const existing = noteEditingCellPos
+      ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
+      : noteEditingTaskId
       ? getTaskNotes(getNodeTasks(node).find(x => x.id === noteEditingTaskId))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
     noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html }));
@@ -8621,7 +8795,10 @@
     const node = findNode(noteEditingId);
     const current = noteWorkingList[noteActiveIndex];
     noteTitleInput.value = current.title || "";
-    if (noteEditingTaskId) {
+    if (noteEditingCellPos) {
+      noteTextarea.dataset.placeholder = "Note for this cell…";
+      noteNavAdd.title = "Start a new note on this cell";
+    } else if (noteEditingTaskId) {
       const t = node && getNodeTasks(node).find(x => x.id === noteEditingTaskId);
       noteTextarea.dataset.placeholder = `Note for task "${t ? (t.text || "(untitled task)") : ""}"…`;
       noteNavAdd.title = "Start a new note on this task";
@@ -8692,6 +8869,7 @@
     noteEditingId = null;
     noteEditingPhotoId = null;
     noteEditingTaskId = null;
+    noteEditingCellPos = null;
     noteWorkingList = [];
     noteActiveIndex = 0;
     noteModal.classList.add("hidden");
@@ -8728,6 +8906,19 @@
     if (!node) return;
     captureActiveNote();
     const cleaned = noteWorkingList.filter(n => (n.title && n.title.trim()) || (n.html && n.html.trim()));
+    if (noteEditingCellPos) {
+      const a = getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c);
+      const before = JSON.stringify(getCellNotes(a));
+      const after = JSON.stringify(cleaned);
+      if (before !== after) {
+        pushUndo();
+        a.notes = cleaned.length ? cleaned : null;
+        a.note = null;
+        renderAll();
+        persist();
+      }
+      return;
+    }
     if (noteEditingTaskId) {
       const t = getNodeTasks(node).find(x => x.id === noteEditingTaskId);
       if (!t) return;
