@@ -799,26 +799,10 @@
       try { await this.signIn(true); } catch (e) { /* silent attempt only — fail quietly */ }
     },
 
+    // NOTE: deliberately no longer reused across calls — see requestToken()
+    // below for why each call gets its own throwaway client instead.
     ensureTokenClient() {
-      if (this.tokenClient) return true;
-      if (!window.google || !google.accounts || !google.accounts.oauth2) return false;
-      this.tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: DRIVE_SCOPE,
-        callback: () => {}, // overridden per-call, see requestToken()
-        error_callback: (err) => {
-          // Fires for things that never reach the callback above at all —
-          // a popup Google/the browser blocked or the user closed, or (the
-          // most common silent-failure case) this page's origin isn't in
-          // the OAuth client's "Authorized JavaScript origins" list in
-          // Google Cloud Console. Routed to whichever promise is currently
-          // waiting in requestToken() below.
-          if (this._pendingReject) this._pendingReject(
-            new Error(describeGisError(err))
-          );
-        },
-      });
-      return true;
+      return !!(window.google && google.accounts && google.accounts.oauth2);
     },
 
     requestToken(silent) {
@@ -841,14 +825,8 @@
         if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded yet — try again in a second, or check your connection.")); return; }
         // If an earlier requestToken() call (e.g. the automatic silent
         // restore-on-load attempt) is still waiting on Google when this
-        // one starts, settle it as cancelled right now instead of leaving
-        // it in place. Both calls would otherwise share the same
-        // tokenClient.callback slot, so whichever GIS response lands
-        // second silently overwrites the first — and if a person clicks
-        // "Sign in with Google" while that background silent check is
-        // still in flight, the click's own response can get lost that
-        // way, making it look like the sign-in did nothing until a
-        // second click (no race left to lose to) actually works.
+        // one starts, cancel it locally right now rather than leaving it
+        // to dangle.
         if (this._pendingReject) {
           this._pendingReject(new Error("Superseded by a newer sign-in request"));
         }
@@ -856,28 +834,59 @@
         // ever fires (seen in some browsers when the popup is blocked
         // without triggering GIS's own popup_failed_to_open error), don't
         // leave the button hung forever with no feedback.
+        let settled = false;
         const timeoutId = setTimeout(() => {
+          if (settled) return;
+          settled = true;
           this._pendingReject = null;
           reject(new Error("Google sign-in didn't respond after 15 seconds — it may have been blocked by a popup blocker, or this page's origin isn't authorized for this OAuth client yet. Check the browser console for details."));
         }, 15000);
-        const settle = (fn, arg) => { clearTimeout(timeoutId); this._pendingReject = null; fn(arg); };
-        this._pendingReject = (err) => settle(reject, err);
-        this.tokenClient.callback = (resp) => {
-          if (resp && resp.access_token) {
-            this.accessToken = resp.access_token;
-            this.tokenExpiresAt = Date.now() + ((resp.expires_in || 3300) * 1000);
-            saveCachedDriveToken(this.accessToken, this.tokenExpiresAt);
-            // Any successful token — silent or explicit — clears a prior
-            // reauth-needed state, since it proves Google auth is
-            // working for this session again.
-            this.needsReauth = false;
-            this.consecutiveSilentFailures = 0;
-            settle(resolve, resp.access_token);
-          } else {
-            settle(reject, resp && resp.error ? new Error(resp.error) : new Error("Sign-in didn't return a token"));
-          }
+        const settle = (fn, arg) => {
+          if (settled) return; // a second callback firing for the same call, or one arriving after this call was itself superseded — ignore rather than double-settle
+          settled = true;
+          clearTimeout(timeoutId);
+          if (this._pendingReject === rejectThis) this._pendingReject = null;
+          fn(arg);
         };
-        this.tokenClient.requestAccessToken({ prompt: silent ? "none" : "consent" });
+        const rejectThis = (err) => settle(reject, err);
+        this._pendingReject = rejectThis;
+        // A fresh, throwaway token client for THIS call only, rather than
+        // reusing one shared client across calls. GIS's silent
+        // (prompt:"none", hidden-iframe) and explicit (prompt:"consent",
+        // popup) flows are genuinely separate requests to Google that can
+        // both be in flight at once — e.g. the automatic silent
+        // restore-on-load check still pending when the person clicks
+        // "Sign in with Google" themselves. Both used to share one
+        // tokenClient's callback/error_callback slot, so whichever
+        // response physically landed second — even a stale failure from
+        // the OLD, already-superseded call — got delivered into whatever
+        // closure was currently sitting in that slot, which by then
+        // belonged to the NEW call. That could spuriously fail a sign-in
+        // the person was actively completing, with no local sign of what
+        // happened — hence needing 2-3 tries. Giving each call its own
+        // client means a stale response can only ever reach its own
+        // (already-settled, now-inert) closure, never a newer call's.
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: DRIVE_SCOPE,
+          callback: (resp) => {
+            if (resp && resp.access_token) {
+              this.accessToken = resp.access_token;
+              this.tokenExpiresAt = Date.now() + ((resp.expires_in || 3300) * 1000);
+              saveCachedDriveToken(this.accessToken, this.tokenExpiresAt);
+              // Any successful token — silent or explicit — clears a prior
+              // reauth-needed state, since it proves Google auth is
+              // working for this session again.
+              this.needsReauth = false;
+              this.consecutiveSilentFailures = 0;
+              settle(resolve, resp.access_token);
+            } else {
+              settle(reject, resp && resp.error ? new Error(resp.error) : new Error("Sign-in didn't return a token"));
+            }
+          },
+          error_callback: (err) => settle(reject, new Error(describeGisError(err))),
+        });
+        client.requestAccessToken({ prompt: silent ? "none" : "consent" });
       });
     },
 
@@ -2790,10 +2799,33 @@
     }
   }
 
+  // Guards against overlapping saves: on a photo-heavy map, FolderDB/
+  // DriveDB.save() re-embeds every photo as base64 and re-uploads the
+  // whole map, which can take several real seconds over the network.
+  // Without this, persist()'s 500ms debounce only ever cancelled a
+  // pending *timer* — if a save was already mid-upload when the next
+  // edit's timer fired, runPersistNow() would start a second full
+  // upload of the same (large) file right on top of the first, and the
+  // two could land out of order. kickPersist() below makes sure only
+  // one runPersistNow() is ever in flight at a time, queuing at most one
+  // more pass for right after the current one finishes.
+  let persistInFlight = false;
+  let persistAgainAfter = false;
+  function kickPersist() {
+    if (persistInFlight) { persistAgainAfter = true; return; }
+    persistInFlight = true;
+    runPersistNow()
+      .catch((e) => console.error("Persist failed", e))
+      .finally(() => {
+        persistInFlight = false;
+        if (persistAgainAfter) { persistAgainAfter = false; kickPersist(); }
+      });
+  }
+
   function persist() {
     unsavedEdits = true;
     if (persistTimer) clearTimeout(persistTimer);
-    persistTimer = setTimeout(runPersistNow, 500);
+    persistTimer = setTimeout(kickPersist, 500);
   }
 
   // Forces a pending save through right away instead of waiting out the
@@ -2812,7 +2844,7 @@
     if (!persistTimer && !unsavedEdits) return;
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = null;
-    runPersistNow();
+    kickPersist();
   }
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushPersist();
