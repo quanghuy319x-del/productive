@@ -6752,7 +6752,7 @@
   // out of range, and typing into it (particularly on level-2+ nodes,
   // since only THEIR default sits below the old floor) never produced a
   // value the input would accept.
-  const MIN_X_GAP = 20;
+  const MIN_X_GAP = 10;
   const MAX_X_GAP = 900;
 
   // Right-click on a parent→child connector: lets the user type an exact
