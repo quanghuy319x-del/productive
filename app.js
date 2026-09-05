@@ -8356,7 +8356,7 @@
       ytPlayer.loadVideoById({ videoId: ytId, startSeconds });
       startYtSaveTimer();
     } else {
-      ytPlayer = new YT.Player(videoModalIframe, {
+      ytPlayer = new YT.Player("video-modal-iframe", {
         videoId: ytId,
         host: "https://www.youtube-nocookie.com",
         playerVars: { autoplay: 1, start: Math.floor(startSeconds), playsinline: 1 },
