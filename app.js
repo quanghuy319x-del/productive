@@ -1997,6 +1997,36 @@
         if (t.done) done += weight;
       }
     });
+    // Each completed round of the affirmation typing game (node.affirmation.wins
+    // — see below) is worth a flat 3 points toward the same done/total tally,
+    // always fully "done" since a win is a win: 1 round = 3, 2 rounds = 6, etc.
+    const wins = (node && node.affirmation && node.affirmation.wins) || 0;
+    if (wins > 0) {
+      const affirmationPoints = wins * 3;
+      total += affirmationPoints;
+      done += affirmationPoints;
+    }
+    // Every full minute actually logged on the node's countdown timer
+    // (node.timePlayedSec — see getNodeTimePlayed) is worth 3 more points,
+    // same "always fully done" treatment: 1m = 3, 2m = 6, etc. Partial
+    // seconds under a full minute don't count yet.
+    const timedMinutes = Math.floor(getNodeTimePlayed(node) / 60);
+    if (timedMinutes > 0) {
+      const timerPoints = timedMinutes * 3;
+      total += timerPoints;
+      done += timerPoints;
+    }
+    // Each link that's been given a comment (node.linkComments — see
+    // getLinkComment/setLinkComment) is worth another flat 3 points, same
+    // "always fully done" treatment as the above: one commented link = 3,
+    // two commented links = 6, etc. A link with no comment set contributes
+    // nothing here (it's already covered by whatever it's otherwise worth).
+    const commentedLinks = getNodeUrls(node).filter(u => getLinkComment(node, u)).length;
+    if (commentedLinks > 0) {
+      const commentPoints = commentedLinks * 3;
+      total += commentPoints;
+      done += commentPoints;
+    }
     return { done, total, pct: total ? done / total : 0 };
   }
 
