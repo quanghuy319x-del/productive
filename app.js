@@ -8257,7 +8257,6 @@
   const videoModal = $("#video-modal");
   const videoModalCard = $(".video-modal-card");
   const videoModalIframe = $("#video-modal-iframe");
-  const linkPreviewIframe = $("#link-preview-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
   const videoModalCloseBtn = $("#video-modal-close");
   const videoModalCommentRow = $("#video-modal-comment-row");
@@ -8328,41 +8327,22 @@
     }
   }
 
-  // Opens the shared modal for any link — a YouTube video/short gets the
-  // resumable player above; anything else gets previewed in a sandboxed
-  // iframe right in the modal instead of jumping to a new tab. The two
-  // preview modes use separate <iframe> elements (video-modal-iframe /
-  // link-preview-iframe) so the YouTube player object, once created, can
-  // stay attached to its own iframe permanently — swapping that same
+  // Opens the resumable YouTube player modal for a video/short link.
+  // (Non-YouTube links no longer use this modal — see openLinkSmart,
+  // which now just opens them directly in a new tab.) Kept as its own
+  // <iframe> element (video-modal-iframe) so the YouTube player object,
+  // once created, can stay attached to its own iframe permanently — swapping that same
   // element's .src to an arbitrary site would leave the player object
   // pointed at a page that no longer understands its postMessage calls.
   async function openVideoModal(url, ytId, commentCtx) {
     videoModalOpenLink.href = url;
-    videoModalOpenLink.textContent = ytId ? "Open on YouTube ↗" : "Open in new tab ↗";
+    videoModalOpenLink.textContent = "Open on YouTube ↗";
     videoModalCommentCtx = commentCtx || null;
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     videoModal.classList.remove("hidden");
-    videoModalCard.classList.toggle("is-page-preview", !ytId);
     if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
 
-    if (!ytId) {
-      // Plain link: no player API involved, just embed the page. Pause
-      // (don't destroy) any YouTube player so its own iframe is left
-      // intact and ready to resume next time a video link is opened.
-      if (ytPlayer && typeof ytPlayer.pauseVideo === "function") {
-        try { ytPlayer.pauseVideo(); } catch {}
-      }
-      stopYtSaveTimer();
-      ytPlayerCurrentId = null;
-      videoModalIframe.classList.add("hidden");
-      linkPreviewIframe.classList.remove("hidden");
-      linkPreviewIframe.src = url;
-      return;
-    }
-
-    linkPreviewIframe.classList.add("hidden");
-    linkPreviewIframe.src = "";
     videoModalIframe.classList.remove("hidden");
 
     ytPlayerCurrentId = ytId;
@@ -8395,7 +8375,6 @@
     if (ytPlayer && typeof ytPlayer.stopVideo === "function") {
       try { ytPlayer.stopVideo(); } catch {} // stop playback
     }
-    linkPreviewIframe.src = ""; // stop loading/any media on generic pages
     videoModal.classList.add("hidden");
     videoModalCommentCtx = null;
     ytPlayerCurrentId = null;
@@ -8460,16 +8439,18 @@
   linkCommentModalInput.addEventListener("input", () => autoGrowTextarea(linkCommentModalInput));
 
   // Shared by every link click handler (node links, table-cell links):
-  // opens every link inside the mind map via the shared modal — YouTube
-  // videos/shorts get the resumable player, everything else gets a
-  // sandboxed preview iframe (with an "Open in new tab ↗" escape hatch
-  // for the — fairly common — sites that refuse to be framed at all).
+  // YouTube videos/shorts open in the resumable in-app player modal;
+  // every other link just opens directly in a new tab.
   // `commentCtx` (optional) is a { get, set } pair scoped to that one
   // link's comment (see getLinkComment/setLinkComment and their cell
   // equivalents), letting the modal's comment box read and save without
   // knowing whether the link lives on a node or inside a table cell.
   function openLinkSmart(url, commentCtx) {
     const ytId = youtubeVideoId(url);
+    if (!ytId) {
+      window.open(url, "_blank", "noopener");
+      return;
+    }
     openVideoModal(url, ytId, commentCtx);
   }
 
