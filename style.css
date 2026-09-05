@@ -3018,8 +3018,8 @@ kbd{
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
-  min-height: 40px;
-  max-height: 160px;
+  min-height: 76px;
+  max-height: 320px;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -3027,7 +3027,9 @@ kbd{
   color: var(--text);
   font: inherit;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-y: auto;
 }
 .video-modal-comment-input:focus{
   outline: none;

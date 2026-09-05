@@ -8133,6 +8133,7 @@
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     videoModal.classList.remove("hidden");
+    if (commentCtx) requestAnimationFrame(autoGrowVideoModalComment);
   }
   function closeVideoModal() {
     videoModal.classList.add("hidden");
@@ -8157,6 +8158,15 @@
   videoModalCommentInput.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); videoModalCommentInput.blur(); }
   });
+  // Grows the box taller as the comment runs to multiple lines/paragraphs
+  // (plain Enter just inserts a newline, same as any textarea — this
+  // only makes the whole paragraph stay visible instead of scrolling),
+  // same "grows as you type" feel as the task-list boxes elsewhere.
+  function autoGrowVideoModalComment() {
+    videoModalCommentInput.style.height = "auto";
+    videoModalCommentInput.style.height = videoModalCommentInput.scrollHeight + "px";
+  }
+  videoModalCommentInput.addEventListener("input", autoGrowVideoModalComment);
   // Shared by every link click handler (node links, table-cell links):
   // opens the in-app player for a YouTube URL, otherwise falls back to
   // the normal new-tab behavior. `commentCtx` (optional) is a
