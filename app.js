@@ -3114,24 +3114,46 @@
   const signedOutState = $("#signed-out-state");
   const sidebarSignedOutNote = $("#mindmap-list-signed-out");
 
-  // Nothing map-related is shown until a Google session is confirmed —
-  // this toggles the body-level CSS gate (canvas/FABs, see style.css)
-  // and short-circuits renderSidebar() so map titles are never even
-  // written into the DOM while signed out, not just visually hidden.
+  // Nothing map-related is shown until a Google session is BOTH confirmed
+  // AND actually synced — signedIn flips true the instant we have a fresh
+  // token, which is *before* syncFromDrive() has pulled this device's
+  // latest copy down (see DriveDB.signIn/.restore). Gating on signedIn
+  // alone let updateDriveUI()'s "Syncing…" call (which also calls this)
+  // un-hide #world early, while renderSidebar() (the only thing that
+  // hides the "Sign in with Google" panel) hadn't run yet — so for that
+  // whole sync window you'd see stale/cached map content AND the sign-in
+  // panel on screen at once. Requiring dataSynced too closes that gap.
+  function mapsReadyToShow() {
+    return !!DriveDB.signedIn && !!DriveDB.dataSynced;
+  }
+
+  // Toggles the body-level CSS gate (canvas/FABs, see style.css) and
+  // keeps the signed-out/syncing panel's own text in sync with *why*
+  // it's showing, so a signed-in-but-still-syncing tab says "Syncing…"
+  // rather than the misleading "Sign in with Google" (which also
+  // shouldn't invite a redundant second sign-in tap mid-sync).
   function applySignedOutGate() {
-    document.body.classList.toggle("signed-out", !DriveDB.signedIn);
+    const ready = mapsReadyToShow();
+    document.body.classList.toggle("signed-out", !ready);
+    if (ready) return;
+    const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced;
+    const heading = signedOutState.querySelector("p");
+    const btn = $("#btn-signed-out-signin");
+    if (heading) heading.textContent = stillSyncing ? "Syncing your maps…" : "Sign in with Google to see your mind maps.";
+    if (btn) btn.classList.toggle("hidden", stillSyncing);
+    if (sidebarSignedOutNote) sidebarSignedOutNote.textContent = stillSyncing ? "Syncing your maps…" : "Sign in with Google to see your maps.";
   }
 
   function renderSidebar() {
     sortMaps(state.maps);
     listEl.innerHTML = "";
     applySignedOutGate();
-    if (!DriveDB.signedIn) {
+    if (!mapsReadyToShow()) {
       emptyState.classList.add("hidden");
       nodeFabs.classList.add("hidden");
       signedOutState.classList.remove("hidden");
       if (sidebarSignedOutNote) sidebarSignedOutNote.classList.remove("hidden");
-      return; // don't build any map list items while signed out
+      return; // don't build any map list items until signed in AND synced
     }
     signedOutState.classList.add("hidden");
     if (sidebarSignedOutNote) sidebarSignedOutNote.classList.add("hidden");
