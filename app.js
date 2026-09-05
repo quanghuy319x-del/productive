@@ -439,6 +439,27 @@
       if (Array.isArray(node.images)) {
         node.images = node.images.map(id => lookup.get(id) || id);
       }
+      // photoTags/photoNotes are keyed by the photo's local id, which is
+      // meaningless once this map leaves this browser (Drive/folder/
+      // export all carry inline bytes, not local ids — see above). Remap
+      // those keys onto the same data URL the photo itself is being
+      // inlined to here, so that when this file comes back in through
+      // ensurePhotosMigrated(), its existing "data:"-keyed remap logic
+      // (see the idForOldValue map there) can reattach the tags/notes to
+      // whatever fresh id that photo gets — instead of leaving them
+      // keyed to a stale local id that no longer matches anything, which
+      // silently dropped tags/notes on any photo that survived a round
+      // trip through Drive/folder sync or Export .json.
+      if (node.photoTags) {
+        const remapped = {};
+        Object.keys(node.photoTags).forEach((k) => { remapped[lookup.get(k) || k] = node.photoTags[k]; });
+        node.photoTags = remapped;
+      }
+      if (node.photoNotes) {
+        const remapped = {};
+        Object.keys(node.photoNotes).forEach((k) => { remapped[lookup.get(k) || k] = node.photoNotes[k]; });
+        node.photoNotes = remapped;
+      }
       if (node.table && Array.isArray(node.table.attach)) {
         node.table.attach.forEach(row => (row || []).forEach((a) => {
           if (!a) return;
