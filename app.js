@@ -5925,9 +5925,14 @@
     div.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); selectNode(node.id); openContextMenu(e.clientX, e.clientY, node); });
 
     // Accept a task-ring / progress-bar / photo-strip drag started on some
-    // other node (see startMarkerDrag above).
+    // other node — or a photo/note/link/task dragged up from one of THIS
+    // node's own cells (sourceR/sourceC set), which is a legitimate move
+    // even though sourceNodeId matches this node's id. Only a whole-node
+    // marker (no source cell) dropped back on its own node is a no-op —
+    // that case is excluded below.
     div.addEventListener("dragover", (e) => {
-      if (!markerDragState || markerDragState.sourceNodeId === node.id) return;
+      if (!markerDragState) return;
+      if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR == null && markerDragState.sourceC == null) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
       div.classList.add("marker-drop-target");
@@ -5937,7 +5942,8 @@
       div.classList.remove("marker-drop-target");
     });
     div.addEventListener("drop", (e) => {
-      if (!markerDragState || markerDragState.sourceNodeId === node.id) return;
+      if (!markerDragState) return;
+      if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR == null && markerDragState.sourceC == null) return;
       e.preventDefault();
       e.stopPropagation();
       div.classList.remove("marker-drop-target");
