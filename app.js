@@ -386,6 +386,21 @@
         });
         node.photoTags = remapped;
       }
+      // Same migration for a table node's per-cell photos: a portable
+      // copy (import, or a device that just pulled this map from Drive/
+      // a folder) stores each cell's photo as a raw data URL — see
+      // inlinePhotosForPortableCopy — so it needs the same one-time move
+      // into PhotoDB, keyed by its own fresh id, that node.images gets
+      // above.
+      if (node.table && Array.isArray(node.table.attach)) {
+        node.table.attach.forEach(row => (row || []).forEach((a) => {
+          if (a && typeof a.image === "string" && a.image.startsWith("data:")) {
+            const id = uid();
+            puts.push(PhotoDB.put({ id, mapId: map.id, data: a.image }));
+            a.image = id;
+          }
+        }));
+      }
       (node.children || []).forEach(walk);
     })(map.root);
     if (puts.length) await Promise.all(puts);
@@ -412,6 +427,11 @@
       if (!node) return;
       if (Array.isArray(node.images)) {
         node.images = node.images.map(id => lookup.get(id) || id);
+      }
+      if (node.table && Array.isArray(node.table.attach)) {
+        node.table.attach.forEach(row => (row || []).forEach((a) => {
+          if (a && a.image) a.image = lookup.get(a.image) || a.image;
+        }));
       }
       (node.children || []).forEach(walk);
     })(clone.root);
@@ -785,6 +805,19 @@
       }
       return new Promise((resolve, reject) => {
         if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded yet — try again in a second, or check your connection.")); return; }
+        // If an earlier requestToken() call (e.g. the automatic silent
+        // restore-on-load attempt) is still waiting on Google when this
+        // one starts, settle it as cancelled right now instead of leaving
+        // it in place. Both calls would otherwise share the same
+        // tokenClient.callback slot, so whichever GIS response lands
+        // second silently overwrites the first — and if a person clicks
+        // "Sign in with Google" while that background silent check is
+        // still in flight, the click's own response can get lost that
+        // way, making it look like the sign-in did nothing until a
+        // second click (no race left to lose to) actually works.
+        if (this._pendingReject) {
+          this._pendingReject(new Error("Superseded by a newer sign-in request"));
+        }
         // Watchdog: if neither the success callback nor error_callback
         // ever fires (seen in some browsers when the popup is blocked
         // without triggering GIS's own popup_failed_to_open error), don't
@@ -842,6 +875,13 @@
         this.consecutiveSilentFailures = 0;
         return token;
       } catch (e) {
+        // Being superseded isn't a real auth failure — it just means a
+        // newer (usually explicit, user-initiated) request took over this
+        // same slot, e.g. someone clicked "Sign in" while this silent
+        // background check was still pending. Don't let that count
+        // against MAX_SILENT_FAILURES or flip needsReauth; the request
+        // that superseded it will report its own outcome.
+        if (e && e.message === "Superseded by a newer sign-in request") throw e;
         this.lastSilentFailureAt = Date.now();
         this.consecutiveSilentFailures++;
         if (this.consecutiveSilentFailures >= this.MAX_SILENT_FAILURES) {
@@ -1328,6 +1368,48 @@
   }
   function defaultTableCells() {
     return [["", ""], ["", ""]];
+  }
+
+  // A table cell can carry the same small set of attachments a regular
+  // node can (a photo, a note, a link, a task) — stored in a parallel
+  // grid, node.table.attach[r][c], that's kept the same shape as
+  // node.table.cells rather than folded into the cell's own text. Each
+  // entry is `{ image, note, url, task: { text, done } }`, any of which
+  // can be missing/null. ensureTableAttach pads/trims that grid to match
+  // cells (rows/cols) on every render, so tableAddRow/Column/Remove*
+  // don't each need their own bookkeeping for it — adding or removing a
+  // row/column just works the next time the table is drawn.
+  function ensureTableAttach(node) {
+    if (!node.table) return [];
+    const cells = node.table.cells;
+    if (!Array.isArray(node.table.attach)) node.table.attach = [];
+    const attach = node.table.attach;
+    attach.length = cells.length;
+    for (let r = 0; r < cells.length; r++) {
+      if (!Array.isArray(attach[r])) attach[r] = [];
+      attach[r].length = cells[r].length;
+      for (let c = 0; c < cells[r].length; c++) {
+        if (!attach[r][c] || typeof attach[r][c] !== "object") attach[r][c] = {};
+      }
+      node.table.attach[r] = attach[r];
+    }
+    return attach;
+  }
+  function getCellAttach(node, r, c) {
+    return ensureTableAttach(node)[r][c];
+  }
+  function cellAttachHasAny(a) {
+    return !!(a && (a.image || a.note || a.url || (a.task && a.task.text)));
+  }
+  // Every photo id currently attached to any cell of this node's table —
+  // used alongside getNodeImageIds() wherever a node's photos need to be
+  // enumerated for garbage collection, export, or Drive/folder sync, so a
+  // cell's photo is treated as "in use" exactly like a node's own.
+  function getCellImageIds(node) {
+    if (!node || !node.table || !Array.isArray(node.table.attach)) return [];
+    const ids = [];
+    node.table.attach.forEach(row => (row || []).forEach(a => { if (a && a.image) ids.push(a.image); }));
+    return ids;
   }
 
   // Nodes used to hold a single `image` data-URL; they now hold an `images`
@@ -2460,6 +2542,7 @@
       (function walk(node) {
         if (!node) return;
         getNodeImageIds(node).forEach(id => referenced.add(id));
+        getCellImageIds(node).forEach(id => referenced.add(id));
         (node.children || []).forEach(walk);
       })(map.root);
       const rows = await PhotoDB.getAllForMap(map.id);
@@ -3341,13 +3424,18 @@
   const TABLE_CELL_MAX_W = 140;
   const TABLE_CELL_LINE_H = 16;
   const TABLE_CELL_MIN_H = 26;
+  // Fixed strip reserved under every cell's text for its photo/note/link/
+  // task icons + the "+" add button (see buildCellIconStrip) — always
+  // reserved, even on an empty cell, so a cell's height doesn't jump
+  // around as attachments are added/removed.
+  const TABLE_CELL_ICON_STRIP_H = 18;
   function computeTableBox(node) {
     measureCtx.font = `400 12.5px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const cells = node.table.cells;
     const rows = cells.length;
     const cols = Math.max(1, ...cells.map(r => r.length));
     const colWidths = new Array(cols).fill(TABLE_CELL_MIN_W);
-    const rowHeights = new Array(rows).fill(TABLE_CELL_MIN_H);
+    const rowHeights = new Array(rows).fill(TABLE_CELL_MIN_H + TABLE_CELL_ICON_STRIP_H);
     const maxTextW = TABLE_CELL_MAX_W - TABLE_CELL_PAD_X;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -3355,7 +3443,7 @@
         const lines = wrapText(cellText, maxTextW);
         const widest = Math.max(0, ...lines.map(l => measureW(l)));
         const w = clamp(Math.ceil(widest) + TABLE_CELL_PAD_X, TABLE_CELL_MIN_W, TABLE_CELL_MAX_W);
-        const h = Math.max(TABLE_CELL_MIN_H, lines.length * TABLE_CELL_LINE_H + TABLE_CELL_PAD_Y);
+        const h = Math.max(TABLE_CELL_MIN_H, lines.length * TABLE_CELL_LINE_H + TABLE_CELL_PAD_Y) + TABLE_CELL_ICON_STRIP_H;
         colWidths[c] = Math.max(colWidths[c], w);
         rowHeights[r] = Math.max(rowHeights[r], h);
       }
@@ -4185,15 +4273,233 @@
     persist();
   }
 
+  // Same little sticky-note glyph the node-level note marker uses (see
+  // the photo/note/link strip in renderNode) — shared here so a note
+  // attached to a table cell reads as the same icon as a note attached
+  // to a whole node.
+  const CELL_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
+
+  // A hidden, dedicated file input for cell photos (kept separate from
+  // nodeImageInput so picking a photo for a cell can never get confused
+  // with picking one for the node itself if both were somehow triggered
+  // close together).
+  let pendingCellPhoto = null;
+  const cellImageInput = document.createElement("input");
+  cellImageInput.type = "file";
+  cellImageInput.accept = "image/*";
+  cellImageInput.style.display = "none";
+  document.body.appendChild(cellImageInput);
+  cellImageInput.addEventListener("change", () => {
+    const file = cellImageInput.files && cellImageInput.files[0];
+    cellImageInput.value = "";
+    const pending = pendingCellPhoto;
+    pendingCellPhoto = null;
+    if (!file || !pending) return;
+    const node = findNode(pending.nodeId);
+    if (!node || !node.table) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const a = getCellAttach(node, pending.r, pending.c);
+      pushUndo();
+      if (a.image && !String(a.image).startsWith("data:")) deletePhotoRecord(a.image);
+      a.image = addPhotoRecord(reader.result);
+      renderAll();
+      persist();
+    };
+    reader.onerror = () => alert("That image couldn't be read.");
+    reader.readAsDataURL(file);
+  });
+  function openCellPhotoPicker(node, r, c) {
+    if (!requireSignIn()) return;
+    pendingCellPhoto = { nodeId: node.id, r, c };
+    cellImageInput.click();
+  }
+
+  // Small popover (built on the same reused #ctx-menu element as every
+  // other right-click menu) for writing/editing a cell's note — a plain
+  // textarea rather than the full rich note editor (see openNoteModal),
+  // since a table cell's note is meant to be a quick line or two, not a
+  // whole document.
+  function editCellNote(node, r, c, x, y) {
+    if (!requireSignIn()) return;
+    const a = getCellAttach(node, r, c);
+    resetContextMenu();
+    const header = document.createElement("div");
+    header.className = "ctx-item ctx-item-header";
+    header.style.cursor = "default";
+    const headerLabel = document.createElement("span");
+    headerLabel.className = "ctx-item-label";
+    headerLabel.textContent = "Cell note";
+    header.appendChild(headerLabel);
+    ctxMenu.appendChild(header);
+    const ta = document.createElement("textarea");
+    ta.className = "ctx-cell-note-input";
+    ta.value = a.note || "";
+    ta.rows = 4;
+    ta.placeholder = "Note for this cell…";
+    ta.addEventListener("click", (e) => e.stopPropagation());
+    ta.addEventListener("mousedown", (e) => e.stopPropagation());
+    ta.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") closeContextMenu();
+    });
+    ctxMenu.appendChild(ta);
+    const saveBtn = document.createElement("div");
+    saveBtn.className = "ctx-item";
+    saveBtn.textContent = "Save note";
+    saveBtn.addEventListener("click", () => {
+      pushUndo();
+      a.note = ta.value.trim() || null;
+      closeContextMenu();
+      renderAll();
+      persist();
+    });
+    ctxMenu.appendChild(saveBtn);
+    positionContextMenu(x, y);
+    requestAnimationFrame(() => ta.focus());
+  }
+
+  function editCellUrl(node, r, c) {
+    if (!requireSignIn()) return;
+    const a = getCellAttach(node, r, c);
+    const val = window.prompt("Link URL for this cell:", a.url || "https://");
+    if (val === null) return;
+    pushUndo();
+    a.url = val.trim() || null;
+    renderAll();
+    persist();
+  }
+
+  function editCellTask(node, r, c) {
+    if (!requireSignIn()) return;
+    const a = getCellAttach(node, r, c);
+    const val = window.prompt("Task text for this cell:", (a.task && a.task.text) || "");
+    if (val === null) return;
+    const trimmed = val.trim();
+    pushUndo();
+    a.task = trimmed ? { text: trimmed, done: !!(a.task && a.task.done) } : null;
+    renderAll();
+    persist();
+  }
+
+  // The "+" button's menu — same reused ctx-menu the node right-click
+  // menu and the note/link picker popups use (see openContextMenu /
+  // openNoteManageMenu), just scoped to one cell instead of a whole
+  // node. Lets you add, replace, or remove each of the four attachment
+  // kinds a cell can carry.
+  function openCellAddMenu(node, r, c, x, y) {
+    if (!requireSignIn()) return;
+    resetContextMenu();
+    const a = getCellAttach(node, r, c);
+    const items = [];
+    items.push([a.image ? "Replace photo…" : "Add photo…", () => openCellPhotoPicker(node, r, c)]);
+    if (a.image) items.push(["Remove photo", () => {
+      pushUndo();
+      if (!String(a.image).startsWith("data:")) deletePhotoRecord(a.image);
+      a.image = null;
+      renderAll();
+      persist();
+    }]);
+    items.push([a.note ? "Edit note…" : "Add note…", () => editCellNote(node, r, c, x, y)]);
+    if (a.note) items.push(["Remove note", () => { pushUndo(); a.note = null; renderAll(); persist(); }]);
+    items.push([a.url ? "Edit link…" : "Add link…", () => editCellUrl(node, r, c)]);
+    if (a.url) items.push(["Remove link", () => { pushUndo(); a.url = null; renderAll(); persist(); }]);
+    items.push([(a.task && a.task.text) ? "Edit task…" : "Add task…", () => editCellTask(node, r, c)]);
+    if (a.task && a.task.text) items.push(["Remove task", () => { pushUndo(); a.task = null; renderAll(); persist(); }]);
+    items.forEach(([label, fn]) => {
+      const it = document.createElement("div");
+      it.className = "ctx-item";
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "ctx-item-label";
+      labelSpan.textContent = label;
+      it.appendChild(labelSpan);
+      it.addEventListener("click", () => { closeContextMenu(); fn(); });
+      ctxMenu.appendChild(it);
+    });
+    positionContextMenu(x, y);
+  }
+
+  // The row of small icons under a cell's text — one per attachment it
+  // currently holds (photo/note/link/task), plus a trailing "+" to add
+  // more. Mirrors the node-level photo/note/link strip (see renderNode)
+  // at a smaller scale, and reads/writes node.table.attach[r][c] instead
+  // of the node's own fields.
+  function buildCellIconStrip(node, r, c) {
+    const a = getCellAttach(node, r, c);
+    const strip = document.createElement("div");
+    strip.className = "node-table-cell-icons";
+    strip.addEventListener("mousedown", (e) => e.stopPropagation());
+    strip.addEventListener("pointerdown", (e) => e.stopPropagation());
+    strip.addEventListener("click", (e) => e.stopPropagation());
+
+    if (a.image) {
+      const thumb = document.createElement("span");
+      thumb.className = "node-table-cell-icon node-table-cell-photo";
+      const src = (typeof a.image === "string" && a.image.startsWith("data:")) ? a.image : photoUrl(a.image);
+      thumb.style.backgroundImage = `url("${src}")`;
+      thumb.title = "Click to view — use + to replace or remove";
+      thumb.addEventListener("click", () => window.open(src, "_blank", "noopener"));
+      strip.appendChild(thumb);
+    }
+    if (a.note) {
+      const noteIcon = document.createElement("span");
+      noteIcon.className = "node-table-cell-icon node-table-cell-note";
+      noteIcon.innerHTML = CELL_NOTE_ICON_SVG;
+      noteIcon.title = a.note;
+      noteIcon.addEventListener("click", (e) => editCellNote(node, r, c, e.clientX, e.clientY));
+      strip.appendChild(noteIcon);
+    }
+    if (a.url) {
+      const linkIcon = document.createElement("span");
+      linkIcon.className = "node-table-cell-icon node-table-cell-link";
+      linkIcon.innerHTML = linkIconFor(a.url);
+      linkIcon.title = a.url + " — right-click to edit";
+      linkIcon.addEventListener("click", () => window.open(a.url, "_blank", "noopener"));
+      linkIcon.addEventListener("contextmenu", (e) => { e.preventDefault(); editCellUrl(node, r, c); });
+      strip.appendChild(linkIcon);
+    }
+    if (a.task && a.task.text) {
+      const taskEl = document.createElement("label");
+      taskEl.className = "node-table-cell-icon node-table-cell-task" + (a.task.done ? " done" : "");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!a.task.done;
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (!requireSignIn()) { cb.checked = !!a.task.done; return; }
+        pushUndo();
+        a.task.done = cb.checked;
+        taskEl.classList.toggle("done", cb.checked);
+        persist();
+      });
+      taskEl.title = a.task.text + " — double-click to edit";
+      taskEl.addEventListener("dblclick", (e) => { e.stopPropagation(); editCellTask(node, r, c); });
+      taskEl.appendChild(cb);
+      strip.appendChild(taskEl);
+    }
+
+    const addBtn = document.createElement("span");
+    addBtn.className = "node-table-cell-icon node-table-cell-add";
+    addBtn.textContent = "+";
+    addBtn.title = "Add a photo, note, link, or task to this cell";
+    addBtn.addEventListener("click", (e) => openCellAddMenu(node, r, c, e.clientX, e.clientY));
+    strip.appendChild(addBtn);
+
+    return strip;
+  }
+
   // Builds the actual <table> for a table node (see nodeIsTable) inside
   // its div, using the exact column widths / row heights computeNodeBox
   // (via computeTableBox) already worked out — so what's on screen always
   // matches the box the layout/connector code positioned it with. Every
-  // cell is its own small contentEditable field; edits commit on blur
-  // (see the "blur" listener below) rather than live per-keystroke, which
-  // keeps this simple at the cost of the box only resizing to fit new
-  // text once you click away from the cell.
+  // cell holds its own contentEditable text field plus a small icon strip
+  // (see buildCellIconStrip) for that cell's own photo/note/link/task
+  // attachments; text edits commit on blur (see the "blur" listener
+  // below) rather than live per-keystroke, which keeps this simple at
+  // the cost of the box only resizing to fit new text once you click
+  // away from the cell.
   function renderTableGrid(div, node) {
+    ensureTableAttach(node);
     const cells = node.table.cells;
     const cols = Math.max(1, ...cells.map(r => r.length));
     const colWidths = node._tableColWidths || new Array(cols).fill(TABLE_CELL_MIN_W);
@@ -4219,19 +4525,26 @@
       tr.style.height = (rowHeights[r] || TABLE_CELL_MIN_H) + "px";
       for (let c = 0; c < cols; c++) {
         const td = document.createElement("td");
-        td.contentEditable = "true";
-        td.spellcheck = false;
-        td.textContent = row[c] || "";
+        td.className = "node-table-cell";
         td.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id); });
-        td.addEventListener("blur", () => {
-          const newText = td.textContent;
+
+        const textEl = document.createElement("div");
+        textEl.className = "node-table-cell-text";
+        textEl.contentEditable = "true";
+        textEl.spellcheck = false;
+        textEl.textContent = row[c] || "";
+        textEl.addEventListener("click", (e) => { e.stopPropagation(); selectNode(node.id); });
+        textEl.addEventListener("blur", () => {
+          const newText = textEl.textContent;
           if (newText === (cells[r][c] || "")) return;
-          if (!requireSignIn()) { td.textContent = cells[r][c] || ""; return; }
+          if (!requireSignIn()) { textEl.textContent = cells[r][c] || ""; return; }
           pushUndo();
           cells[r][c] = newText;
           renderAll();
           persist();
         });
+        td.appendChild(textEl);
+        td.appendChild(buildCellIconStrip(node, r, c));
         tr.appendChild(td);
       }
       tbody.appendChild(tr);

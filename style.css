@@ -659,21 +659,99 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-table td{
   border: 1px solid var(--sel-color, currentColor);
   opacity: 1;
-  padding: 4px 8px;
+  padding: 0;
+  vertical-align: top;
+  cursor: default;
+}
+/* The editable text part of a cell — everything the plain <td> rule used
+   to be, just scoped to this inner div now that the icon strip below
+   sits alongside it in the same cell instead of inside the editable
+   area (so typing/deleting text can never eat an attachment icon). */
+.node-table-cell-text{
+  padding: 4px 8px 2px;
   font-size: 12.5px;
   line-height: 16px;
   font-weight: 400;
   color: inherit;
-  vertical-align: top;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: normal;
   outline: none;
   cursor: text;
+  min-height: 16px;
 }
-.node-table td:focus{
+.node-table-cell-text:focus{
   background: rgba(255,255,255,0.10);
 }
+
+/* The photo/note/link/task strip under a cell's text (see
+   buildCellIconStrip in app.js) — same idea as the node-level
+   .node-photo-strip, just smaller and always visible (rather than
+   appearing only once something's attached) since the trailing "+" tile
+   needs to always be reachable to add the first attachment. */
+.node-table-cell-icons{
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 3px;
+  flex-wrap: wrap;
+  min-height: 14px;
+}
+.node-table-cell-icon{
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  cursor: pointer;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.node-table-cell-icon svg{ width: 100%; height: 100%; }
+.node-table-cell-icon:hover{ transform: scale(1.2); }
+.node-table-cell-photo{
+  border: 1px solid rgba(0,0,0,0.35);
+}
+.node-table-cell-task{
+  width: auto;
+  cursor: default;
+}
+.node-table-cell-task input[type="checkbox"]{
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  cursor: pointer;
+}
+.node-table-cell-task.done{ opacity: 0.55; }
+.node-table-cell-add{
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-faint, currentColor);
+  opacity: 0.55;
+  font-weight: 700;
+  background: rgba(127,127,127,0.15);
+}
+.node-table-cell-add:hover{ opacity: 1; }
+
+/* The textarea in the cell-note popover (see editCellNote in app.js) —
+   styled to match the existing ctx-distance-input field rather than
+   introducing a new input look. */
+.ctx-cell-note-input{
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  resize: vertical;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(127,127,127,0.4));
+  background: var(--bg, #fff);
+  color: inherit;
+}
+.ctx-cell-note-input:focus{ outline: none; border-color: var(--accent); }
 
 /* Selection ring: an outline sitting outside the box (not a border-color
    change) so it stays visible no matter the node's own fill/border color —
