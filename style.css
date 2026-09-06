@@ -1615,6 +1615,31 @@ kbd{
   box-sizing: border-box;
 }
 .modal.hidden{ display:none; }
+
+/* Zoom-from-icon open/close animation (photo, note, video, link-comment
+   modals — see zoomModalOpen/zoomModalClose in app.js). The backdrop
+   fades in/out while its card grows out of / shrinks back into whatever
+   icon was clicked, via the --zoom-dx/--zoom-dy offset app.js computes
+   and sets on the .modal element for each open. modal-zoom-init is the
+   "shrunk down near the icon, invisible" state — present for one frame
+   on open (before app.js removes it to trigger the transition in), and
+   added on close (to transition back into it) just before the modal is
+   actually hidden. */
+.modal{
+  opacity: 1;
+  transition: opacity 0.22s ease;
+}
+.modal.modal-zoom-init{
+  opacity: 0;
+}
+.modal-card{
+  transition: transform 0.26s cubic-bezier(.22, 1, .36, 1);
+  transform: translate(0, 0) scale(1);
+  transform-origin: center;
+}
+.modal.modal-zoom-init .modal-card{
+  transform: translate(var(--zoom-dx, 0px), var(--zoom-dy, 0px)) scale(0.08);
+}
 /* The note editor can be opened from on top of another already-open
    modal (e.g. the note button on a task row inside #tasks-modal, or a
    day's task list inside the calendar day modal). Since all modals
@@ -3012,7 +3037,7 @@ kbd{
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
-  transition: width 0.18s ease;
+  transition: width 0.18s ease, transform 0.26s cubic-bezier(.22, 1, .36, 1);
 }
 /* "Large" widens the 16:9 box considerably; "full" goes nearly
    edge-to-edge — both still keep the 16:9 aspect ratio via
@@ -3670,3 +3695,11 @@ kbd{
   text-align:center; color:#a29d8c; font-size:13.5px; margin-top:20px;
 }
 #cal-day-modal-empty-state.empty-state.hidden{ display:none; }
+
+/* Respect reduced-motion for the zoom-from-icon modal animation above —
+   declared last so it wins over the more specific per-modal transition
+   overrides (e.g. .video-modal-card's width transition) earlier in this
+   file. */
+@media (prefers-reduced-motion: reduce){
+  .modal, .modal-card, .video-modal-card{ transition: none !important; }
+}

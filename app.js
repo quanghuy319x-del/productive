@@ -8455,6 +8455,79 @@
     return canvas.toDataURL("image/jpeg", quality);
   }
 
+  // ---- Zoom-from-icon open/close animation --------------------------
+  // Shared by the photo, note, video and link-comment modals: instead of
+  // just popping into view, each one grows out of whatever icon/button
+  // was clicked to open it, and shrinks back into that same spot on
+  // close — like an app icon expanding into its window. Every one of
+  // these modals already funnels through a single open*/close* function
+  // (openPhotoModal/closePhotoModal, openNoteModal/closeNoteModal, etc.),
+  // so the animation lives entirely in those two helpers below rather
+  // than needing to touch the many call sites scattered around the file.
+  //
+  // The origin point comes from the most recent pointerdown anywhere on
+  // the page (tracked globally here), since that's whatever icon/marker
+  // the user just clicked — no need to thread click coordinates through
+  // every caller. Keyboard-triggered opens (no recent click) just fall
+  // back to zooming in from the center of the screen.
+  let zoomOriginX = null, zoomOriginY = null;
+  document.addEventListener("pointerdown", (e) => {
+    zoomOriginX = e.clientX;
+    zoomOriginY = e.clientY;
+  }, true);
+
+  // Skips the animation (and the artificial close delay it needs) for
+  // anyone with reduced-motion turned on at the OS level — the CSS above
+  // already disables the visual transition for them; this just keeps
+  // closing instant to match.
+  const MODAL_ZOOM_MS = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? 0
+    : 260; // keep roughly in sync with the CSS transition durations above
+
+  // Shows `modalEl` (a ".modal" backdrop containing one ".modal-card"),
+  // animating the card outward from the last click position.
+  function zoomModalOpen(modalEl) {
+    if (!modalEl) return;
+    clearTimeout(modalEl.__zoomTimer);
+    const card = modalEl.querySelector(".modal-card");
+    modalEl.classList.remove("hidden");
+    modalEl.classList.add("modal-zoom-init");
+    if (card) {
+      // Scaling is centered by default, so the card's on-screen center
+      // is the same whether or not modal-zoom-init's shrink is already
+      // applied — safe to measure it right after adding the class above.
+      const rect = card.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const ox = zoomOriginX != null ? zoomOriginX : cx;
+      const oy = zoomOriginY != null ? zoomOriginY : cy;
+      modalEl.style.setProperty("--zoom-dx", (ox - cx) + "px");
+      modalEl.style.setProperty("--zoom-dy", (oy - cy) + "px");
+    }
+    // Force a reflow so the browser paints the shrunk-near-the-icon state
+    // from modal-zoom-init before it's removed on the next frame — doing
+    // both in the same tick would collapse into one frame and skip the
+    // transition entirely.
+    void modalEl.offsetWidth;
+    requestAnimationFrame(() => modalEl.classList.remove("modal-zoom-init"));
+  }
+
+  // Hides `modalEl` the same way in reverse, shrinking back toward
+  // whichever point it grew from, then calls `afterHide` (for whatever
+  // state cleanup the caller used to do immediately) once it's actually
+  // gone. Cleanup is deferred so things like an image's `src` don't
+  // disappear mid-animation, leaving nothing left to shrink away.
+  function zoomModalClose(modalEl, afterHide) {
+    if (!modalEl) { if (afterHide) afterHide(); return; }
+    modalEl.classList.add("modal-zoom-init");
+    clearTimeout(modalEl.__zoomTimer);
+    modalEl.__zoomTimer = setTimeout(() => {
+      modalEl.classList.add("hidden");
+      modalEl.classList.remove("modal-zoom-init");
+      if (afterHide) afterHide();
+    }, MODAL_ZOOM_MS);
+  }
+
   // Photos are stored exactly as provided — no downscaling, no lossy
   // re-encoding — so what you attach is byte-for-byte what you get back.
   // Accepts one or more files and appends each as a new photo on the
@@ -8623,7 +8696,7 @@
     videoModalCommentCtx = commentCtx || null;
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
-    videoModal.classList.remove("hidden");
+    zoomModalOpen(videoModal);
     if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
 
     videoModalIframe.classList.remove("hidden");
@@ -8658,9 +8731,9 @@
     if (ytPlayer && typeof ytPlayer.stopVideo === "function") {
       try { ytPlayer.stopVideo(); } catch {} // stop playback
     }
-    videoModal.classList.add("hidden");
     videoModalCommentCtx = null;
     ytPlayerCurrentId = null;
+    zoomModalClose(videoModal);
   }
   videoModalCloseBtn.addEventListener("click", closeVideoModal);
   videoModal.addEventListener("click", (e) => { if (e.target === videoModal) closeVideoModal(); });
@@ -8698,7 +8771,7 @@
     linkCommentModalCtx = commentCtx;
     linkCommentModalUrl.textContent = url;
     linkCommentModalInput.value = commentCtx.get();
-    linkCommentModal.classList.remove("hidden");
+    zoomModalOpen(linkCommentModal);
     requestAnimationFrame(() => { autoGrowTextarea(linkCommentModalInput); linkCommentModalInput.focus(); });
   }
   function saveLinkCommentModal() {
@@ -8709,8 +8782,8 @@
   }
   function closeLinkCommentModal() {
     saveLinkCommentModal();
-    linkCommentModal.classList.add("hidden");
     linkCommentModalCtx = null;
+    zoomModalClose(linkCommentModal);
   }
   linkCommentModalCloseBtn.addEventListener("click", closeLinkCommentModal);
   linkCommentModal.addEventListener("click", (e) => { if (e.target === linkCommentModal) closeLinkCommentModal(); });
@@ -9242,7 +9315,7 @@
     };
     resetPhotoZoom();
     renderPhotoModal();
-    photoModal.classList.remove("hidden");
+    zoomModalOpen(photoModal);
   }
   function renderPhotoModal() {
     if (!photoModalState) return;
@@ -9303,10 +9376,11 @@
     hideTagSuggestions();
   }
   function closePhotoModal() {
-    photoModal.classList.add("hidden");
-    photoModalImg.src = "";
     photoModalState = null;
-    resetPhotoZoom();
+    zoomModalClose(photoModal, () => {
+      photoModalImg.src = "";
+      resetPhotoZoom();
+    });
   }
   function stepPhotoModal(delta) {
     if (!photoModalState) return;
@@ -10249,7 +10323,7 @@
     noteActiveIndex = wantsNew ? noteWorkingList.length - 1
       : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
     loadNoteIntoEditor();
-    noteModal.classList.remove("hidden");
+    zoomModalOpen(noteModal);
     const current = noteWorkingList[noteActiveIndex];
     const isBlank = !(current.title && current.title.trim()) && !(current.html && current.html.trim());
     requestAnimationFrame(() => { (isBlank ? noteTitleInput : noteTextarea).focus(); });
@@ -10339,8 +10413,8 @@
     noteEditingCellPos = null;
     noteWorkingList = [];
     noteActiveIndex = 0;
-    noteModal.classList.add("hidden");
     $("#note-color-popover").classList.add("hidden");
+    zoomModalClose(noteModal);
     // The photo lightbox's own 📝 badge (count of notes on the currently
     // shown photo) may have just changed — keep it in sync if the
     // lightbox is still open underneath.
