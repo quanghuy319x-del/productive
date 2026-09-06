@@ -11361,15 +11361,15 @@
     const label = r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${r + 1}, col ${c + 1})`);
     tasksModalTitle.textContent = `Tasks — ${label}`;
     renderTasksModal();
-    tasksModal.classList.remove("hidden");
+    zoomModalOpen(tasksModal);
     requestAnimationFrame(() => { tasksNewInput.focus(); autosizeTextarea(tasksNewInput); });
   }
 
   function closeTasksModal() {
-    tasksModal.classList.add("hidden");
     tasksEditingTarget = null;
     subtaskAddOpenFor.clear();
     renderAll();
+    zoomModalClose(tasksModal);
   }
 
   // Builds the expanded subtask checklist panel for one task — a nested
