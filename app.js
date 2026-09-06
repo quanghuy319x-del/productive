@@ -2095,6 +2095,19 @@
     return (s || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
   }
 
+  // Shared cap for the node icon strip (see renderNode/computeNodeBox):
+  // photos, notes, and links each collapse from "one icon per item" down
+  // to a single representative icon + a "Nx" count badge once there are
+  // more than this many, so a node with dozens of any one thing still
+  // reads as one compact cell instead of a wall of tiny icons.
+  const STRIP_OVERFLOW_CAP = 16;
+  // How many cells a bucket of items (all the notes, or all the links)
+  // contributes to the strip's layout — every item while under the cap,
+  // or just the one stand-in cell once collapsed.
+  function stripBucketCount(len) {
+    return len > STRIP_OVERFLOW_CAP ? 1 : len;
+  }
+
   // Bare host/paths ("example.com") still work as a link this way — without
   // a scheme, clicking would otherwise try to load it as a path relative to
   // this local file instead of a real web address.
@@ -2353,6 +2366,69 @@
   // Right-click on a single link marker — same shape as openNoteManageMenu:
   // just this one link's rename/remove, since each link now has its own
   // icon rather than one shared icon for the lot.
+  // Lists every link on a node — the overflow icon's counterpart to
+  // openNoteManageMenu below, reachable once a node has passed the
+  // STRIP_OVERFLOW_CAP link count and collapsed to one icon + a count
+  // badge (see renderNode), so every individual link is still reachable
+  // for opening, renaming, or removing.
+  function openLinksManageMenu(nodeId, x, y) {
+    const node = findNode(nodeId);
+    if (!node) return;
+    const urls = getNodeUrls(node);
+    if (!urls.length) return;
+    resetContextMenu();
+
+    const header = document.createElement("div");
+    header.className = "ctx-item ctx-item-header";
+    header.style.cursor = "default";
+    const headerLabel = document.createElement("span");
+    headerLabel.className = "ctx-item-label";
+    headerLabel.textContent = `Links (${urls.length})`;
+    header.appendChild(headerLabel);
+    const addBtn = document.createElement("span");
+    addBtn.className = "ctx-item-add";
+    addBtn.textContent = "+";
+    addBtn.title = "Add a new link";
+    addBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeContextMenu();
+      addNodeUrl(nodeId);
+    });
+    header.appendChild(addBtn);
+    ctxMenu.appendChild(header);
+
+    urls.forEach((u, i) => {
+      const it = document.createElement("div");
+      it.className = "ctx-item";
+      it.title = u;
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "ctx-item-label";
+      labelSpan.appendChild(linkRowFragment(u, node));
+      labelSpan.addEventListener("click", () => {
+        closeContextMenu();
+        openLinkSmart(u, {
+          get: () => getLinkComment(findNode(nodeId) || node, u),
+          set: (v) => setLinkComment(findNode(nodeId) || node, u, v),
+        });
+      });
+      it.appendChild(labelSpan);
+      const rename = document.createElement("span");
+      rename.className = "ctx-item-remove ctx-item-rename";
+      rename.textContent = "✎";
+      rename.title = "Rename";
+      rename.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); renameNodeUrl(nodeId, i); });
+      it.appendChild(rename);
+      const rm = document.createElement("span");
+      rm.className = "ctx-item-remove";
+      rm.textContent = "✕";
+      rm.title = "Remove";
+      rm.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); removeNodeUrl(nodeId, i); });
+      it.appendChild(rm);
+      ctxMenu.appendChild(it);
+    });
+    positionContextMenu(x, y);
+  }
+
   function openUrlSingleManageMenu(nodeId, index, x, y) {
     const node = findNode(nodeId);
     if (!node) return;
@@ -3977,13 +4053,17 @@
     // The time-played total (see renderNode/openTimerModal) is now a
     // same-size trailing cell of this same strip rather than a wider
     // pill, so it counts toward itemCount just like a note/link icon.
-    const stripIconCountForBox = getNodeNotes(node).length + (getNodeUrls(node).length ? 1 : 0) + (nodeAffirmationWins(node) ? 1 : 0) + (getNodeTimePlayed(node) ? 1 : 0);
+    // Notes and links each collapse to a single stand-in cell past
+    // STRIP_OVERFLOW_CAP too (see stripBucketCount/renderNode), so the
+    // box reserves exactly as much room as actually gets drawn either way.
+    const stripIconCountForBox = stripBucketCount(getNodeNotes(node).length) + stripBucketCount(getNodeUrls(node).length) + (nodeAffirmationWins(node) ? 1 : 0) + (getNodeTimePlayed(node) ? 1 : 0);
     let stripW = 0, stripH = 0;
     if (stripIconCountForBox || nodeImages.length) {
-      // Past 10 photos, collapse down to a single cover thumbnail with a
-      // count badge (see renderNode) instead of a wall of thumbnails, so
-      // a node with dozens of photos still reads as one compact cell.
-      const overflow = nodeImages.length > 10;
+      // Past STRIP_OVERFLOW_CAP photos, collapse down to a single cover
+      // thumbnail with a count badge (see renderNode) instead of a wall
+      // of thumbnails, so a node with dozens of photos still reads as
+      // one compact cell.
+      const overflow = nodeImages.length > STRIP_OVERFLOW_CAP;
       const shownCount = overflow ? 1 : nodeImages.length;
       const itemCount = stripIconCountForBox + shownCount;
       const large = itemCount <= 10;
@@ -5654,16 +5734,17 @@
     // attachment/status indicator for a node lives in one place, all at
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
-    const stripIconCount = nodeNotes.length + nodeUrls.length + tasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0);
+    const stripIconCount = stripBucketCount(nodeNotes.length) + stripBucketCount(nodeUrls.length) + tasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
       // would — "large" only kicks in when everything still fits in one
-      // row (under the 5-column cap). Past 10 photos, collapse to a
-      // single cover thumbnail + count badge (see the loop below) rather
-      // than 9 thumbnails plus a separate "+N" tile, so a node with many
-      // photos stays compact.
-      const overflow = nodeImages.length > 10;
+      // row (under the 5-column cap). Past STRIP_OVERFLOW_CAP photos,
+      // collapse to a single cover thumbnail + count badge (see the loop
+      // below) rather than one tile per photo, so a node with many photos
+      // stays compact. Notes and links get the exact same treatment
+      // further down (see notesOverflow/urlsOverflow below).
+      const overflow = nodeImages.length > STRIP_OVERFLOW_CAP;
       const shownCount = overflow ? 1 : nodeImages.length;
       const itemCount = stripIconCount + shownCount;
       const large = itemCount <= 10;
@@ -5690,22 +5771,42 @@
       const cols = Math.min(itemCount, 5);
       strip.style.width = (cols * thumbPx + (cols - 1) * gapPx) + "px";
 
+      // Shared markup for the note icon — same SVG whether it's one of a
+      // node's own notes, a task's note, or (once collapsed) the single
+      // stand-in icon for an overflowed pile of notes.
+      const NODE_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
+
       // One icon per note (instead of a single icon plus a count badge),
       // same cell size/box as a photo thumbnail — each is independently
       // clickable/draggable, so a node with several notes reads at a
       // glance as "several notes" without needing to decode a number.
-      nodeNotes.forEach((n, i) => {
+      // Past STRIP_OVERFLOW_CAP notes, same collapse-to-one-icon treatment
+      // as photos: a single note icon carrying a count badge stands in
+      // for the lot, and click/right-click both open the full list
+      // (openNoteManageMenu) instead of one specific note.
+      const notesOverflow = nodeNotes.length > STRIP_OVERFLOW_CAP;
+      (notesOverflow ? nodeNotes.slice(0, 1) : nodeNotes).forEach((n, i) => {
         const noteIcon = document.createElement("span");
         noteIcon.className = "node-photo-thumb node-note-marker";
-        noteIcon.innerHTML = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
-        noteIcon.title = notePreviewText(n);
+        noteIcon.innerHTML = NODE_NOTE_ICON_SVG;
         noteIcon.draggable = true;
-        noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
         noteIcon.addEventListener("dragend", endMarkerDrag);
-        noteIcon.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openNoteModal(node.id, i);
-        });
+        if (notesOverflow) {
+          noteIcon.title = `${nodeNotes.length} notes — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
+          noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes"));
+          noteIcon.addEventListener("click", (e) => { e.stopPropagation(); openNoteManageMenu(node.id, e.clientX, e.clientY); });
+          const badge = document.createElement("span");
+          badge.className = "node-marker-count";
+          badge.textContent = String(nodeNotes.length);
+          noteIcon.appendChild(badge);
+        } else {
+          noteIcon.title = notePreviewText(n);
+          noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
+          noteIcon.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openNoteModal(node.id, i);
+          });
+        }
         noteIcon.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -5723,7 +5824,7 @@
       tasksWithNotes.forEach((t) => {
         const taskNoteIcon = document.createElement("span");
         taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker";
-        taskNoteIcon.innerHTML = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
+        taskNoteIcon.innerHTML = NODE_NOTE_ICON_SVG;
         const preview = notePreviewText(getTaskNotes(t)[0] || {});
         taskNoteIcon.title = `Task "${t.text || "(untitled task)"}" — ${preview}`;
         taskNoteIcon.addEventListener("click", (e) => {
@@ -5741,28 +5842,44 @@
       // One icon per link (instead of a single icon plus a count/chooser
       // menu), same treatment as the per-note icons above — each link is
       // independently visible, clickable, draggable, and editable, so a
-      // node with several links reads at a glance without a submenu.
-      nodeUrls.forEach((u, i) => {
+      // node with several links reads at a glance without a submenu. Past
+      // STRIP_OVERFLOW_CAP links, collapses the same way notes/photos do:
+      // one representative link icon with a count badge, opening the full
+      // list (openLinksManageMenu) on click or right-click.
+      const urlsOverflow = nodeUrls.length > STRIP_OVERFLOW_CAP;
+      (urlsOverflow ? nodeUrls.slice(0, 1) : nodeUrls).forEach((u, i) => {
         const urlIcon = document.createElement("span");
         urlIcon.className = "node-photo-thumb node-url-marker";
-        urlIcon.innerHTML = linkIconFor(u);
-        const linkTitle = getLinkTitle(node, u);
-        urlIcon.title = linkTitle || u;
-        attachLinkCommentTooltip(urlIcon, () => getLinkComment(findNode(node.id) || node, u));
         urlIcon.draggable = true;
-        urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i }));
         urlIcon.addEventListener("dragend", endMarkerDrag);
-        urlIcon.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openLinkSmart(u, {
-            get: () => getLinkComment(findNode(node.id) || node, u),
-            set: (v) => setLinkComment(findNode(node.id) || node, u, v),
+        if (urlsOverflow) {
+          urlIcon.innerHTML = LINK_ICON_SVGS.link;
+          urlIcon.title = `${nodeUrls.length} links — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
+          urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "urls"));
+          urlIcon.addEventListener("click", (e) => { e.stopPropagation(); openLinksManageMenu(node.id, e.clientX, e.clientY); });
+          const badge = document.createElement("span");
+          badge.className = "node-marker-count";
+          badge.textContent = String(nodeUrls.length);
+          urlIcon.appendChild(badge);
+        } else {
+          urlIcon.innerHTML = linkIconFor(u);
+          const linkTitle = getLinkTitle(node, u);
+          urlIcon.title = linkTitle || u;
+          attachLinkCommentTooltip(urlIcon, () => getLinkComment(findNode(node.id) || node, u));
+          urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i }));
+          urlIcon.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openLinkSmart(u, {
+              get: () => getLinkComment(findNode(node.id) || node, u),
+              set: (v) => setLinkComment(findNode(node.id) || node, u, v),
+            });
           });
-        });
+        }
         urlIcon.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          openUrlSingleManageMenu(node.id, i, e.clientX, e.clientY);
+          if (urlsOverflow) openLinksManageMenu(node.id, e.clientX, e.clientY);
+          else openUrlSingleManageMenu(node.id, i, e.clientX, e.clientY);
         });
         strip.appendChild(urlIcon);
       });
