@@ -1280,10 +1280,10 @@
       ? "Hang on — making sure this device has your latest saved changes before you start editing, so a newer version from another device can't get overwritten. This only takes a moment."
       : "This map is read-only until you sign in with Google. Editing, undo/redo, and adding tasks, notes, or photos all need a signed-in session.";
     if (signinRequiredSigninBtn) signinRequiredSigninBtn.classList.toggle("hidden", stillSyncing || offline);
-    signinRequiredModalEl.classList.remove("hidden");
+    zoomModalOpen(signinRequiredModalEl);
   }
   function closeSigninRequiredModal() {
-    if (signinRequiredModalEl) signinRequiredModalEl.classList.add("hidden");
+    zoomModalClose(signinRequiredModalEl);
   }
 
   // The single gate every edit attempt passes through: pops the sign-in
@@ -8171,9 +8171,9 @@
   }
   $("#btn-auto-arrange").addEventListener("click", autoArrange);
 
-  $("#btn-help").addEventListener("click", () => $("#help-modal").classList.remove("hidden"));
-  $("#help-close").addEventListener("click", () => $("#help-modal").classList.add("hidden"));
-  $("#help-modal").addEventListener("click", (e) => { if (e.target.id === "help-modal") e.currentTarget.classList.add("hidden"); });
+  $("#btn-help").addEventListener("click", () => zoomModalOpen($("#help-modal")));
+  $("#help-close").addEventListener("click", () => zoomModalClose($("#help-modal")));
+  $("#help-modal").addEventListener("click", (e) => { if (e.target.id === "help-modal") zoomModalClose(e.currentTarget); });
 
   $("#btn-export").addEventListener("click", async () => {
     if (!state.current) return;
@@ -8249,7 +8249,7 @@
     fontModeSel.value = t.fontMode;
     fontColorInput.value = t.fontColor;
     fontColorInput.disabled = t.fontMode !== "custom";
-    themeModal.classList.remove("hidden");
+    zoomModalOpen(themeModal);
   }
 
   function updateTheme(patch) {
@@ -8261,8 +8261,8 @@
   }
 
   $("#btn-theme").addEventListener("click", openThemePanel);
-  $("#theme-close").addEventListener("click", () => themeModal.classList.add("hidden"));
-  themeModal.addEventListener("click", (e) => { if (e.target === themeModal) themeModal.classList.add("hidden"); });
+  $("#theme-close").addEventListener("click", () => zoomModalClose(themeModal));
+  themeModal.addEventListener("click", (e) => { if (e.target === themeModal) zoomModalClose(themeModal); });
 
   /* ---------------- toolbar quote banner ----------------
      Ported from a companion clock/timer page: a short scrolling
@@ -8388,7 +8388,7 @@
   function openQuoteBannerModal() {
     quoteBannerEditor.value = selectedQuoteBannerIndex === null ? "" : (getQuoteBannerLines()[selectedQuoteBannerIndex] || "");
     renderQuoteBannerList();
-    quoteBannerModal.classList.remove("hidden");
+    zoomModalOpen(quoteBannerModal);
   }
 
   function saveQuoteBannerFromEditor() {
@@ -8423,8 +8423,8 @@
     });
     $("#quote-banner-save").addEventListener("click", saveQuoteBannerFromEditor);
     $("#quote-banner-random").addEventListener("click", randomizeQuoteBanner);
-    $("#quote-banner-close").addEventListener("click", () => quoteBannerModal.classList.add("hidden"));
-    quoteBannerModal.addEventListener("click", (e) => { if (e.target === quoteBannerModal) quoteBannerModal.classList.add("hidden"); });
+    $("#quote-banner-close").addEventListener("click", () => zoomModalClose(quoteBannerModal));
+    quoteBannerModal.addEventListener("click", (e) => { if (e.target === quoteBannerModal) zoomModalClose(quoteBannerModal); });
   }
 
   /* ---------------- node photo attachments ---------------- */
@@ -8484,12 +8484,18 @@
     ? 0
     : 260; // keep roughly in sync with the CSS transition durations above
 
-  // Shows `modalEl` (a ".modal" backdrop containing one ".modal-card"),
-  // animating the card outward from the last click position.
-  function zoomModalOpen(modalEl) {
+  // Shows `modalEl` (a ".modal" backdrop containing one ".modal-card",
+  // or another backdrop/card pair — pass `cardSelector` for those, e.g.
+  // the calendar day popup's ".day-modal"), animating the card outward
+  // from the last click position — the classic iOS "grow from the thing
+  // you tapped" pop. With no recent click (keyboard-triggered opens) it
+  // falls back to growing from the card's own center, which reads as a
+  // plain centered pop/fade — still the same iPhone-style motion, just
+  // without a specific origin to grow from.
+  function zoomModalOpen(modalEl, cardSelector) {
     if (!modalEl) return;
     clearTimeout(modalEl.__zoomTimer);
-    const card = modalEl.querySelector(".modal-card");
+    const card = modalEl.querySelector(cardSelector || ".modal-card");
     modalEl.classList.remove("hidden");
     modalEl.classList.add("modal-zoom-init");
     if (card) {
@@ -8889,7 +8895,7 @@
   async function openPopupOpenerModal() {
     hidePopupOpenerStatus();
     popupOpenerInput.value = "";
-    popupOpenerModal.classList.remove("hidden");
+    zoomModalOpen(popupOpenerModal);
     // Best-effort clipboard auto-fill, same as the extension this is
     // modeled on — quietly does nothing if the browser denies clipboard
     // read (e.g. no permission prompt shown yet, or an insecure origin).
@@ -8903,7 +8909,7 @@
     requestAnimationFrame(() => { popupOpenerInput.focus(); popupOpenerInput.select(); });
   }
   function closePopupOpenerModal() {
-    popupOpenerModal.classList.add("hidden");
+    zoomModalClose(popupOpenerModal);
   }
   function openFromPopupOpenerInput() {
     const raw = popupOpenerInput.value.trim();
@@ -11948,10 +11954,10 @@
     calCursor = new Date();
     calCursor.setDate(1);
     renderCalendar();
-    calendarModal.classList.remove("hidden");
+    zoomModalOpen(calendarModal);
   }
   function closeCalendarModal() {
-    calendarModal.classList.add("hidden");
+    zoomModalClose(calendarModal);
   }
 
   function renderCalendar() {
@@ -12048,12 +12054,12 @@
     calDayModalDate = iso;
     calDaySortByStars = false;
     renderCalDayModal();
-    calDayModalBackdrop.classList.remove("hidden");
+    zoomModalOpen(calDayModalBackdrop, ".day-modal");
     requestAnimationFrame(() => autosizeTextarea(calDayNewInput));
   }
   function closeCalDayModal() {
     calDayModalDate = null;
-    calDayModalBackdrop.classList.add("hidden");
+    zoomModalClose(calDayModalBackdrop);
   }
   function renderCalDayModal() {
     if (!calDayModalDate) return;
@@ -12884,12 +12890,11 @@
 
   function openAffirmationQuotesModal() {
     renderAffirmationQuotesModal();
-    affirmationQuotesModal.classList.remove("hidden");
+    zoomModalOpen(affirmationQuotesModal);
     requestAnimationFrame(() => affirmationQuotesNewInput.focus());
   }
   function closeAffirmationQuotesModal() {
-    affirmationQuotesModal.classList.add("hidden");
-    affirmationQuotesNewInput.value = "";
+    zoomModalClose(affirmationQuotesModal, () => { affirmationQuotesNewInput.value = ""; });
   }
 
   function renderAffirmationQuotesModal() {
@@ -12970,10 +12975,10 @@
 
   function openTrashModal() {
     renderTrashModal();
-    trashModal.classList.remove("hidden");
+    zoomModalOpen(trashModal);
   }
   function closeTrashModal() {
-    trashModal.classList.add("hidden");
+    zoomModalClose(trashModal);
   }
 
   function renderTrashModal() {
@@ -13045,10 +13050,10 @@
     renderTagBrowserList();
     tagBrowserGalleryView.classList.add("hidden");
     tagBrowserListView.classList.remove("hidden");
-    tagBrowserModal.classList.remove("hidden");
+    zoomModalOpen(tagBrowserModal);
   }
   function closeTagBrowserModal() {
-    tagBrowserModal.classList.add("hidden");
+    zoomModalClose(tagBrowserModal);
   }
 
   function renderTagBrowserList() {

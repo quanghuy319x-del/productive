@@ -3587,11 +3587,28 @@ kbd{
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 .day-modal-backdrop.hidden{ display:none; }
+/* Same zoom-from-icon open/close animation as .modal/.modal-card above —
+   shares the .modal-zoom-init toggle class and --zoom-dx/--zoom-dy vars,
+   just scoped to this modal's own element names since it predates the
+   shared .modal/.modal-card structure. */
+.day-modal-backdrop{
+  opacity: 1;
+  transition: opacity 0.22s ease;
+}
+.day-modal-backdrop.modal-zoom-init{
+  opacity: 0;
+}
 .day-modal{
   background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.22);
   width:100%; max-width: 460px; max-height: 82vh; overflow-y:auto;
   padding: 18px 18px 20px;
   color: #24231f;
+  transition: transform 0.26s cubic-bezier(.22, 1, .36, 1);
+  transform: translate(0, 0) scale(1);
+  transform-origin: center;
+}
+.day-modal-backdrop.modal-zoom-init .day-modal{
+  transform: translate(var(--zoom-dx, 0px), var(--zoom-dy, 0px)) scale(0.08);
 }
 .day-modal-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
 .day-modal-header h2{ font-size:16px; font-weight:700; margin:0; letter-spacing:-0.01em; color:#24231f; }
@@ -3701,5 +3718,5 @@ kbd{
    overrides (e.g. .video-modal-card's width transition) earlier in this
    file. */
 @media (prefers-reduced-motion: reduce){
-  .modal, .modal-card, .video-modal-card{ transition: none !important; }
+  .modal, .modal-card, .video-modal-card, .day-modal-backdrop, .day-modal{ transition: none !important; }
 }
