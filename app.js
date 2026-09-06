@@ -8607,6 +8607,14 @@
   // as the Popup Link Opener extension it's modeled on) to send any link
   // through openUrlAsPopup() above, even one that isn't attached to any
   // node yet.
+  //
+  // Everything below is guarded on all the required elements actually
+  // existing (see popupOpenerReady) — if index.html/style.css ever lag
+  // behind a newer app.js (e.g. only one file got redeployed), this
+  // feature just quietly no-ops instead of throwing and taking the rest
+  // of boot() down with it, which is a much worse failure mode (missing
+  // photos, dead sidebar, etc. that have nothing to do with this feature).
+  const popupOpenerBtn = $("#btn-popup-opener");
   const popupOpenerModal = $("#popup-opener-modal");
   const popupOpenerInput = $("#popup-opener-input");
   const popupOpenerOpenBtn = $("#popup-opener-open");
@@ -8614,6 +8622,11 @@
   const popupOpenerCloseBtn = $("#popup-opener-close");
   const popupOpenerClipTag = $("#popup-opener-clip-tag");
   const popupOpenerErrorEl = $("#popup-opener-error");
+  const popupOpenerReady = !!(popupOpenerBtn && popupOpenerModal && popupOpenerInput &&
+    popupOpenerOpenBtn && popupOpenerBlankBtn && popupOpenerCloseBtn && popupOpenerClipTag && popupOpenerErrorEl);
+  if (!popupOpenerReady) {
+    console.warn("[Branchline] Popup-opener UI elements missing from index.html — skipping that feature's wiring (app.js/index.html may be out of sync).");
+  }
 
   function normaliseForPopupOpener(s) {
     const trimmed = (s || "").trim();
@@ -8667,28 +8680,30 @@
     closePopupOpenerModal();
   }
 
-  $("#btn-popup-opener").addEventListener("click", openPopupOpenerModal);
-  popupOpenerOpenBtn.addEventListener("click", openFromPopupOpenerInput);
-  popupOpenerInput.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") openFromPopupOpenerInput(); });
-  popupOpenerInput.addEventListener("input", hidePopupOpenerStatus);
-  popupOpenerBlankBtn.addEventListener("click", () => { openUrlAsPopup("about:blank"); closePopupOpenerModal(); });
-  popupOpenerCloseBtn.addEventListener("click", closePopupOpenerModal);
-  popupOpenerModal.addEventListener("click", (e) => { if (e.target === popupOpenerModal) closePopupOpenerModal(); });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !popupOpenerModal.classList.contains("hidden")) { closePopupOpenerModal(); return; }
-    // Ctrl/Cmd+Shift+O — same hotkey as the Popup Link Opener extension.
-    // Skipped while typing anywhere (contenteditable/input/textarea) so
-    // it can't hijack an "O" typed into a node or field.
-    const activeIsTyping = document.activeElement && (
-      document.activeElement.isContentEditable ||
-      document.activeElement.tagName === "INPUT" ||
-      document.activeElement.tagName === "TEXTAREA"
-    );
-    if (!activeIsTyping && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "o") {
-      e.preventDefault();
-      openPopupOpenerModal();
-    }
-  });
+  if (popupOpenerReady) {
+    popupOpenerBtn.addEventListener("click", openPopupOpenerModal);
+    popupOpenerOpenBtn.addEventListener("click", openFromPopupOpenerInput);
+    popupOpenerInput.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") openFromPopupOpenerInput(); });
+    popupOpenerInput.addEventListener("input", hidePopupOpenerStatus);
+    popupOpenerBlankBtn.addEventListener("click", () => { openUrlAsPopup("about:blank"); closePopupOpenerModal(); });
+    popupOpenerCloseBtn.addEventListener("click", closePopupOpenerModal);
+    popupOpenerModal.addEventListener("click", (e) => { if (e.target === popupOpenerModal) closePopupOpenerModal(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !popupOpenerModal.classList.contains("hidden")) { closePopupOpenerModal(); return; }
+      // Ctrl/Cmd+Shift+O — same hotkey as the Popup Link Opener extension.
+      // Skipped while typing anywhere (contenteditable/input/textarea) so
+      // it can't hijack an "O" typed into a node or field.
+      const activeIsTyping = document.activeElement && (
+        document.activeElement.isContentEditable ||
+        document.activeElement.tagName === "INPUT" ||
+        document.activeElement.tagName === "TEXTAREA"
+      );
+      if (!activeIsTyping && (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        openPopupOpenerModal();
+      }
+    });
+  }
 
   function openNodePhotoPicker(nodeId) {
     if (!requireSignIn()) return;
