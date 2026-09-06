@@ -242,9 +242,11 @@
 
 <div id="popup-opener-modal" class="modal hidden">
   <div class="modal-card popup-opener-modal-card">
-    <div class="link-comment-modal-head">
+    <div class="modal-back-row">
+      <button type="button" id="popup-opener-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
       <h2>🪟 Open in popup</h2>
-      <button id="popup-opener-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="popup-opener-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <div class="popup-opener-row">
       <input id="popup-opener-input" type="text" class="popup-opener-input" placeholder="https://…" spellcheck="false" autocomplete="off">

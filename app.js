@@ -8991,10 +8991,11 @@
   const popupOpenerOpenBtn = $("#popup-opener-open");
   const popupOpenerBlankBtn = $("#popup-opener-blank");
   const popupOpenerCloseBtn = $("#popup-opener-close");
+  const popupOpenerBackBtn = $("#popup-opener-back");
   const popupOpenerClipTag = $("#popup-opener-clip-tag");
   const popupOpenerErrorEl = $("#popup-opener-error");
   const popupOpenerReady = !!(popupOpenerBtn && popupOpenerModal && popupOpenerInput &&
-    popupOpenerOpenBtn && popupOpenerBlankBtn && popupOpenerCloseBtn && popupOpenerClipTag && popupOpenerErrorEl);
+    popupOpenerOpenBtn && popupOpenerBlankBtn && popupOpenerCloseBtn && popupOpenerBackBtn && popupOpenerClipTag && popupOpenerErrorEl);
   if (!popupOpenerReady) {
     console.warn("[Branchline] Popup-opener UI elements missing from index.html — skipping that feature's wiring (app.js/index.html may be out of sync).");
   }
@@ -9058,6 +9059,7 @@
     popupOpenerInput.addEventListener("input", hidePopupOpenerStatus);
     popupOpenerBlankBtn.addEventListener("click", () => { openUrlAsPopup("about:blank"); closePopupOpenerModal(); });
     popupOpenerCloseBtn.addEventListener("click", closePopupOpenerModal);
+    popupOpenerBackBtn.addEventListener("click", closePopupOpenerModal);
     popupOpenerModal.addEventListener("click", (e) => { if (e.target === popupOpenerModal) closePopupOpenerModal(); });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !popupOpenerModal.classList.contains("hidden")) { closePopupOpenerModal(); return; }
