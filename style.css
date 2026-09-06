@@ -3089,6 +3089,39 @@ kbd{
 }
 .video-modal-close:hover{ background: rgba(255,255,255,0.22); }
 
+/* Minimized ("mini") video player: instead of the full dimmed modal, the
+   player shrinks into a small frame pinned to the top-right corner of the
+   window, with the backdrop removed entirely, so the mindmap underneath
+   stays fully visible AND interactive (clicks pass straight through the
+   now-transparent modal layer everywhere except the little player card
+   itself) while the video keeps playing. Toggled by #video-modal-minimize
+   (see setVideoModalMini in app.js). */
+.video-modal.mini{
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 16px;
+  pointer-events: none;
+}
+.video-modal.mini .video-modal-card{
+  pointer-events: auto;
+  width: 300px;
+  max-width: 40vw;
+}
+.video-modal.mini .video-modal-frame-wrap{
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.video-modal.mini .video-modal-open-link,
+.video-modal.mini .video-modal-comment-row,
+.video-modal.mini #video-modal-size{
+  display: none;
+}
+.video-modal.mini .video-modal-actions{
+  justify-content: flex-end;
+}
+
 /* Right-click "💬 Comment" editor — the same paragraph-friendly,
    auto-growing textarea as the video modal's comment box (see
    .video-modal-comment-input), just in its own small modal so it also

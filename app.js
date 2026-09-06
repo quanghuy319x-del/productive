@@ -8482,6 +8482,7 @@
   const videoModalCard = $(".video-modal-card");
   const videoModalIframe = $("#video-modal-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
+  const videoModalMinimizeBtn = $("#video-modal-minimize");
   const videoModalSizeBtn = $("#video-modal-size");
   const videoModalCloseBtn = $("#video-modal-close");
   const videoModalCommentRow = $("#video-modal-comment-row");
@@ -8537,6 +8538,33 @@
   });
   applyVideoModalSize(loadVideoModalSize());
 
+  // "Mini" mode: instead of the normal/large/full sizes above (a centered,
+  // backdropped modal), the player shrinks into a small frame docked at
+  // the top-right of the window with no backdrop, so the mindmap stays
+  // usable underneath while the video keeps playing (see the .video-modal
+  // .mini rules in style.css for how clicks pass through everywhere except
+  // the little card itself). The size the player was at before minimizing
+  // is remembered so un-minimizing restores it exactly.
+  let videoModalPreMiniSize = "normal";
+  function setVideoModalMini(mini) {
+    if (mini === videoModal.classList.contains("mini")) return;
+    if (mini) {
+      videoModalPreMiniSize = VIDEO_MODAL_SIZES.find(s => videoModalCard.classList.contains("size-" + s)) || "normal";
+      VIDEO_MODAL_SIZES.forEach(s => videoModalCard.classList.remove("size-" + s));
+    } else {
+      applyVideoModalSize(videoModalPreMiniSize);
+    }
+    videoModal.classList.toggle("mini", mini);
+    const label = mini ? "Restore player" : "Minimize player";
+    videoModalMinimizeBtn.textContent = mini ? "⤢" : "─";
+    videoModalMinimizeBtn.title = label;
+    videoModalMinimizeBtn.setAttribute("aria-label", label);
+  }
+  videoModalMinimizeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setVideoModalMini(!videoModal.classList.contains("mini"));
+  });
+
   // Lazily loads the YouTube IFrame Player API — only needed the first
   // time a video is actually opened. A plain <iframe src="...embed/...">
   // (the old approach) has no way to report back the current playback
@@ -8589,6 +8617,7 @@
   // element's .src to an arbitrary site would leave the player object
   // pointed at a page that no longer understands its postMessage calls.
   async function openVideoModal(url, ytId, commentCtx) {
+    setVideoModalMini(false);
     videoModalOpenLink.href = url;
     videoModalOpenLink.textContent = "Open on YouTube ↗";
     videoModalCommentCtx = commentCtx || null;
