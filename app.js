@@ -12517,16 +12517,16 @@
     affirmationFeedback.textContent = "";
     affirmationFeedback.className = "affirmation-feedback";
     renderAffirmationModal();
-    affirmationModal.classList.remove("hidden");
+    zoomModalOpen(affirmationModal);
     requestAnimationFrame(() => affirmationInput.focus());
   }
 
   function closeAffirmationGame() {
-    affirmationModal.classList.add("hidden");
     affirmationInput.value = "";
     affirmationInput.classList.remove("shake");
     affirmationTarget = null;
     renderAll();
+    zoomModalClose(affirmationModal);
   }
 
   function renderAffirmationModal() {
@@ -12675,13 +12675,13 @@
     closeContextMenu();
     timerEditingId = { nodeId, r, c };
     renderTimerModal();
-    timerModal.classList.remove("hidden");
+    zoomModalOpen(timerModal);
   }
 
   function closeTimerModal() {
-    timerModal.classList.add("hidden");
     timerEditingId = null;
     renderAll();
+    zoomModalClose(timerModal);
   }
 
   function renderTimerModal() {
