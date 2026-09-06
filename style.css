@@ -290,6 +290,22 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 .btn-ghost:disabled, .btn-primary:disabled{ opacity:0.4; cursor:not-allowed; }
 .btn-ghost:disabled:hover, .btn-primary:disabled:hover{ filter:none; color: var(--text-dim); border-color: var(--border); }
 
+/* Toolbar quick-launch buttons (YouTube/Docs/Sheets/Photos → popup window) */
+.quicklink-group{
+  display:flex;
+  gap:6px;
+}
+.btn-quicklink{
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+.btn-quicklink-icon{
+  width:14px;
+  height:14px;
+  flex:none;
+}
+
 /* ---------------- Main / toolbar ---------------- */
 
 #main{

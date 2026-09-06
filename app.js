@@ -8838,6 +8838,22 @@
     });
   }
 
+  // Quick-launch toolbar buttons — one-click shortcuts straight to
+  // YouTube / Google Docs / Sheets / Photos, each opened via the same
+  // openUrlAsPopup() sized/centered popup window as any other link's 🪟
+  // action, rather than a plain new tab. Wired defensively (each button
+  // is optional) so an index.html that hasn't picked up these buttons
+  // yet doesn't break anything else in boot().
+  [
+    ["#btn-quick-youtube", "https://www.youtube.com/"],
+    ["#btn-quick-gdocs", "https://docs.google.com/document/u/0/"],
+    ["#btn-quick-gsheets", "https://sheets.google.com/u/0/"],
+    ["#btn-quick-gphotos", "https://photos.google.com/"],
+  ].forEach(([selector, url]) => {
+    const btn = $(selector);
+    if (btn) btn.addEventListener("click", () => openUrlAsPopup(url));
+  });
+
   function openNodePhotoPicker(nodeId) {
     if (!requireSignIn()) return;
     pendingPhotoNodeId = nodeId;
