@@ -249,9 +249,50 @@
     }
   };
 
-  // Photos, stored one row per photo: { id, mapId, data (a data: URL) }.
-  // Kept in their own store (see PHOTO_STORE above) so the node tree
-  // itself only ever carries small id strings.
+  // Converts a data: URL string into a Blob without a network round trip
+  // (fetch() on a data:/blob: URL works in most browsers but isn't
+  // guaranteed, and is slower than just decoding the base64 directly).
+  // Used to get incoming photos (file upload, paste, crop, label-bake —
+  // all of which still hand over a data: URL) into Blob form before they
+  // ever touch PhotoDB or the in-memory cache.
+  function dataUrlToBlob(dataUrl) {
+    const commaIdx = dataUrl.indexOf(",");
+    const header = dataUrl.slice(0, commaIdx);
+    const body = dataUrl.slice(commaIdx + 1);
+    const mimeMatch = /data:([^;]+)/.exec(header);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const binary = atob(body);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
+  // The reverse — only needed where a photo has to leave this browser
+  // as a fully self-contained blob of JSON (Export .json, Google Drive,
+  // the connected local folder), since a Blob/object URL only means
+  // anything inside this tab.
+  function blobToDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // Photos, stored one row per photo: { id, mapId, blob }. Kept in their
+  // own store (see PHOTO_STORE above) so the node tree itself only ever
+  // carries small id strings.
+  //
+  // Older rows (saved before this app stored a Blob) instead have
+  // { id, mapId, data } — a base64 data: URL. Base64 inflates the raw
+  // bytes by roughly a third and, more importantly, ends up living as a
+  // giant JS string in memory for as long as the map is open — a Blob's
+  // bytes are held by the browser outside the JS heap and only need a
+  // short-lived object URL (see photoUrl/loadPhotoCacheForMap below) to
+  // be displayed. Legacy rows are converted to Blob form the first time
+  // they're read (see loadPhotoCacheForMap) and written back, so this is
+  // a one-time cost per photo, not a repeated one.
   const PhotoDB = {
     async put(rec) {
       const db = await DB.open();
@@ -298,45 +339,90 @@
     }
   };
 
-  // In-memory id -> data-URL cache for whichever map is currently open,
-  // populated by loadPhotoCacheForMap() (see openMap). Every rendering/
-  // editing call site keeps working with plain data URLs exactly as
-  // before via getNodeImages(); only code that actually needs to persist
-  // a photo (add/copy/crop/delete/etc.) touches PhotoDB and node.images
-  // (the id array) directly.
+  // In-memory id -> object-URL cache for whichever map is currently
+  // open, populated by loadPhotoCacheForMap() (see openMap). Every
+  // rendering/editing call site keeps working with a plain URL string
+  // exactly as before via getNodeImages()/photoUrl(); only code that
+  // actually needs the photo's raw bytes (duplicate, export/sync) reads
+  // photoBlobCache instead.
+  //
+  // photoCache holds the *display* form (an object URL — cheap, just a
+  // short registration the browser resolves internally to the Blob's
+  // bytes) while photoBlobCache holds the actual Blob each one points
+  // to, so a photo's bytes only ever exist once in memory no matter how
+  // many nodes reference it. Object URLs are explicitly revoked (see
+  // revokePhotoCache/deletePhotoRecord below) since, unlike a plain
+  // string, the browser won't reclaim one just because nothing points to
+  // it anymore — an un-revoked URL keeps its Blob alive for the rest of
+  // the page's life.
   let photoCache = new Map();
+  let photoBlobCache = new Map();
+
+  function revokePhotoCache() {
+    photoCache.forEach((url) => { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } });
+  }
 
   async function loadPhotoCacheForMap(mapId) {
+    revokePhotoCache();
     photoCache = new Map();
+    photoBlobCache = new Map();
     if (!mapId) return;
     try {
       const rows = await PhotoDB.getAllForMap(mapId);
-      rows.forEach(r => photoCache.set(r.id, r.data));
+      const migrations = [];
+      rows.forEach(r => {
+        let blob = r.blob;
+        if (!blob && r.data) {
+          // Legacy base64 row — convert once and persist the Blob form
+          // so every future load of this photo skips this step.
+          try {
+            blob = dataUrlToBlob(r.data);
+            migrations.push(PhotoDB.put({ id: r.id, mapId, blob }));
+          } catch (e) { console.error("Migrating photo to blob storage failed", e); return; }
+        }
+        if (!blob) return;
+        photoBlobCache.set(r.id, blob);
+        photoCache.set(r.id, URL.createObjectURL(blob));
+      });
+      if (migrations.length) Promise.all(migrations).catch(e => console.error("Migrating photo storage failed", e));
     } catch (e) { console.error("Loading photos failed", e); }
   }
 
   // Adds a brand-new photo (from a file/paste) to the store + cache for
   // the currently open map and returns its id. Fire-and-forget on the
   // actual disk write — the cache is updated synchronously so rendering
-  // never has to wait on it.
+  // never has to wait on it. Still takes a data: URL, same as every
+  // existing caller (file upload, paste, crop apply, label bake) already
+  // produces — only the storage/display form changes, right here.
   function addPhotoRecord(dataUrl) {
     const id = uid();
-    photoCache.set(id, dataUrl);
-    if (state.current) PhotoDB.put({ id, mapId: state.current.id, data: dataUrl }).catch(e => console.error("Saving photo failed", e));
+    const blob = dataUrlToBlob(dataUrl);
+    photoBlobCache.set(id, blob);
+    photoCache.set(id, URL.createObjectURL(blob));
+    if (state.current) PhotoDB.put({ id, mapId: state.current.id, blob }).catch(e => console.error("Saving photo failed", e));
     return id;
   }
 
-  // Copies an existing photo's bytes onto a brand-new id — used when a
-  // photo is Alt/Option-dragged onto another node (a real copy, not a
-  // shared reference) so each node ends up owning its own photo record.
+  // Copies an existing photo onto a brand-new id — used when a photo is
+  // Alt/Option-dragged onto another node (a real copy, not a shared
+  // reference) so each node ends up owning its own photo record. The two
+  // ids can safely share the same underlying Blob (Blobs are immutable)
+  // instead of duplicating the bytes in memory.
   function duplicatePhotoRecord(oldId) {
-    const data = photoCache.get(oldId);
-    if (data == null) return oldId; // shouldn't happen; fail safe by sharing the id
-    return addPhotoRecord(data);
+    const blob = photoBlobCache.get(oldId);
+    if (!blob) return oldId; // shouldn't happen; fail safe by sharing the id
+    const id = uid();
+    photoBlobCache.set(id, blob);
+    photoCache.set(id, URL.createObjectURL(blob));
+    if (state.current) PhotoDB.put({ id, mapId: state.current.id, blob }).catch(e => console.error("Saving photo failed", e));
+    return id;
   }
 
   function deletePhotoRecord(id) {
+    const url = photoCache.get(id);
+    if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } }
     photoCache.delete(id);
+    photoBlobCache.delete(id);
     PhotoDB.delete(id).catch(e => console.error("Deleting photo failed", e));
   }
 
@@ -365,7 +451,7 @@
           if (typeof val === "string" && val.startsWith("data:")) {
             const id = uid();
             idForOldValue.set(val, id);
-            puts.push(PhotoDB.put({ id, mapId: map.id, data: val }));
+            puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(val) }));
             return id;
           }
           return val;
@@ -397,14 +483,14 @@
           if (!a) return;
           if (typeof a.image === "string" && a.image.startsWith("data:")) {
             const id = uid();
-            puts.push(PhotoDB.put({ id, mapId: map.id, data: a.image }));
+            puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(a.image) }));
             a.image = id;
           }
           if (Array.isArray(a.images) && a.images.length) {
             a.images = a.images.map((val) => {
               if (typeof val === "string" && val.startsWith("data:")) {
                 const id = uid();
-                puts.push(PhotoDB.put({ id, mapId: map.id, data: val }));
+                puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(val) }));
                 return id;
               }
               return val;
@@ -427,11 +513,26 @@
   async function inlinePhotosForPortableCopy(map) {
     if (!map || !map.root) return map;
     const rows = await PhotoDB.getAllForMap(map.id);
-    const lookup = new Map(rows.map(r => [r.id, r.data]));
+    const lookup = new Map();
+    // Rows are stored as a Blob (see PhotoDB above) apart from any
+    // not-yet-migrated legacy row, which is already a portable base64
+    // string as-is. Either way, the map needs actual inline data: URLs
+    // here — a Blob/object URL only means anything inside this tab.
+    await Promise.all(rows.map(async (r) => {
+      if (r.data) { lookup.set(r.id, r.data); return; }
+      if (r.blob) {
+        try { lookup.set(r.id, await blobToDataUrl(r.blob)); }
+        catch (e) { console.error("Inlining photo failed", e); }
+      }
+    }));
     // Also fold in anything only in the in-memory cache but not yet
     // flushed to disk (a photo added in the last <1s, say).
     if (state.current && state.current.id === map.id) {
-      photoCache.forEach((data, id) => { if (!lookup.has(id)) lookup.set(id, data); });
+      await Promise.all(Array.from(photoBlobCache.entries()).map(async ([id, blob]) => {
+        if (lookup.has(id)) return;
+        try { lookup.set(id, await blobToDataUrl(blob)); }
+        catch (e) { console.error("Inlining photo failed", e); }
+      }));
     }
     const clone = JSON.parse(JSON.stringify(map));
     (function walk(node) {
@@ -1166,7 +1267,12 @@
           state.current = null;
           const next = activeMaps();
           if (next.length) await openMap(next[0].id);
-          else clearCanvas();
+          else {
+            revokePhotoCache();
+            photoCache = new Map();
+            photoBlobCache = new Map();
+            clearCanvas();
+          }
         }
       }
       sortMaps(state.maps);
@@ -3029,7 +3135,10 @@
       for (const r of rows) {
         if (!referenced.has(r.id)) {
           await PhotoDB.delete(r.id);
+          const url = photoCache.get(r.id);
+          if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } }
           photoCache.delete(r.id);
+          photoBlobCache.delete(r.id);
         }
       }
     } catch (e) { /* best-effort cleanup, safe to skip on failure */ }
@@ -3385,7 +3494,16 @@
       state.current = null;
       const next = activeMaps();
       if (next.length) await openMap(next[0].id);
-      else { clearCanvas(); renderSidebar(); }
+      else {
+        // No map left open — release the trashed map's photos instead of
+        // leaving their object URLs (and the Blobs they keep alive)
+        // resident in memory with nothing on screen to show for them.
+        revokePhotoCache();
+        photoCache = new Map();
+        photoBlobCache = new Map();
+        clearCanvas();
+        renderSidebar();
+      }
     } else {
       renderSidebar();
     }
@@ -6925,11 +7043,17 @@
       (n.children || []).forEach(collectPhotoIds);
     })(src);
     for (const id of photoIds) {
-      const data = photoCache.get(id);
-      if (data === undefined) continue; // already gone/never loaded — nothing to carry over
+      const blob = photoBlobCache.get(id);
+      if (blob === undefined) continue; // already gone/never loaded — nothing to carry over
       try {
-        await PhotoDB.put({ id, mapId: targetMap.id, data });
-        photoCache.delete(id); // no longer part of the currently-open (source) map
+        await PhotoDB.put({ id, mapId: targetMap.id, blob });
+        // No longer part of the currently-open (source) map — drop it
+        // from both caches, revoking its object URL so the Blob isn't
+        // held alive by a URL nothing points to anymore.
+        const url = photoCache.get(id);
+        if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } }
+        photoCache.delete(id);
+        photoBlobCache.delete(id);
       } catch (e) { console.error("Moving photo to new map failed", e); }
     }
 
@@ -8497,11 +8621,16 @@
     clearTimeout(modalEl.__zoomTimer);
     const card = modalEl.querySelector(cardSelector || ".modal-card");
     modalEl.classList.remove("hidden");
-    modalEl.classList.add("modal-zoom-init");
     if (card) {
-      // Scaling is centered by default, so the card's on-screen center
-      // is the same whether or not modal-zoom-init's shrink is already
-      // applied — safe to measure it right after adding the class above.
+      // Measure the card BEFORE modal-zoom-init's shrink is applied, at
+      // its natural full-size position — not after, like this used to.
+      // Scaling alone is centered so it wouldn't matter, but the shrink
+      // also carries a translate(--zoom-dx, --zoom-dy) offset left over
+      // from whatever point this modal last grew from, and that stale
+      // offset was still in effect at measurement time — corrupting the
+      // very calculation meant to replace it, so every open after the
+      // first grew from a progressively wrong spot instead of the click.
+      // Measuring here, before that shrink exists at all, sidesteps it.
       const rect = card.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
@@ -8510,6 +8639,7 @@
       modalEl.style.setProperty("--zoom-dx", (ox - cx) + "px");
       modalEl.style.setProperty("--zoom-dy", (oy - cy) + "px");
     }
+    modalEl.classList.add("modal-zoom-init");
     // Force a reflow so the browser paints the shrunk-near-the-icon state
     // from modal-zoom-init before it's removed on the next frame — doing
     // both in the same tick would collapse into one frame and skip the
