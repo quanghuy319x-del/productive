@@ -762,6 +762,27 @@
     return "Google sign-in failed (" + code + "). This often means this page's exact origin isn't listed under \"Authorized JavaScript origins\" for this OAuth client in Google Cloud Console.";
   }
 
+  // Waits for Google Identity Services to finish loading, instead of
+  // failing the instant a click arrives a beat early. The gsi/client
+  // script tag is loaded async (see index.html), so on a fresh page load
+  // it can still be in flight for anywhere from tens of ms to a couple
+  // of seconds after the rest of the app — including this sign-in
+  // button — is already interactive. Polls rather than hooking the
+  // script's load event so it works no matter when it's called relative
+  // to that script finishing (including if it already has).
+  function waitForGis(timeoutMs) {
+    if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      const check = () => {
+        if (window.google && google.accounts && google.accounts.oauth2) { resolve(true); return; }
+        if (Date.now() - startedAt >= timeoutMs) { resolve(false); return; }
+        setTimeout(check, 100);
+      };
+      check();
+    });
+  }
+
   // The access token itself is cached in localStorage (not just in memory)
   // so an F5 reload can reuse it directly — no Google round-trip, no
   // popup — for as long as it's still valid (Google issues these with
@@ -922,8 +943,34 @@
           "\"Authorized JavaScript origins\" for this OAuth client."
         ));
       }
+      // Fast path: GIS has already finished loading, true for the vast
+      // majority of clicks (anything after the first second or so on
+      // the page). Go straight to requestAccessToken() below with no
+      // async gap at all, so the call stays inside this click's own
+      // user gesture — Safari in particular blocks the popup outright
+      // if it isn't.
+      if (this.ensureTokenClient()) return this._requestTokenNow(silent);
+      // Slow path: the accounts.google.com/gsi/client script (loaded
+      // async in index.html) hasn't finished downloading/executing yet.
+      // Very possible on a fresh load or slow connection, since app.js
+      // itself runs and wires up this button well before an async
+      // external script is guaranteed to be ready. This used to fail
+      // immediately with "hasn't loaded yet — try again", which is
+      // exactly why sign-in so often needed a second click: the click
+      // itself did nothing wrong, it just lost a race that had nothing
+      // to do with the user. Wait for GIS instead of bailing out —
+      // there's no popup call to protect here yet anyway (the SDK
+      // object doesn't exist), so there's no user-gesture chain to lose
+      // by waiting for it.
+      return waitForGis(8000).then((ready) => {
+        if (!ready) throw new Error("Google sign-in script hasn't loaded — check your connection and try again.");
+        return this._requestTokenNow(silent);
+      });
+    },
+
+    _requestTokenNow(silent) {
       return new Promise((resolve, reject) => {
-        if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded yet — try again in a second, or check your connection.")); return; }
+        if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded — check your connection and try again.")); return; }
         // If an earlier requestToken() call (e.g. the automatic silent
         // restore-on-load attempt) is still waiting on Google when this
         // one starts, cancel it locally right now rather than leaving it
