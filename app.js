@@ -2924,9 +2924,21 @@
   // Reconciles PhotoDB against whatever photo ids the map's node tree
   // actually references right now, deleting any leftover rows (from a
   // deleted node, a crop/text-edit replacing an id, "Remove all photos"
-  // racing an in-flight write, etc.) — called after a save, not awaited
-  // by it, since it's just tidying up rather than something the person
-  // is waiting on.
+  // racing an in-flight write, etc.).
+  //
+  // NOT called automatically anymore (see runPersistNow below) — this
+  // used to run after every single autosave, which meant ANY moment
+  // where the in-memory node tree was transiently incomplete/stale right
+  // when a save fired (a race during map load/sync, a bug elsewhere, an
+  // interrupted operation, etc.) could make it look like photos were
+  // "orphaned" and permanently delete their bytes from PhotoDB — with no
+  // undo. Photos should only ever be deleted by a direct, explicit
+  // action (removing a specific photo, deleting/emptying-trash on a
+  // whole map — see deletePhotoRecord/permanentlyDeleteMap/emptyTrash),
+  // never as an automatic side effect of an ordinary save. The function
+  // is left here, unused, in case a genuinely manual "clean up unused
+  // photos" button gets added later — it would just need a real user
+  // click to call it, never a save.
   async function gcOrphanedPhotos(map) {
     if (!map) return;
     try {
@@ -2958,11 +2970,15 @@
     try {
       await DB.put(mapToSave);
       await FolderDB.save(mapToSave);
-      gcOrphanedPhotos(mapToSave);
+      // gcOrphanedPhotos(mapToSave) intentionally NOT called here anymore
+      // — see the comment on that function above. Photo rows now only
+      // ever get deleted by an explicit user action, never as a side
+      // effect of a routine save.
       // Local save (IndexedDB + connected folder) is the fast part and
       // is what this toolbar status is meant to reflect — flip it to
       // "Saved" here instead of waiting on Drive's network PUT below
       // too. The local IndexedDB write itself is now cheap no matter how
+
       // many photos are attached (they live in their own store — see
       // PhotoDB — not inlined into this JSON), but the folder mirror and
       // Drive upload below still re-embed photo bytes so those files stay
