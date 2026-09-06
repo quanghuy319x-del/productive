@@ -8763,15 +8763,122 @@
     pendingPhotoNodeId = null;
   });
 
+  // Shared validity check behind all three clipboard-URL detectors below:
+  // normalizes a bare host ("youtu.be/xyz" -> "https://youtu.be/xyz"), then
+  // requires an http(s) scheme (no javascript:, data:, etc.) and an actual
+  // dot in the hostname (skips "https://localhost"-style false positives).
+  function validatePasteableUrl(raw) {
+    const trimmed = (raw || "").trim();
+    if (!trimmed) return null;
+    const url = normalizeUrl(trimmed);
+    try {
+      const parsed = new URL(url);
+      if (!/^https?:$/.test(parsed.protocol)) return null;
+      if (!parsed.hostname.includes(".")) return null;
+      return url;
+    } catch (e) {
+      return null; // not a URL at all
+    }
+  }
+
+  // Recognizes clipboard text that's nothing BUT a URL — e.g. a YouTube
+  // link typed or copied as plain text — so it can be pasted straight onto
+  // a node/cell as a new link, the same "just paste it" shortcut the image
+  // branch below gives screenshots. Deliberately conservative: the entire
+  // trimmed text must be that one URL — a sentence that merely contains a
+  // link, or anything with a second line/word, falls through to ordinary
+  // text-paste behavior instead of silently swallowing it as a link.
+  function pasteableUrlFromClipboardText(text) {
+    const trimmed = (text || "").trim();
+    if (!trimmed || /\s/.test(trimmed)) return null;
+    return validatePasteableUrl(trimmed);
+  }
+
+  // Copying a hyperlinked run of text — e.g. selecting "Watch here" on a
+  // page and hitting Ctrl/Cmd+C, or a rich "share" card from another app —
+  // puts an <a href> in text/html even though text/plain only carries the
+  // link's display text, not its address. Only trusted when the pasted
+  // HTML contains exactly one link, so pasting a paragraph with several
+  // links in it doesn't guess which one was meant.
+  function pasteableUrlFromClipboardHtml(html) {
+    if (!html) return null;
+    try {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const anchors = doc.querySelectorAll("a[href]");
+      if (anchors.length !== 1) return null;
+      return validatePasteableUrl(anchors[0].getAttribute("href"));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Tries every clipboard format a copied link might arrive in, in order
+  // of how literally it signals "a link was copied": text/uri-list (what
+  // a browser's own "Copy link address" writes), then plain text that's
+  // just a bare URL, then a lone <a href> inside pasted HTML. Returns the
+  // first one that checks out, or null if the clipboard isn't a link at
+  // all — in which case the paste falls through to normal behavior.
+  function pasteableUrlFromClipboard(cd) {
+    if (!cd) return null;
+    const uriList = cd.getData("text/uri-list");
+    if (uriList) {
+      const line = uriList.split(/\r?\n/).map(s => s.trim()).find(s => s && !s.startsWith("#"));
+      const fromUriList = validatePasteableUrl(line);
+      if (fromUriList) return fromUriList;
+    }
+    const fromText = pasteableUrlFromClipboardText(cd.getData("text/plain"));
+    if (fromText) return fromText;
+    return pasteableUrlFromClipboardHtml(cd.getData("text/html"));
+  }
+
+  // Adds a URL straight onto a node with no prompts — the paste-shortcut
+  // counterpart to addNodeUrl. Skips both of addNodeUrl's window.prompt
+  // calls (there's nothing to prompt for: the URL is already known, and a
+  // paste shouldn't stop to ask for a display name) — the link just shows
+  // its shortened URL until "Rename link…" is used, same fallback as any
+  // link whose title fetch fails.
+  function pasteUrlOntoNode(nodeId, url) {
+    const node = findNode(nodeId);
+    if (!node) return;
+    pushUndo();
+    const urls = getNodeUrls(node).slice();
+    urls.push(url);
+    node.urls = urls;
+    node.url = null; // fully migrated onto the array field
+    renderAll();
+    persist();
+    fetchLinkTitle(node, url);
+  }
+
+  // Same as pasteUrlOntoNode, scoped to a table cell — the paste-shortcut
+  // counterpart to addCellUrl.
+  function pasteUrlOntoCell(nodeId, r, c, url) {
+    const node = findNode(nodeId);
+    if (!node) return;
+    pushUndo();
+    const a = getCellAttach(node, r, c);
+    const urls = getCellUrls(a).slice();
+    urls.push(url);
+    a.urls = urls;
+    a.url = null;
+    renderAll();
+    persist();
+    fetchCellLinkTitle(nodeId, r, c, url);
+  }
+
   // Paste a screenshot (or any copied image) straight onto the selected
   // node — or, if a table cell was last clicked (see state.selectedCell/
   // handleCellPhotoFiles), onto that cell instead — as a new photo, no
-  // need to save it to disk first and go through "Add photo…". Only
-  // kicks in when the paste isn't headed for a text field (typing into
-  // a node, a cell, a modal, the title bar, etc. — those get to handle
-  // their own paste, e.g. the note editor's own image-paste support) and
-  // no modal is currently open, so it can't hijack a paste the person
-  // meant for something else.
+  // need to save it to disk first and go through "Add photo…". A copied
+  // link (a YouTube video, say) gets the same one-step treatment as a new
+  // link instead, via pasteableUrlFromClipboard/pasteUrlOntoNode above —
+  // covers a raw pasted URL, a browser's "Copy link address", and a
+  // hyperlinked run of text copied from a page or another app.
+  // Only kicks in when the paste isn't headed for a text field (typing
+  // into a node, a cell, a modal, the title bar, etc. — those get to
+  // handle their own paste, e.g. the note editor's own image-paste
+  // support) and no modal is currently open, so it can't hijack a paste
+  // the person meant for something else.
   document.addEventListener("paste", (e) => {
     if (!state.current) return;
     const t = e.target;
@@ -8780,17 +8887,19 @@
     const items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
     const imageItem = Array.from(items).find(i => i.type && i.type.startsWith("image/"));
-    if (!imageItem) return;
-    const file = imageItem.getAsFile();
-    if (!file) return;
+    const file = imageItem && imageItem.getAsFile();
+    const url = !file ? pasteableUrlFromClipboard(e.clipboardData) : null;
+    if (!file && !url) return;
     if (state.selectedCell) {
       e.preventDefault();
-      handleCellPhotoFiles(state.selectedCell.nodeId, state.selectedCell.r, state.selectedCell.c, [file]);
+      if (file) handleCellPhotoFiles(state.selectedCell.nodeId, state.selectedCell.r, state.selectedCell.c, [file]);
+      else pasteUrlOntoCell(state.selectedCell.nodeId, state.selectedCell.r, state.selectedCell.c, url);
       return;
     }
     if (!state.selectedId || state.editingId) return;
     e.preventDefault();
-    handleNodePhotoFiles(state.selectedId, [file]);
+    if (file) handleNodePhotoFiles(state.selectedId, [file]);
+    else pasteUrlOntoNode(state.selectedId, url);
   });
 
   // Gallery state for the lightbox — which node's photos, and which index.
