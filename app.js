@@ -10413,6 +10413,25 @@
     return node === container ? null : node;
   }
 
+  // True when the caret sits at the very start of lineDiv's text (nothing
+  // typed before it on that line) — used so an inserted photo lands above
+  // the line instead of below it when the cursor is at position zero.
+  function noteCaretIsAtLineStart(lineDiv) {
+    if (!lineDiv) return false;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return false;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return false;
+    const preRange = document.createRange();
+    preRange.selectNodeContents(lineDiv);
+    try {
+      preRange.setEnd(range.startContainer, range.startOffset);
+    } catch (err) {
+      return false; // caret isn't actually inside lineDiv
+    }
+    return preRange.toString().length === 0;
+  }
+
   function noteSelectLine(lineDiv) {
     const target = lineDiv || noteTextarea;
     const r = document.createRange();
@@ -10580,45 +10599,79 @@
   // nothing needs to be uploaded anywhere and the image travels with the
   // map's .json (export, or the mirrored folder file) automatically.
   const noteImageInput = $("#note-image-input");
+  // Line (and caret-at-start state) captured at the moment the image-toolbar
+  // button is clicked, before the native file picker steals focus/selection
+  // away from the note.
+  let noteImageInsertLine = null;
+  let noteImageInsertAtStart = false;
 
-  // Inserts a line containing an <img>, right after the current line, then
-  // leaves an empty line after it so the caret has somewhere to keep typing.
-  function noteInsertImage(dataUrl) {
+  // Inserts a line containing an <img>. Normally it goes right after the
+  // current line, with an empty line left after it so the caret has
+  // somewhere to keep typing. But if the caret was at the very start of the
+  // line (nothing typed before it), the image goes above that line instead,
+  // since that's where a cursor at position zero implies the photo belongs.
+  function noteInsertImage(dataUrl, targetLine, atStart) {
     noteTextarea.focus();
-    const lineDiv = noteCurrentLine();
+    // Prefer the line captured before focus was stolen (e.g. by the native
+    // file picker); falling back to a fresh lookup covers callers (like
+    // paste) where the selection is still live at call time.
+    const lineDiv = targetLine !== undefined ? targetLine : noteCurrentLine();
     const imgLine = document.createElement("div");
     const img = document.createElement("img");
     img.src = dataUrl;
     imgLine.appendChild(img);
-    const afterLine = document.createElement("div");
-    afterLine.appendChild(document.createElement("br"));
 
     if (lineDiv && lineDiv.parentNode === noteTextarea) {
-      lineDiv.parentNode.insertBefore(imgLine, lineDiv.nextSibling);
-      imgLine.parentNode.insertBefore(afterLine, imgLine.nextSibling);
+      if (atStart) {
+        // Place the image above the line and leave the line (and its
+        // caret) untouched below it — no extra spacer line needed since
+        // the original line is already there to keep typing into.
+        lineDiv.parentNode.insertBefore(imgLine, lineDiv);
+        const range = document.createRange();
+        range.setStart(lineDiv, 0);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        const afterLine = document.createElement("div");
+        afterLine.appendChild(document.createElement("br"));
+        lineDiv.parentNode.insertBefore(imgLine, lineDiv.nextSibling);
+        imgLine.parentNode.insertBefore(afterLine, imgLine.nextSibling);
+        placeCaretAtEnd(afterLine);
+      }
     } else {
+      const afterLine = document.createElement("div");
+      afterLine.appendChild(document.createElement("br"));
       noteTextarea.appendChild(imgLine);
       noteTextarea.appendChild(afterLine);
+      placeCaretAtEnd(afterLine);
     }
-    placeCaretAtEnd(afterLine);
     scheduleNoteAutosave();
   }
 
   // Images embedded in a note are stored exactly as provided — no
   // downscaling, no lossy re-encoding.
-  function noteHandleImageFile(file) {
+  function noteHandleImageFile(file, targetLine, atStart) {
     if (!file || !file.type || !file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = () => { noteInsertImage(reader.result); };
+    reader.onload = () => { noteInsertImage(reader.result, targetLine, atStart); };
     reader.onerror = () => alert("Couldn't read that image file.");
     reader.readAsDataURL(file);
   }
 
   $("#note-tool-image").addEventListener("mousedown", (e) => e.preventDefault());
-  $("#note-tool-image").addEventListener("click", () => noteImageInput.click());
+  $("#note-tool-image").addEventListener("click", () => {
+    // Capture the cursor's line (and whether it's at the line's start) now,
+    // before the native file picker opens and steals focus/selection out
+    // from under the note (see noteInsertImage).
+    noteImageInsertLine = noteCurrentLine();
+    noteImageInsertAtStart = noteCaretIsAtLineStart(noteImageInsertLine);
+    noteImageInput.click();
+  });
   noteImageInput.addEventListener("change", () => {
     const file = noteImageInput.files && noteImageInput.files[0];
-    if (file) noteHandleImageFile(file);
+    if (file) noteHandleImageFile(file, noteImageInsertLine, noteImageInsertAtStart);
     noteImageInput.value = ""; // reset so picking the same file again still fires change
   });
 
@@ -10628,7 +10681,11 @@
     for (const item of items) {
       if (item.type && item.type.startsWith("image/")) {
         e.preventDefault();
-        noteHandleImageFile(item.getAsFile());
+        // Capture the line and start-of-line state synchronously, while the
+        // selection is still live, before the async file read resolves.
+        const pasteLine = noteCurrentLine();
+        const pasteAtStart = noteCaretIsAtLineStart(pasteLine);
+        noteHandleImageFile(item.getAsFile(), pasteLine, pasteAtStart);
         return;
       }
     }
