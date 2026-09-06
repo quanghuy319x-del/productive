@@ -3243,10 +3243,22 @@
     persistTimer = null;
     kickPersist();
   }
+  // A note's own text lives only in noteWorkingList/the DOM until its
+  // separate 500ms autosave timer (see scheduleNoteAutosave/
+  // flushNoteAutosave below) copies it onto the node — flushPersist()
+  // above only flushes what's *already* been committed. Without also
+  // flushing that inner timer here, typing into a note and backgrounding
+  // the tab within that 500ms window (switching apps, locking the
+  // screen) drops the just-typed text before it ever reaches persist(),
+  // so it's lost locally too — not just unsynced.
+  function flushAllPendingSaves() {
+    if (typeof noteEditingId !== "undefined" && noteEditingId) flushNoteAutosave();
+    flushPersist();
+  }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flushPersist();
+    if (document.visibilityState === "hidden") flushAllPendingSaves();
   });
-  window.addEventListener("pagehide", flushPersist);
+  window.addEventListener("pagehide", flushAllPendingSaves);
 
   // Panning/zooming the canvas only changes where you're *looking* — not
   // the map's actual content — so it must never bump `updatedAt` the way
