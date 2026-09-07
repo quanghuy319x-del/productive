@@ -807,6 +807,11 @@
     accessToken: null,
     tokenExpiresAt: 0,
     signedIn: false,
+    // The in-flight requestToken() call, if any: { silent, promise, reject }.
+    // See _requestTokenNow() — this exists so a later call can tell
+    // whether it's safe to cancel the one already running, instead of
+    // always barging in front of it.
+    _activeRequest: null,
     // True only once a syncFromDrive() has actually completed after
     // becoming signedIn — signedIn flips true as soon as we have a token,
     // which is *before* that first sync has pulled the newest copy of
@@ -969,15 +974,39 @@
     },
 
     _requestTokenNow(silent) {
-      return new Promise((resolve, reject) => {
-        if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded — check your connection and try again.")); return; }
-        // If an earlier requestToken() call (e.g. the automatic silent
-        // restore-on-load attempt) is still waiting on Google when this
-        // one starts, cancel it locally right now rather than leaving it
-        // to dangle.
-        if (this._pendingReject) {
-          this._pendingReject(new Error("Superseded by a newer sign-in request"));
+      // Never let a new call barge in front of one that's already
+      // running — including this call's own predecessor here. The old
+      // version always cancelled whatever was pending, unconditionally,
+      // the instant a new requestToken() call started. That's fine when
+      // the pending one is just the automatic silent restore-on-load
+      // check. It is NOT fine when the pending one is an EXPLICIT
+      // sign-in the person has an open Google popup for and is actively
+      // typing their way through: if the silent check (or the
+      // background token-refresh timer) happened to fire while that
+      // popup was still open, it would locally reject the person's
+      // in-progress attempt right then — and when they finished signing
+      // in a few seconds later and Google's real success callback
+      // arrived, this call had already given up and settled=true meant
+      // it was silently dropped. That's "I signed in once and it still
+      // asks me to sign in": the click and the popup both genuinely
+      // worked, the app just wasn't listening anymore by the time the
+      // answer came back. A silent background check is still allowed to
+      // lose to an explicit click — a person acting right now always
+      // outranks an automatic check — but nothing is ever allowed to
+      // cancel an explicit request that's already in flight; the
+      // safest thing a second call can do there is wait on the one
+      // already running rather than starting a new one (which also
+      // means an accidental double-click never opens a second popup).
+      if (this._activeRequest) {
+        if (this._activeRequest.silent && !silent) {
+          this._activeRequest.reject(new Error("Superseded by a newer sign-in request"));
+        } else {
+          return this._activeRequest.promise;
         }
+      }
+      let rejectExternally = null;
+      const promise = new Promise((resolve, reject) => {
+        if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded — check your connection and try again.")); return; }
         // Watchdog: if neither the success callback nor error_callback
         // ever fires (seen in some browsers when the popup is blocked
         // without triggering GIS's own popup_failed_to_open error), don't
@@ -986,33 +1015,21 @@
         const timeoutId = setTimeout(() => {
           if (settled) return;
           settled = true;
-          this._pendingReject = null;
           reject(new Error("Google sign-in didn't respond after 15 seconds — it may have been blocked by a popup blocker, or this page's origin isn't authorized for this OAuth client yet. Check the browser console for details."));
         }, 15000);
         const settle = (fn, arg) => {
           if (settled) return; // a second callback firing for the same call, or one arriving after this call was itself superseded — ignore rather than double-settle
           settled = true;
           clearTimeout(timeoutId);
-          if (this._pendingReject === rejectThis) this._pendingReject = null;
           fn(arg);
         };
-        const rejectThis = (err) => settle(reject, err);
-        this._pendingReject = rejectThis;
+        rejectExternally = (err) => settle(reject, err);
         // A fresh, throwaway token client for THIS call only, rather than
         // reusing one shared client across calls. GIS's silent
         // (prompt:"none", hidden-iframe) and explicit (prompt:"consent",
         // popup) flows are genuinely separate requests to Google that can
-        // both be in flight at once — e.g. the automatic silent
-        // restore-on-load check still pending when the person clicks
-        // "Sign in with Google" themselves. Both used to share one
-        // tokenClient's callback/error_callback slot, so whichever
-        // response physically landed second — even a stale failure from
-        // the OLD, already-superseded call — got delivered into whatever
-        // closure was currently sitting in that slot, which by then
-        // belonged to the NEW call. That could spuriously fail a sign-in
-        // the person was actively completing, with no local sign of what
-        // happened — hence needing 2-3 tries. Giving each call its own
-        // client means a stale response can only ever reach its own
+        // both be in flight at once. Giving each call its own client
+        // means a stale response can only ever reach its own
         // (already-settled, now-inert) closure, never a newer call's.
         const client = google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
@@ -1036,6 +1053,12 @@
         });
         client.requestAccessToken({ prompt: silent ? "none" : "consent" });
       });
+      const entry = { silent, promise, reject: (err) => { if (rejectExternally) rejectExternally(err); } };
+      this._activeRequest = entry;
+      promise.catch(() => {}).finally(() => {
+        if (this._activeRequest === entry) this._activeRequest = null;
+      });
+      return promise;
     },
 
     // Silent token refreshes normally happen invisibly, but when the
