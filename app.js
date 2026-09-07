@@ -6025,8 +6025,14 @@
         const taskNoteIcon = document.createElement("span");
         taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker";
         taskNoteIcon.innerHTML = NODE_NOTE_ICON_SVG;
-        const preview = notePreviewText(getTaskNotes(t)[0] || {});
-        taskNoteIcon.title = `Task "${t.text || "(untitled task)"}" — ${preview}`;
+        // A task's own name already works as that note's title, so unlike
+        // a node's or cell's own notes (notePreviewText), this never falls
+        // back to a body-text preview — only the note's own separate
+        // title, if it happens to have one of its own distinct from the
+        // task name, is ever appended.
+        const noteTitle = ((getTaskNotes(t)[0] || {}).title || "").trim();
+        const titleSuffix = noteTitle ? ` — ${noteTitle.length > 40 ? noteTitle.slice(0, 39) + "…" : noteTitle}` : "";
+        taskNoteIcon.title = `Task "${t.text || "(untitled task)"}"${titleSuffix}`;
         taskNoteIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openNoteModal(node.id, undefined, null, t.id);
