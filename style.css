@@ -1471,6 +1471,16 @@ body.signed-out #title-input{ visibility:hidden; }
   opacity: 1;
   transform: translateY(0);
 }
+.link-comment-tooltip-title{
+  font-weight: 700;
+}
+/* Only when both are present: a thin rule between them so the comment
+   reads as sitting below the title, not just a second sentence of it. */
+.link-comment-tooltip-title + .link-comment-tooltip-comment{
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255,255,255,0.18);
+}
 .ctx-item-header{
   cursor:default;
 }

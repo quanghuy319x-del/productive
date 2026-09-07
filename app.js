@@ -2901,9 +2901,21 @@
   function hideLinkCommentTooltip() {
     if (linkCommentTooltipEl) linkCommentTooltipEl.classList.remove("visible");
   }
-  function showLinkCommentTooltip(anchorEl, text) {
+  function showLinkCommentTooltip(anchorEl, title, comment) {
     const tip = getLinkCommentTooltipEl();
-    tip.textContent = text;
+    tip.innerHTML = "";
+    if (title) {
+      const titleEl = document.createElement("div");
+      titleEl.className = "link-comment-tooltip-title";
+      titleEl.textContent = title;
+      tip.appendChild(titleEl);
+    }
+    if (comment) {
+      const commentEl = document.createElement("div");
+      commentEl.className = "link-comment-tooltip-comment";
+      commentEl.textContent = comment;
+      tip.appendChild(commentEl);
+    }
     tip.classList.add("visible");
     const margin = 8;
     const rect = anchorEl.getBoundingClientRect();
@@ -2915,15 +2927,21 @@
     tip.style.left = left + "px";
     tip.style.top = top + "px";
   }
-  // Wires up the hover-to-show-comment behavior on one link icon element.
-  // `getComment` is called fresh on every hover (rather than the comment
-  // being baked in once) so an edit made through the right-click menu is
-  // reflected the next time the same icon is hovered, without needing a
-  // full re-render.
-  function attachLinkCommentTooltip(el, getComment) {
+  // Wires up the hover-to-show behavior on one link icon element.
+  // `getComment` and `getTitle` are called fresh on every hover (rather
+  // than being baked in once) so an edit made through the right-click
+  // menu is reflected the next time the same icon is hovered, without
+  // needing a full re-render. `getTitle` is only ever consulted for a
+  // YouTube video/short (see youtubeVideoId) — that's the one case where
+  // the link's title is a genuinely useful thing to surface here (the
+  // video's real name, not just the URL), stacked above the comment in
+  // this one styled tooltip. Every other link's title stays exactly
+  // where it already was: the native `title` attribute.
+  function attachLinkCommentTooltip(el, url, getComment, getTitle) {
     el.addEventListener("mouseenter", () => {
+      const title = (youtubeVideoId(url) && getTitle) ? getTitle() : null;
       const comment = getComment();
-      if (comment) showLinkCommentTooltip(el, comment);
+      if (title || comment) showLinkCommentTooltip(el, title, comment);
     });
     el.addEventListener("mouseleave", hideLinkCommentTooltip);
   }
@@ -5507,7 +5525,7 @@
       const linkTitle = getCellLinkTitle(a, u);
       linkIcon.title = (linkTitle || u) + " — drag onto a node or cell to move (hold Alt to copy)";
       linkIcon.draggable = true;
-      attachLinkCommentTooltip(linkIcon, () => getCellLinkComment(getCellAttach(node, r, c), u));
+      attachLinkCommentTooltip(linkIcon, u, () => getCellLinkComment(getCellAttach(node, r, c), u), () => getCellLinkTitle(getCellAttach(node, r, c), u));
       linkIcon.addEventListener("click", () => openLinkSmart(u, {
         get: () => getCellLinkComment(getCellAttach(node, r, c), u),
         set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
@@ -6071,7 +6089,7 @@
           urlIcon.innerHTML = linkIconFor(u);
           const linkTitle = getLinkTitle(node, u);
           urlIcon.title = linkTitle || u;
-          attachLinkCommentTooltip(urlIcon, () => getLinkComment(findNode(node.id) || node, u));
+          attachLinkCommentTooltip(urlIcon, u, () => getLinkComment(findNode(node.id) || node, u), () => getLinkTitle(findNode(node.id) || node, u));
           urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i }));
           urlIcon.addEventListener("click", (e) => {
             e.stopPropagation();
