@@ -7,6 +7,25 @@
 (function () {
   "use strict";
 
+  // Small "vNN" badge in the toolbar (see #version-badge in index.html)
+  // showing which app.js is actually loaded — reads the real ?v= off
+  // this very <script> tag (and style.css's <link>) rather than a
+  // separately-hardcoded number, so it can never drift out of sync with
+  // the BUMP_VERSION numbers above the tags in index.html.
+  (function showVersionBadge() {
+    const badge = document.getElementById("version-badge");
+    if (!badge) return;
+    const versionOf = (url) => {
+      const m = (url || "").match(/[?&]v=([^&]+)/);
+      return m ? m[1] : "?";
+    };
+    const jsV = versionOf(document.currentScript && document.currentScript.src);
+    const cssLink = document.querySelector('link[rel="stylesheet"][href*="style.css"]');
+    const cssV = versionOf(cssLink && cssLink.href);
+    badge.textContent = `v${jsV}`;
+    badge.title = `app.js v${jsV} · style.css v${cssV}`;
+  })();
+
   /* ---------------- constants ---------------- */
 
   const PALETTE = [

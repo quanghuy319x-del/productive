@@ -412,6 +412,20 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 .save-status.saving{ color: #e8c15a; }
 .save-status.saved{ color: #6fd08c; }
 
+/* Small "vNN" cache-busting version badge (see #version-badge in
+   index.html and showVersionBadge in app.js) — deliberately quiet/
+   out-of-the-way styling since it's a diagnostic, not a toolbar action. */
+.version-badge{
+  font-size: 10.5px;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
 .layout-select{
   background: var(--panel-2);
   color: var(--text-dim);

@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=33">
 </head>
 <body>
 <div id="app">
@@ -68,6 +68,7 @@
   <main id="main">
     <div id="toolbar">
       <input id="title-input" class="title-input" spellcheck="false" placeholder="Untitled map">
+      <span id="version-badge" class="version-badge" title="Loading version…"></span>
       <div id="toolbar-quote-banner" class="toolbar-gap toolbar-quote-banner" role="button" tabindex="0" title="Click to view or edit your affirmations">
         <marquee id="quote-banner-marquee" behavior="scroll" direction="left" scrollamount="4">Loading…</marquee>
       </div>
@@ -524,6 +525,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=51"></script>
+<script src="app.js?v=52"></script>
 </body>
 </html>
