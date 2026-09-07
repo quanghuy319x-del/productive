@@ -9482,43 +9482,6 @@
   photoModalText.style.fontWeight = "700";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalText);
 
-  // Note button — sits one slot further out than crop/text, same
-  // circular styling. Opens the exact same rich note editor used for a
-  // node's own notes (openNoteModal below), just scoped to this one
-  // photo instead of the node it's on.
-  const photoModalComment = document.createElement("button");
-  photoModalComment.id = "photo-modal-comment";
-  photoModalComment.className = "photo-modal-delete";
-  photoModalComment.title = "Notes on this photo";
-  photoModalComment.setAttribute("aria-label", "View or add notes on this photo");
-  photoModalComment.style.right = "calc(4vw + 160px)";
-  photoModalComment.style.fontSize = "13px";
-  photoModalComment.textContent = "📝";
-  const photoModalCommentBadge = document.createElement("span");
-  photoModalCommentBadge.className = "photo-modal-comment-badge hidden";
-  photoModalComment.appendChild(photoModalCommentBadge);
-  photoModal.querySelector(".photo-modal-card").appendChild(photoModalComment);
-
-  // Keeps the badge in sync with however many notes the currently shown
-  // photo has — called whenever the shown photo changes (renderPhotoModal)
-  // and after the note editor closes (see closeNoteModal below).
-  function renderPhotoModalCommentBadge() {
-    if (!photoModalState) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = node ? getNodeImageIds(node)[photoModalState.index] : null;
-    const count = getPhotoNotes(node, id).length;
-    photoModalCommentBadge.textContent = String(count);
-    photoModalCommentBadge.classList.toggle("hidden", !count);
-  }
-  photoModalComment.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (!photoModalState) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = node ? getNodeImageIds(node)[photoModalState.index] : null;
-    if (!node || !id) return;
-    openNoteModal(node.id, undefined, id);
-  });
-
   let cropping = false;
   let cropCleanup = null;
   let addingText = false;
@@ -9645,7 +9608,6 @@
       photoModalCount.textContent = multi ? `${photoModalState.index + 1} / ${images.length}` : "";
     }
     renderPhotoModalTags();
-    renderPhotoModalCommentBadge();
   }
   // Renders the tag chips for whichever photo is currently shown, plus
   // clears the "add a tag" input so it doesn't carry text over between
@@ -10734,10 +10696,6 @@
     noteActiveIndex = 0;
     $("#note-color-popover").classList.add("hidden");
     zoomModalClose(noteModal);
-    // The photo lightbox's own 📝 badge (count of notes on the currently
-    // shown photo) may have just changed — keep it in sync if the
-    // lightbox is still open underneath.
-    if (!photoModal.classList.contains("hidden")) renderPhotoModalCommentBadge();
   }
 
   // Debounced autosave: fires a short beat after the user stops typing,
@@ -10804,7 +10762,6 @@
         setPhotoNotes(node, noteEditingPhotoId, cleaned);
         renderAll();
         persist();
-        if (!photoModal.classList.contains("hidden")) renderPhotoModalCommentBadge();
       }
       return;
     }
