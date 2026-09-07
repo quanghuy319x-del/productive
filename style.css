@@ -694,6 +694,32 @@ body.signed-out #title-input{ visibility:hidden; }
   vertical-align: top;
   cursor: default;
 }
+/* "Outline only" grid style (see the table node's right-click menu and
+   renderTableGrid) — every interior cell border goes transparent, and
+   only the table's outer edge keeps the branch color, with a plain
+   thin rule under the second row standing in for a header divider
+   (matching the common "title row, then header row, then a rule"
+   calendar layout). Cells still keep a transparent border rather than
+   border:none so the grid's column/row sizing never shifts when
+   toggling between the two styles. */
+.node-table-outline td{
+  border-color: transparent;
+}
+.node-table-outline tr:first-child td{
+  border-top-color: var(--sel-color, currentColor);
+}
+.node-table-outline tr:last-child td{
+  border-bottom-color: var(--sel-color, currentColor);
+}
+.node-table-outline td:first-child{
+  border-left-color: var(--sel-color, currentColor);
+}
+.node-table-outline td:last-child{
+  border-right-color: var(--sel-color, currentColor);
+}
+.node-table-outline tr:nth-child(2) td{
+  border-bottom: 1px solid rgba(128,128,128,0.35);
+}
 /* Shift-click range selection (see state.cellRange/handleTableCellClick
    in app.js) — an inset outline rather than a background tint so it
    stays visible on top of any fill color (see .node-table-cell's own

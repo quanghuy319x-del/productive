@@ -5645,7 +5645,7 @@
     const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
 
     const table = document.createElement("table");
-    table.className = "node-table";
+    table.className = "node-table" + (node.table.gridStyle === "outline" ? " node-table-outline" : "");
     table.addEventListener("mousedown", (e) => e.stopPropagation());
     table.addEventListener("pointerdown", (e) => e.stopPropagation());
     table.addEventListener("dblclick", (e) => e.stopPropagation());
@@ -7451,6 +7451,18 @@
       if (node.table.cells[0].length > 1) {
         items.push(["Remove column", () => { pushUndo(); tableRemoveColumn(node); renderAll(); persist(); }]);
       }
+      // "Outline only" hides every interior cell border and keeps just
+      // the table's outer edge (plus a thin rule under the second row,
+      // for a header-style divider) — see the .node-table-outline CSS
+      // and renderTableGrid's table.classList.add below. Handy for
+      // calendar-style tables where a full interior grid looks noisy.
+      const outline = node.table.gridStyle === "outline";
+      items.push([outline ? "Grid lines: show all cells" : "Grid lines: outline only", () => {
+        pushUndo();
+        node.table.gridStyle = outline ? "grid" : "outline";
+        renderAll();
+        persist();
+      }]);
     }
     items.push(["Add link…", () => addNodeUrl(node.id)]);
     items.push([nodeHasNotes(node) ? `Notes (${getNodeNotes(node).length})…` : "Add note…", () => openNoteModal(node.id)]);
