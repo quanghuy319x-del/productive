@@ -5437,6 +5437,35 @@
       ctxMenu.appendChild(sw);
     }
 
+    // Left/center/right alignment for this cell's text — stored on the
+    // cell's attach record (a.align: null means the default left align,
+    // same "null = default" convention fillColor/fontColor use above)
+    // so aligning one cell never touches the rest of the table.
+    {
+      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "Text align";
+      ctxMenu.appendChild(label);
+      const row = document.createElement("div"); row.className = "ctx-align-row";
+      [["left", "Left"], ["center", "Center"], ["right", "Right"]].forEach(([val, txt]) => {
+        const btn = document.createElement("div");
+        const isActive = (a.align || "left") === val;
+        btn.className = "ctx-align-btn" + (isActive ? " active" : "");
+        btn.textContent = txt;
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          pushUndo();
+          a.align = val === "left" ? null : val;
+          closeContextMenu();
+          renderAll();
+          persist();
+        });
+        row.appendChild(btn);
+      });
+      ctxMenu.appendChild(row);
+    }
+
     positionContextMenu(x, y);
   }
 
@@ -5690,6 +5719,7 @@
         textEl.spellcheck = false;
         textEl.textContent = row[c] || "";
         textEl.style.color = a.fontColor || "";
+        textEl.style.textAlign = a.align || "";
         textEl.addEventListener("click", (e) => { e.stopPropagation(); handleTableCellClick(node, r, c, e.shiftKey); });
         textEl.addEventListener("blur", () => {
           const newText = textEl.textContent;

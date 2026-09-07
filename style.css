@@ -684,6 +684,8 @@ body.signed-out #title-input{ visibility:hidden; }
   cursor: default;
   user-select: text;
   touch-action: manipulation;
+  border-radius: 10px;
+  overflow: hidden;
 }
 .node-table td{
   border: 1px solid var(--sel-color, currentColor);
@@ -1505,6 +1507,24 @@ body.signed-out #title-input{ visibility:hidden; }
 .ctx-item-add:hover{ background: var(--accent-dim); color: var(--accent); }
 .ctx-sep{ height:1px; background:var(--border); margin: 5px 2px; }
 .ctx-swatches{ display:flex; gap:6px; padding: 6px 8px; flex-wrap:wrap; }
+/* Left/Center/Right buttons in a table cell's "+" menu (see the "Text
+   align" block in openCellAddMenu) — same row-of-controls spirit as
+   .ctx-swatches above, just text buttons instead of color swatches
+   since there's no color to preview. */
+.ctx-align-row{ display:flex; gap:6px; padding: 6px 8px; }
+.ctx-align-btn{
+  flex: 1;
+  text-align: center;
+  padding: 4px 0;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-dim, inherit);
+  background: transparent;
+}
+.ctx-align-btn:hover{ background: var(--accent-dim); }
+.ctx-align-btn.active{ border-color: var(--accent); color: var(--text); background: var(--accent-dim); }
 .ctx-swatch{
   width:18px;height:18px;border-radius:50%;
   cursor:pointer; border: 2px solid transparent;
