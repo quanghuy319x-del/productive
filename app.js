@@ -11028,59 +11028,89 @@
   let noteImageInsertLine = null;
   let noteImageInsertAtStart = false;
 
-  // Inserts a line containing an <img>. Normally it goes right after the
-  // current line, with an empty line left after it so the caret has
-  // somewhere to keep typing. But if the caret was at the very start of the
-  // line (nothing typed before it), the image goes above that line instead,
-  // since that's where a cursor at position zero implies the photo belongs.
-  function noteInsertImage(dataUrl, targetLine, atStart) {
+  // Inserts one line per dataUrl, each containing an <img>, in order.
+  // Normally they go right after the current line, with a single empty
+  // line left after the last one so the caret has somewhere to keep
+  // typing. But if the caret was at the very start of the line (nothing
+  // typed before it), the images go above that line instead, since that's
+  // where a cursor at position zero implies the photo(s) belong.
+  function noteInsertImages(dataUrls, targetLine, atStart) {
     noteTextarea.focus();
     // Prefer the line captured before focus was stolen (e.g. by the native
     // file picker); falling back to a fresh lookup covers callers (like
     // paste) where the selection is still live at call time.
     const lineDiv = targetLine !== undefined ? targetLine : noteCurrentLine();
-    const imgLine = document.createElement("div");
-    const img = document.createElement("img");
-    img.src = dataUrl;
-    imgLine.appendChild(img);
+    const validLine = lineDiv && lineDiv.parentNode === noteTextarea;
+    const parent = validLine ? lineDiv.parentNode : noteTextarea;
 
-    if (lineDiv && lineDiv.parentNode === noteTextarea) {
-      if (atStart) {
-        // Place the image above the line and leave the line (and its
-        // caret) untouched below it — no extra spacer line needed since
-        // the original line is already there to keep typing into.
-        lineDiv.parentNode.insertBefore(imgLine, lineDiv);
-        const range = document.createRange();
-        range.setStart(lineDiv, 0);
-        range.collapse(true);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      } else {
-        const afterLine = document.createElement("div");
-        afterLine.appendChild(document.createElement("br"));
-        lineDiv.parentNode.insertBefore(imgLine, lineDiv.nextSibling);
-        imgLine.parentNode.insertBefore(afterLine, imgLine.nextSibling);
-        placeCaretAtEnd(afterLine);
-      }
+    if (atStart && validLine) {
+      // Place every image above the line, in order, and leave the line
+      // (and its caret) untouched below them — no extra spacer line
+      // needed since the original line is already there to keep typing
+      // into.
+      dataUrls.forEach((dataUrl) => {
+        const imgLine = document.createElement("div");
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        imgLine.appendChild(img);
+        parent.insertBefore(imgLine, lineDiv);
+      });
+      const range = document.createRange();
+      range.setStart(lineDiv, 0);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
     } else {
+      let cursor = validLine ? lineDiv : parent.lastChild;
+      let lastImgLine = null;
+      dataUrls.forEach((dataUrl) => {
+        const imgLine = document.createElement("div");
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        imgLine.appendChild(img);
+        parent.insertBefore(imgLine, cursor ? cursor.nextSibling : null);
+        cursor = imgLine;
+        lastImgLine = imgLine;
+      });
       const afterLine = document.createElement("div");
       afterLine.appendChild(document.createElement("br"));
-      noteTextarea.appendChild(imgLine);
-      noteTextarea.appendChild(afterLine);
+      parent.insertBefore(afterLine, lastImgLine ? lastImgLine.nextSibling : null);
       placeCaretAtEnd(afterLine);
     }
     scheduleNoteAutosave();
   }
 
+  // Single-image convenience wrapper (used by clipboard paste, which only
+  // ever offers one image at a time).
+  function noteInsertImage(dataUrl, targetLine, atStart) {
+    noteInsertImages([dataUrl], targetLine, atStart);
+  }
+
   // Images embedded in a note are stored exactly as provided — no
-  // downscaling, no lossy re-encoding.
+  // downscaling, no lossy re-encoding. Reads every file first (in
+  // parallel) but inserts them in their original order once they've all
+  // loaded, so a slow read never scrambles the sequence.
+  function noteHandleImageFiles(fileList, targetLine, atStart) {
+    const files = Array.from(fileList || []).filter(f => f && f.type && f.type.startsWith("image/"));
+    if (!files.length) return;
+    let hadError = false;
+    Promise.all(files.map((file) => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => { hadError = true; resolve(null); };
+      reader.readAsDataURL(file);
+    }))).then((dataUrls) => {
+      const loaded = dataUrls.filter(Boolean);
+      if (loaded.length) noteInsertImages(loaded, targetLine, atStart);
+      if (hadError) alert("Some images couldn't be read.");
+    });
+  }
+
+  // Kept for the single-file paste path.
   function noteHandleImageFile(file, targetLine, atStart) {
-    if (!file || !file.type || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => { noteInsertImage(reader.result, targetLine, atStart); };
-    reader.onerror = () => alert("Couldn't read that image file.");
-    reader.readAsDataURL(file);
+    if (!file) return;
+    noteHandleImageFiles([file], targetLine, atStart);
   }
 
   $("#note-tool-image").addEventListener("mousedown", (e) => e.preventDefault());
@@ -11093,9 +11123,10 @@
     noteImageInput.click();
   });
   noteImageInput.addEventListener("change", () => {
-    const file = noteImageInput.files && noteImageInput.files[0];
-    if (file) noteHandleImageFile(file, noteImageInsertLine, noteImageInsertAtStart);
-    noteImageInput.value = ""; // reset so picking the same file again still fires change
+    if (noteImageInput.files && noteImageInput.files.length) {
+      noteHandleImageFiles(noteImageInput.files, noteImageInsertLine, noteImageInsertAtStart);
+    }
+    noteImageInput.value = ""; // reset so picking the same file(s) again still fires change
   });
 
   noteTextarea.addEventListener("paste", (e) => {
