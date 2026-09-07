@@ -1932,6 +1932,19 @@ kbd{
 }
 .note-resize-handle:hover{ opacity: 0.9; }
 
+/* Simple "Lines: N" readout, opposite corner from the resize handle so
+   the two never overlap. Same counter for a node's own notes and a
+   task's notes since both share this one editor. */
+.note-line-count{
+  position:absolute;
+  left:8px; bottom:5px;
+  font-size:10.5px;
+  color: var(--paper-text-dim);
+  opacity:0.75;
+  pointer-events:none;
+  user-select:none;
+}
+
 /* ---- Tasks modal: per-node checklist with a progress readout ---- */
 .tasks-modal-card{
   display:flex;

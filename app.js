@@ -10374,6 +10374,7 @@
   const noteTitleInput = $("#note-title-input");
   const noteCard = $(".note-modal-card");
   const noteResizeHandle = $("#note-resize-handle");
+  const noteLineCountEl = $("#note-line-count");
   let noteEditingId = null;
   // When set, the editor is scoped to one photo on noteEditingId's node
   // (its notes live in node.photoNotes[photoId] — see getPhotoNotes)
@@ -10549,6 +10550,18 @@
     requestAnimationFrame(() => { (isBlank ? noteTitleInput : noteTextarea).focus(); });
   }
 
+  // Simple "Lines: N" readout in the editor's corner — counts actual
+  // line breaks (one per paragraph/checklist/list line, same unit as
+  // pressing Enter), not wrapped display lines, same as a plain text
+  // editor's line count. innerText (not textContent) so block-level
+  // line breaks between the editor's line <div>s are included. Shared
+  // by both a node's own notes and a task's notes, since they're the
+  // exact same editor element (see loadNoteIntoEditor).
+  function updateNoteLineCount() {
+    if (!noteLineCountEl) return;
+    noteLineCountEl.textContent = "Lines: " + noteTextarea.innerText.split("\n").length;
+  }
+
   // Loads noteWorkingList[noteActiveIndex] into the visible editor and
   // refreshes the nav row (‹ 2 / 3 › + 🗑) to match.
   function loadNoteIntoEditor() {
@@ -10575,6 +10588,7 @@
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
     updateNoteNavUI();
+    updateNoteLineCount();
   }
 
   function updateNoteNavUI() {
@@ -10645,6 +10659,7 @@
   // so notes save themselves without needing an explicit Save click.
   function scheduleNoteAutosave() {
     captureActiveNote();
+    updateNoteLineCount();
     clearTimeout(noteSaveTimer);
     noteSaveTimer = setTimeout(commitNotesToNode, 500);
   }
