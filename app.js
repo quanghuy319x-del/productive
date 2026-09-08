@@ -9198,7 +9198,12 @@
     const h = Math.round(clamp(mmH * 0.85, 360, Math.max(360, mmH - 80)));
     const left = Math.max(0, Math.round((window.screenX || 0) + (mmW - w) / 2));
     const top = Math.max(0, Math.round((window.screenY || 0) + (mmH - h) / 2));
-    const features = `width=${w},height=${h},left=${left},top=${top},noopener`;
+    // toolbar=yes/location=yes ask the browser to show its normal
+    // navigation bar (back/forward/reload) and address bar on the popup.
+    // Any yes/no feature left out of this string is treated as "no" by
+    // the window.open spec, which is why the popup used to come up with
+    // no way to go back after following a link inside it.
+    const features = `width=${w},height=${h},left=${left},top=${top},toolbar=yes,location=yes,noopener`;
     window.open(url, "_blank", features);
   }
 
