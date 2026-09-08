@@ -10688,6 +10688,12 @@
     noteActiveIndex = wantsNew ? noteWorkingList.length - 1
       : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
     loadNoteIntoEditor();
+    // A photo's note is really a caption/comment on that photo, viewed
+    // right after (or over) the photo itself, so it benefits from more
+    // horizontal room than a regular node/task/cell note — give it 2x the
+    // default width. Reset back to the normal width for every other note
+    // type so a previous photo-note session doesn't leak into them.
+    noteCard.style.width = noteEditingPhotoId ? "1520px" : "";
     zoomModalOpen(noteModal);
     const current = noteWorkingList[noteActiveIndex];
     const isBlank = !(current.title && current.title.trim()) && !(current.html && current.html.trim());
