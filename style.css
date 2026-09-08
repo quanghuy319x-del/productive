@@ -2001,6 +2001,7 @@ kbd{
   border-radius: 6px;
   border: 1px solid var(--paper-border);
   margin: 4px 0;
+  cursor: pointer; /* click opens the photo viewer (see openNotePhotoViewer) */
 }
 .note-textarea.drag-over{
   outline: 2px dashed var(--paper-text-dim);

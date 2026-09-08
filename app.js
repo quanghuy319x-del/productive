@@ -9516,6 +9516,7 @@
   const photoModalTagSuggest = $("#photo-modal-tag-suggest");
   const photoModalClose = $("#photo-modal-close");
   const photoModalCommentInput = $("#photo-modal-comment-input");
+  const photoModalCommentRow = $("#photo-modal-comment-row");
   const photoModalGoto = $("#photo-modal-goto");
   const photoModalZoomIn = $("#photo-modal-zoom-in");
   const photoModalZoomOut = $("#photo-modal-zoom-out");
@@ -9650,7 +9651,9 @@
   }
   function renderPhotoModal() {
     if (!photoModalState) return;
-    const images = getNodeImages(findNode(photoModalState.nodeId));
+    const images = photoModalState.noteMode
+      ? photoModalState.images
+      : getNodeImages(findNode(photoModalState.nodeId));
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
     photoModalImg.src = images[photoModalState.index];
@@ -9670,8 +9673,42 @@
       photoModalCount.classList.toggle("hidden", !multi);
       photoModalCount.textContent = multi ? `${photoModalState.index + 1} / ${images.length}` : "";
     }
+    // Tags, comments, crop, and the text-label tool all read/write a
+    // per-photo record keyed by an id that only exists for photos
+    // actually attached to a node (see getPhotoTags/getPhotoComment
+    // etc.) — an image just pasted inline into a note has no such
+    // record, so those controls are hidden rather than rendered against
+    // a missing node.
+    const notePhoto = !!photoModalState.noteMode;
+    photoModalTags.style.display = notePhoto ? "none" : "";
+    photoModalCommentRow.style.display = notePhoto ? "none" : "";
+    photoModalDelete.style.display = notePhoto ? "none" : "";
+    photoModalCrop.style.display = notePhoto ? "none" : "";
+    photoModalText.style.display = notePhoto ? "none" : "";
+    if (notePhoto) return;
     renderPhotoModalTags();
     renderPhotoModalComment();
+  }
+
+  // Opens the same lightbox used for a node's attached photos, but for an
+  // image pasted/inserted directly inline into the note editor instead —
+  // clicking any photo in a note shows it full-size here, with prev/next
+  // stepping through the other images in that same note if there are
+  // more than one. Tags/comments/crop/delete don't apply (see the
+  // notePhoto branch in renderPhotoModal above) since there's no
+  // per-node attach record backing an inline note image.
+  function openNotePhotoViewer(imgEl) {
+    const imgs = Array.from(noteTextarea.querySelectorAll("img"));
+    const index = imgs.indexOf(imgEl);
+    if (index < 0) return;
+    photoModalState = {
+      noteMode: true,
+      images: imgs.map(im => im.src),
+      index,
+    };
+    resetPhotoZoom();
+    renderPhotoModal();
+    zoomModalOpen(photoModal);
   }
   // Fills the comment box with whichever photo is currently shown, same
   // auto-growing paragraph textarea as the video modal's inline comment
@@ -9679,7 +9716,7 @@
   // changes so stepping through the gallery doesn't leave one photo's
   // comment showing under a different photo.
   function renderPhotoModalComment() {
-    if (!photoModalState) return;
+    if (!photoModalState || photoModalState.noteMode) return;
     const node = findNode(photoModalState.nodeId);
     const id = getNodeImageIds(node)[photoModalState.index];
     photoModalCommentInput.value = getPhotoComment(node, id);
@@ -9689,7 +9726,7 @@
   // prev photo) and on Ctrl/Cmd+Enter — same "commit when you're done
   // typing" behavior as the video modal's comment box.
   function savePhotoModalComment() {
-    if (!photoModalState) return;
+    if (!photoModalState || photoModalState.noteMode) return;
     const node = findNode(photoModalState.nodeId);
     const id = getNodeImageIds(node)[photoModalState.index];
     if (!node || !id) return;
@@ -9747,6 +9784,14 @@
   }
   function stepPhotoModal(delta) {
     if (!photoModalState) return;
+    if (photoModalState.noteMode) {
+      const images = photoModalState.images;
+      if (!images.length) return;
+      photoModalState.index = (photoModalState.index + delta + images.length) % images.length;
+      resetPhotoZoom();
+      renderPhotoModal();
+      return;
+    }
     savePhotoModalComment();
     const group = photoModalState.tagGroup;
     if (group) {
@@ -9808,7 +9853,7 @@
   photoModalZoomOut.addEventListener("click", (e) => { e.stopPropagation(); zoomPhotoBy(1 / 1.4); });
   photoModalDelete.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (!photoModalState) return;
+    if (!photoModalState || photoModalState.noteMode) return;
     const node = findNode(photoModalState.nodeId);
     if (!node) return;
     const ids = getNodeImageIds(node);
@@ -9986,12 +10031,12 @@
   // it stays crisp at any zoom and needs no extra markup in index.html.
   photoModalCrop.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (addingText) return;
+    if (addingText || (photoModalState && photoModalState.noteMode)) return;
     startCrop();
   });
   photoModalText.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (cropping) return;
+    if (cropping || (photoModalState && photoModalState.noteMode)) return;
     if (addingText) { if (rearmTextPlacement) rearmTextPlacement(); return; }
     startAddText();
   });
@@ -10552,6 +10597,73 @@
   const noteNavAdd = $("#note-nav-add");
   const noteNavDelete = $("#note-nav-delete");
 
+  // ---- Note editor undo/redo ----
+  // Kept separate from the map-level undo/redo (pushUndo/undo, for
+  // structural changes to nodes) since this is a much finer-grained,
+  // nested kind of edit history that only applies while the note editor
+  // is focused. It's custom rather than relying on the browser's native
+  // contenteditable undo because several toolbar actions here (numbered
+  // list, checklist, strikethrough, image insert) mutate the DOM directly
+  // (el.textContent = ..., insertBefore, etc.) instead of going through
+  // execCommand, which resets/breaks the native undo history — so without
+  // this, undo would silently stop working the moment any toolbar button
+  // was used. Snapshots are just the editor's full innerHTML; simple and
+  // plenty robust for a field this size.
+  const NOTE_UNDO_LIMIT = 100;
+  let noteUndoStack = [];
+  let noteRedoStack = [];
+  let noteLastPushAt = 0;
+  const noteUndoBtn = $("#note-tool-undo");
+  const noteRedoBtn = $("#note-tool-redo");
+
+  function updateNoteUndoButtons() {
+    if (noteUndoBtn) noteUndoBtn.disabled = !noteUndoStack.length;
+    if (noteRedoBtn) noteRedoBtn.disabled = !noteRedoStack.length;
+  }
+
+  // Records the editor's current state onto the undo stack. Call this
+  // immediately BEFORE a mutation (toolbar click, image insert, paste,
+  // Enter-to-continue-list), not after.
+  function notePushUndo() {
+    noteUndoStack.push(noteTextarea.innerHTML);
+    if (noteUndoStack.length > NOTE_UNDO_LIMIT) noteUndoStack.shift();
+    noteRedoStack = [];
+    noteLastPushAt = Date.now();
+    updateNoteUndoButtons();
+  }
+
+  // Clears the history — called whenever a different note (or a
+  // different one of a node's several notes) is loaded into the shared
+  // editor, so undo never reaches back into a note that's no longer open.
+  function noteResetUndoHistory() {
+    noteUndoStack = [];
+    noteRedoStack = [];
+    noteLastPushAt = 0;
+    updateNoteUndoButtons();
+  }
+
+  function noteRestoreSnapshot(html) {
+    noteTextarea.innerHTML = html;
+    noteSyncAllCheckedLines();
+    noteSyncAllOrderedColors();
+    noteAutoColorParagraphs();
+    placeCaretAtEnd(noteTextarea);
+    scheduleNoteAutosave();
+    updateNoteUndoButtons();
+  }
+
+  function noteUndo() {
+    if (!noteUndoStack.length) return;
+    noteRedoStack.push(noteTextarea.innerHTML);
+    noteRestoreSnapshot(noteUndoStack.pop());
+  }
+
+  function noteRedo() {
+    if (!noteRedoStack.length) return;
+    noteUndoStack.push(noteTextarea.innerHTML);
+    noteRestoreSnapshot(noteRedoStack.pop());
+  }
+
   // Custom resize grip: dragging it changes both the note card's width and
   // height (a plain CSS `resize` on the textarea only ever does one axis
   // for a contenteditable, so this drives it by hand instead).
@@ -10742,6 +10854,7 @@
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
+    noteResetUndoHistory();
     updateNoteNavUI();
     updateNoteLineCount();
   }
@@ -10934,6 +11047,7 @@
   // function below, since it also needs to manage per-number colors.)
   function noteToggleLinePrefix(prefixRegex, makePrefix) {
     noteTextarea.focus();
+    notePushUndo();
     const lineDiv = noteCurrentLine();
     const el = lineDiv || noteTextarea;
     const text = el.textContent;
@@ -11013,6 +11127,7 @@
   // when turning it off.
   function noteToggleOrderedList() {
     noteTextarea.focus();
+    notePushUndo();
     const lineDiv = noteCurrentLine();
     const el = lineDiv || noteTextarea;
     const text = el.textContent;
@@ -11031,6 +11146,7 @@
 
   function noteApplyForeColor(color) {
     noteTextarea.focus();
+    notePushUndo();
     const sel = window.getSelection();
     if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
       noteSelectLine(noteCurrentLine());
@@ -11041,6 +11157,7 @@
 
   function noteApplyStrikethrough() {
     noteTextarea.focus();
+    notePushUndo();
     const sel = window.getSelection();
     if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
       noteSelectLine(noteCurrentLine());
@@ -11062,6 +11179,7 @@
     if (!numMatch && !checkMatch) return false;
     const prefix = (numMatch || checkMatch)[0];
     const rest = lineText.slice(prefix.length);
+    notePushUndo();
     if (rest.trim() === "") {
       if (lineDiv) lineDiv.textContent = "";
       placeCaretAtEnd(lineDiv || noteTextarea);
@@ -11101,6 +11219,7 @@
   // where a cursor at position zero implies the photo(s) belong.
   function noteInsertImages(dataUrls, targetLine, atStart) {
     noteTextarea.focus();
+    notePushUndo();
     // Prefer the line captured before focus was stolen (e.g. by the native
     // file picker); falling back to a fresh lookup covers callers (like
     // paste) where the selection is still live at call time.
@@ -11239,6 +11358,10 @@
 
   // Clicking directly on a checklist glyph toggles it, like a real checkbox.
   noteTextarea.addEventListener("click", (e) => {
+    if (e.target && e.target.tagName === "IMG") {
+      openNotePhotoViewer(e.target);
+      return;
+    }
     const lineDiv = noteCurrentLine();
     const text = (lineDiv || noteTextarea).textContent;
     if (!/^[☐☑]\s/.test(text)) return;
@@ -11249,11 +11372,17 @@
     preRange.selectNodeContents(lineDiv || noteTextarea);
     preRange.setEnd(range.startContainer, range.startOffset);
     if (preRange.toString().length > 1) return; // only toggle when clicking right on the glyph
+    notePushUndo();
     const el = lineDiv || noteTextarea;
     el.textContent = text.replace(/^[☐☑]/, m => (m === "☐" ? "☑" : "☐"));
     noteSyncLineChecked(el);
     scheduleNoteAutosave();
   });
+
+  noteUndoBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  noteUndoBtn.addEventListener("click", () => noteUndo());
+  noteRedoBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  noteRedoBtn.addEventListener("click", () => noteRedo());
 
   $("#note-tool-ol").addEventListener("mousedown", (e) => {
     e.preventDefault();
@@ -11347,9 +11476,30 @@
     if (e.altKey && e.key === "ArrowLeft" && noteActiveIndex > 0) { e.preventDefault(); goToNote(-1); }
     if (e.altKey && e.key === "ArrowRight" && noteActiveIndex < noteWorkingList.length - 1) { e.preventDefault(); goToNote(1); }
   });
+  // Groups plain typing into undo-sized bursts: a snapshot is only taken
+  // when there's been a pause since the last one, so undo doesn't have to
+  // be pressed once per character. Toolbar-driven mutations push their
+  // own snapshot explicitly (see notePushUndo call sites above) and don't
+  // rely on this.
+  const NOTE_TYPING_BURST_MS = 600;
+  noteTextarea.addEventListener("beforeinput", () => {
+    const now = Date.now();
+    if (now - noteLastPushAt > NOTE_TYPING_BURST_MS || !noteUndoStack.length) {
+      noteUndoStack.push(noteTextarea.innerHTML);
+      if (noteUndoStack.length > NOTE_UNDO_LIMIT) noteUndoStack.shift();
+    }
+    noteRedoStack = [];
+    noteLastPushAt = now;
+    updateNoteUndoButtons();
+  });
   noteTextarea.addEventListener("input", () => { noteAutoColorParagraphs(); scheduleNoteAutosave(); });
   noteTextarea.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Tab/Enter/Delete trigger the canvas shortcuts while typing a note
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) noteRedo(); else noteUndo();
+      return;
+    }
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
       if (noteHandleEnter()) e.preventDefault();
