@@ -2346,6 +2346,15 @@
   const AFFIRMATION_QUOTES_KEY = "affirmation_quotes";
   let affirmationQuotesList = DEFAULT_AFFIRMATION_QUOTES.slice();
   const AFFIRMATION_TARGET = 20;
+  // How many correct retypes a round needs, based on how many rounds
+  // ("wins") have already been completed on that node: 1st=5, 2nd=10,
+  // 3rd=15, and the 4th round onward is the full AFFIRMATION_TARGET (20)
+  // — see affirmationTargetForRound below.
+  const AFFIRMATION_TARGETS_BY_ROUND = [5, 10, 15];
+  function affirmationTargetForRound(winsSoFar) {
+    const n = winsSoFar || 0;
+    return n < AFFIRMATION_TARGETS_BY_ROUND.length ? AFFIRMATION_TARGETS_BY_ROUND[n] : AFFIRMATION_TARGET;
+  }
   function normalizeAffirmationText(s) {
     return (s || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
   }
@@ -13153,11 +13162,11 @@
       openAffirmationQuotesModal();
       return;
     }
-    if (!host.affirmation) host.affirmation = { wins: 0, quote: null, count: 0, target: AFFIRMATION_TARGET };
+    if (!host.affirmation) host.affirmation = { wins: 0, quote: null, count: 0, target: affirmationTargetForRound(0) };
     if (!host.affirmation.quote) {
       host.affirmation.quote = affirmationQuotesList[Math.floor(Math.random() * affirmationQuotesList.length)];
       host.affirmation.count = 0;
-      host.affirmation.target = AFFIRMATION_TARGET;
+      host.affirmation.target = affirmationTargetForRound(host.affirmation.wins || 0);
       persist();
     }
     affirmationTarget = { nodeId, r, c };
