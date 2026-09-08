@@ -2683,7 +2683,7 @@
     const popup = document.createElement("span");
     popup.className = "ctx-item-remove ctx-item-popup";
     popup.textContent = "🪟";
-    popup.title = "Open in popup window (1368×720)";
+    popup.title = "Open in a new window (smaller than this one)";
     popup.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); openUrlAsPopup(u); });
     it.appendChild(popup);
     const rename = document.createElement("span");
@@ -5319,7 +5319,7 @@
     const popup = document.createElement("span");
     popup.className = "ctx-item-remove ctx-item-popup";
     popup.textContent = "🪟";
-    popup.title = "Open in popup window (1368×720)";
+    popup.title = "Open in a new window (smaller than this one)";
     popup.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); openUrlAsPopup(u); });
     it.appendChild(popup);
     const rename = document.createElement("span");
@@ -9174,26 +9174,31 @@
   }
 
   // Opens a URL in its own sized, centered browser window rather than a
-  // plain new tab — same idea as the "Popup Link Opener" browser
-  // extension (a fixed 1368×720 window you can keep beside the map for
-  // a runner sheet, doc, or video). Ported in-app as a right-click "🪟"
-  // action on any node/cell link (see openUrlSingleManageMenu/
-  // openCellUrlManageMenu) and as the standalone "🪟 Popup" toolbar
-  // button/modal for a URL that isn't attached to any node.
+  // plain new tab. Used to open as a chromeless "popup" style window (no
+  // address bar/tabs, via the `popup=1` window feature) — now opens as a
+  // regular browser window instead (full address bar/back-forward/tabs),
+  // just sized and centered smaller than the mindmap's own window so it
+  // reads as a companion window rather than covering it up. Ported in-app
+  // as a right-click "🪟" action on any node/cell link (see
+  // openUrlSingleManageMenu/openCellUrlManageMenu) and as the standalone
+  // "🪟 Popup" toolbar button/modal for a URL that isn't attached to any
+  // node.
   //
-  // Centers on the CURRENT browser window (screenX/Y + outerWidth/
-  // Height) rather than the whole screen — the closest a plain webpage
-  // can get to the extension's "center on current window" behavior
-  // without any extension APIs. Including sizing features in the
-  // window.open() call (rather than none at all) is also what gets
-  // Chrome/Edge to actually open this as a distinct popup-style window
-  // instead of a new tab.
-  const POPUP_OPENER_W = 1368, POPUP_OPENER_H = 720;
+  // Sized as a fraction of the CURRENT browser window (screenX/Y +
+  // outerWidth/Height) rather than a fixed 1368×720 — that fixed size
+  // used to end up BIGGER than the mindmap window on a smaller screen,
+  // which defeated the "keep it smaller than the mindmap" idea. Clamped
+  // between a sane minimum (still usable) and a sane maximum (doesn't
+  // balloon on a huge monitor).
   function openUrlAsPopup(url) {
     if (!url) return;
-    const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || screen.width) - POPUP_OPENER_W) / 2));
-    const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || screen.height) - POPUP_OPENER_H) / 2));
-    const features = `popup=1,width=${POPUP_OPENER_W},height=${POPUP_OPENER_H},left=${left},top=${top},noopener`;
+    const mmW = window.outerWidth || screen.width;
+    const mmH = window.outerHeight || screen.height;
+    const w = Math.round(clamp(mmW * 0.85, 480, Math.max(480, mmW - 80)));
+    const h = Math.round(clamp(mmH * 0.85, 360, Math.max(360, mmH - 80)));
+    const left = Math.max(0, Math.round((window.screenX || 0) + (mmW - w) / 2));
+    const top = Math.max(0, Math.round((window.screenY || 0) + (mmH - h) / 2));
+    const features = `width=${w},height=${h},left=${left},top=${top},noopener`;
     window.open(url, "_blank", features);
   }
 
