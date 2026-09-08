@@ -9194,8 +9194,8 @@
     if (!url) return;
     const mmW = window.outerWidth || screen.width;
     const mmH = window.outerHeight || screen.height;
-    const w = Math.round(clamp(mmW * 0.85, 480, Math.max(480, mmW - 80)));
-    const h = Math.round(clamp(mmH * 0.85, 360, Math.max(360, mmH - 80)));
+    const w = Math.round(clamp(mmW * 0.5, 480, Math.max(480, mmW - 80)));
+    const h = Math.round(clamp(mmH * 0.5, 360, Math.max(360, mmH - 80)));
     const left = Math.max(0, Math.round((window.screenX || 0) + (mmW - w) / 2));
     const top = Math.max(0, Math.round((window.screenY || 0) + (mmH - h) / 2));
     // toolbar=yes/location=yes ask the browser to show its normal
