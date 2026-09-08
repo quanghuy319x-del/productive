@@ -2831,6 +2831,15 @@
     if (map.layout !== "logic" && map.layout !== "timeline") map.layout = "mindmap";
   }
 
+  // Per-map clock/calendar visibility — see isClockHidden/setClockHidden.
+  // Defaults to hidden (true) for maps that have never had the toggle
+  // touched, so the root node's live clock and the toolbar's 📅 Calendar
+  // button stay out of the way unless someone opts in for that specific map.
+  function ensureClockHidden(map) {
+    if (!map) return;
+    if (typeof map.clockHidden !== "boolean") map.clockHidden = true;
+  }
+
   // One-time data repair, run once per map (flagged via map._sidesRepaired
   // so it never runs again after that, even across reopens). An earlier
   // version of Timeline mode's per-branch left/right split wrote its
@@ -3635,6 +3644,8 @@
     ensureLayout(state.current);
     ensureFavorite(state.current);
     ensureTrash(state.current);
+    ensureClockHidden(state.current);
+    document.getElementById("app").classList.toggle("hide-clock-widgets", isClockHidden());
     ensureSidesRepaired(state.current);
     ensureAffirmationMigrated(state.current);
     if (!state.current._photosMigrated) await ensurePhotosMigrated(state.current);
@@ -7712,8 +7723,9 @@
     // the live clock only ever renders on the root node (and the 📅
     // Calendar button lives in the toolbar), the toggle is offered from
     // every node's right-click menu, not just root's, so it's reachable
-    // without having to navigate back to the root first. A plain
-    // browser-wide preference, not saved per-map — see isClockHidden.
+    // without having to navigate back to the root first. Saved per-map —
+    // see isClockHidden/ensureClockHidden — so it only affects the
+    // mindmap currently open.
     {
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const clockItem = document.createElement("div");
@@ -14010,21 +14022,22 @@
 
   // Hide clock/calendar — a one-tap way to get rid of the root node's
   // live clock block and the toolbar's 📅 Calendar button, for anyone who
-  // doesn't want them cluttering the map. A plain browser-wide preference
-  // (like the sidebar-hidden flag below), not part of any individual
-  // map's saved data, so it applies the same way across every map.
-  const CLOCK_HIDDEN_KEY = "branchline_hide_clock";
+  // doesn't want them cluttering the map. Saved on the map itself
+  // (map.clockHidden — see ensureClockHidden) so the toggle only affects
+  // whichever mindmap it was set on; other maps are unaffected. Defaults
+  // to hidden for maps that have never had it touched.
   function isClockHidden() {
-    try { return localStorage.getItem(CLOCK_HIDDEN_KEY) === "1"; } catch (e) { return false; }
+    return !state.current || state.current.clockHidden !== false;
   }
   function setClockHidden(hidden) {
-    try { localStorage.setItem(CLOCK_HIDDEN_KEY, hidden ? "1" : "0"); } catch (e) {}
+    if (!state.current) return;
+    state.current.clockHidden = hidden;
+    persist();
     document.getElementById("app").classList.toggle("hide-clock-widgets", hidden);
     // Rebuilds every node so the root node picks up (or drops) the extra
     // width/height it reserves for the clock block — see computeNodeBox.
     renderAll();
   }
-  document.getElementById("app").classList.toggle("hide-clock-widgets", isClockHidden());
 
   // Sidebar hide/show — a fixed 260px sidebar eats a lot of screen and
   // isn't resizable, so this gives a one-tap way to get it out of the
