@@ -60,6 +60,14 @@ html,body{
   margin-left: -260px; /* slides fully off-screen rather than display:none, so the transition animates */
 }
 
+/* Hide clock/calendar toggle (theme panel) — the root node's live clock
+   block hides itself in app.js (renderNode/computeNodeBox both check
+   isClockHidden()), so only the toolbar's Calendar button needs a plain
+   CSS rule here. */
+#app.hide-clock-widgets #btn-calendar{
+  display:none;
+}
+
 .sidebar-toggle-btn{
   position: fixed;
   top: 12px;
@@ -3092,6 +3100,21 @@ kbd{
   cursor:pointer;
 }
 .theme-row input[type="color"]:disabled{ opacity:0.35; cursor:not-allowed; }
+.theme-checkbox-label{
+  flex: 1.6;
+  display:flex;
+  align-items:center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor:pointer;
+}
+.theme-checkbox-label input[type="checkbox"]{
+  width: 15px; height: 15px;
+  accent-color: var(--accent);
+  cursor:pointer;
+  flex-shrink:0;
+}
 .btn-ghost.small{ font-size: 10.5px; padding: 5px 8px; }
 
 .quote-banner-modal-card{ width: min(460px, 92vw); }

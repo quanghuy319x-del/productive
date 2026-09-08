@@ -4390,8 +4390,8 @@
     // content never depends on anything the person typed.
     const ROOT_CLOCK_W = 300;
     const ROOT_CLOCK_H = 116;
-    const clockW = depth === 0 ? ROOT_CLOCK_W + padX : 0;
-    const clockH = depth === 0 ? ROOT_CLOCK_H : 0;
+    const clockW = depth === 0 && !isClockHidden() ? ROOT_CLOCK_W + padX : 0;
+    const clockH = depth === 0 && !isClockHidden() ? ROOT_CLOCK_H : 0;
 
     node._w = Math.max(w, stripW + padX, barMinW, clockW);
     node._h = h + stripH + barH + clockH;
@@ -5981,7 +5981,7 @@
     // a separate 1-second interval that just walks back in and updates
     // this block's text — see "root node live clock" above. Hidden while
     // actively editing the title, same as every other marker below.
-    if (depth === 0 && node.id !== state.editingId) {
+    if (depth === 0 && node.id !== state.editingId && !isClockHidden()) {
       const clockBlock = document.createElement("span");
       clockBlock.className = "node-clock-block";
       const v = rootClockValues(new Date());
@@ -8603,6 +8603,7 @@
   const connectorColorInput = $("#theme-connector-color");
   const fontModeSel = $("#theme-font-mode");
   const fontColorInput = $("#theme-font-color");
+  const hideClockInput = $("#theme-hide-clock");
 
   function openThemePanel() {
     if (!state.current) return;
@@ -8615,8 +8616,11 @@
     fontModeSel.value = t.fontMode;
     fontColorInput.value = t.fontColor;
     fontColorInput.disabled = t.fontMode !== "custom";
+    hideClockInput.checked = isClockHidden();
     zoomModalOpen(themeModal);
   }
+
+  hideClockInput.addEventListener("change", () => setClockHidden(hideClockInput.checked));
 
   function updateTheme(patch) {
     if (!state.current) return;
@@ -13957,6 +13961,24 @@
       DriveDB.signIn(false).catch(err => alert(err.message || "Google sign-in failed."));
     });
   }
+
+  // Hide clock/calendar — a one-tap way to get rid of the root node's
+  // live clock block and the toolbar's 📅 Calendar button, for anyone who
+  // doesn't want them cluttering the map. A plain browser-wide preference
+  // (like the sidebar-hidden flag below), not part of any individual
+  // map's saved data, so it applies the same way across every map.
+  const CLOCK_HIDDEN_KEY = "branchline_hide_clock";
+  function isClockHidden() {
+    try { return localStorage.getItem(CLOCK_HIDDEN_KEY) === "1"; } catch (e) { return false; }
+  }
+  function setClockHidden(hidden) {
+    try { localStorage.setItem(CLOCK_HIDDEN_KEY, hidden ? "1" : "0"); } catch (e) {}
+    document.getElementById("app").classList.toggle("hide-clock-widgets", hidden);
+    // Rebuilds every node so the root node picks up (or drops) the extra
+    // width/height it reserves for the clock block — see computeNodeBox.
+    renderAll();
+  }
+  document.getElementById("app").classList.toggle("hide-clock-widgets", isClockHidden());
 
   // Sidebar hide/show — a fixed 260px sidebar eats a lot of screen and
   // isn't resizable, so this gives a one-tap way to get it out of the

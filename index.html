@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=34">
+<link rel="stylesheet" href="style.css?v=35">
 </head>
 <body>
 <div id="app">
@@ -361,6 +361,14 @@
 
     <p class="theme-note">Connector lines always get a subtle halo so they stay readable against whatever background you pick.</p>
 
+    <div class="theme-row">
+      <label for="theme-hide-clock">Clock &amp; calendar</label>
+      <label class="theme-checkbox-label">
+        <input type="checkbox" id="theme-hide-clock">
+        Hide root node clock and 📅 Calendar button
+      </label>
+    </div>
+
     <button id="theme-close" class="btn-primary">Done</button>
   </div>
 </div>
@@ -546,6 +554,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=56"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>
