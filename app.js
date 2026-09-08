@@ -2230,6 +2230,19 @@
     if (typeof t.stars === "number" && !Number.isNaN(t.stars)) return clamp(Math.round(t.stars), 0, 3);
     return t.starred ? 1 : 0;
   }
+  // Star levels are capped per node/cell so priority stays meaningful:
+  // at most one 3-star task and at most three 2-star tasks among the
+  // tasks that live directly on the same node/cell (host). 0 and 1 star
+  // are uncapped. Returns true when giving `task` `starLevel` stars
+  // would push that level over its cap (excludes `task` itself from the
+  // count, since it may already be sitting at a lower/higher level).
+  const TASK_STAR_CAP = { 2: 3, 3: 1 };
+  function taskStarCapReached(host, task, starLevel) {
+    const cap = TASK_STAR_CAP[starLevel];
+    if (!cap) return false;
+    const count = getNodeTasks(host).filter(t => t.id !== task.id && getTaskStars(t) === starLevel).length;
+    return count >= cap;
+  }
   function nodeTaskProgress(node) {
     const tasks = getNodeTasks(node);
     // Progress is subtask-based: a task with subtasks contributes their
@@ -7695,6 +7708,19 @@
       );
     }
 
+    // Hide clock/calendar — moved here from the theme panel since it's a
+    // root-only concern (the live clock only ever renders on the root
+    // node, and the 📅 Calendar button lives in the toolbar). A plain
+    // browser-wide preference, not saved per-map — see isClockHidden.
+    if (node === state.current.root) {
+      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      const clockItem = document.createElement("div");
+      clockItem.className = "ctx-item";
+      clockItem.textContent = isClockHidden() ? "Show root node clock & 📅 Calendar button" : "Hide root node clock & 📅 Calendar button";
+      clockItem.addEventListener("click", () => { closeContextMenu(); setClockHidden(!isClockHidden()); });
+      ctxMenu.appendChild(clockItem);
+    }
+
     // A "mother" node with children gets a single input that sets the
     // distance for ALL of its descendants' connectors at once — every
     // generation below this node, not just its direct children — so one
@@ -8612,7 +8638,6 @@
   const connectorColorInput = $("#theme-connector-color");
   const fontModeSel = $("#theme-font-mode");
   const fontColorInput = $("#theme-font-color");
-  const hideClockInput = $("#theme-hide-clock");
 
   function openThemePanel() {
     if (!state.current) return;
@@ -8625,11 +8650,9 @@
     fontModeSel.value = t.fontMode;
     fontColorInput.value = t.fontColor;
     fontColorInput.disabled = t.fontMode !== "custom";
-    hideClockInput.checked = isClockHidden();
     zoomModalOpen(themeModal);
   }
 
-  hideClockInput.addEventListener("change", () => setClockHidden(hideClockInput.checked));
 
   function updateTheme(patch) {
     if (!state.current) return;
@@ -12331,8 +12354,14 @@
         : "Star this task for priority — click again for 2 or 3 stars, each adding +1x to its weight toward progress (2x/3x/4x)";
       star.addEventListener("click", (e) => {
         e.stopPropagation();
+        const next = stars >= 3 ? 0 : stars + 1;
+        if (next > 0 && taskStarCapReached(host, t, next)) {
+          const cap = TASK_STAR_CAP[next];
+          alert(`Only ${cap} task${cap > 1 ? "s" : ""} per node can have ${next} star${next > 1 ? "s" : ""}. Remove a star from another task first.`);
+          return;
+        }
         pushUndo();
-        t.stars = stars >= 3 ? 0 : stars + 1;
+        t.stars = next;
         t.starred = t.stars > 0; // kept in sync for older code paths reading the legacy flag
         persist();
         renderTasksModal();
@@ -12828,8 +12857,14 @@
       : "Star this task for priority";
     star.addEventListener("click", (e) => {
       e.stopPropagation();
+      const next = stars >= 3 ? 0 : stars + 1;
+      if (next > 0 && taskStarCapReached(host, t, next)) {
+        const cap = TASK_STAR_CAP[next];
+        alert(`Only ${cap} task${cap > 1 ? "s" : ""} per node can have ${next} star${next > 1 ? "s" : ""}. Remove a star from another task first.`);
+        return;
+      }
       pushUndo();
-      t.stars = stars >= 3 ? 0 : stars + 1;
+      t.stars = next;
       t.starred = t.stars > 0;
       persist();
       renderCalDayModal();
