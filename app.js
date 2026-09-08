@@ -2236,7 +2236,7 @@
   // are uncapped. Returns true when giving `task` `starLevel` stars
   // would push that level over its cap (excludes `task` itself from the
   // count, since it may already be sitting at a lower/higher level).
-  const TASK_STAR_CAP = { 2: 3, 3: 1 };
+  const TASK_STAR_CAP = { 2: 5, 3: 1 };
   function taskStarCapReached(host, task, starLevel) {
     const cap = TASK_STAR_CAP[starLevel];
     if (!cap) return false;
@@ -7708,11 +7708,13 @@
       );
     }
 
-    // Hide clock/calendar — moved here from the theme panel since it's a
-    // root-only concern (the live clock only ever renders on the root
-    // node, and the 📅 Calendar button lives in the toolbar). A plain
+    // Hide clock/calendar — moved here from the theme panel. Even though
+    // the live clock only ever renders on the root node (and the 📅
+    // Calendar button lives in the toolbar), the toggle is offered from
+    // every node's right-click menu, not just root's, so it's reachable
+    // without having to navigate back to the root first. A plain
     // browser-wide preference, not saved per-map — see isClockHidden.
-    if (node === state.current.root) {
+    {
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const clockItem = document.createElement("div");
       clockItem.className = "ctx-item";
