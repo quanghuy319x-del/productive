@@ -1736,6 +1736,11 @@ kbd{
    unusable, instead of the note editor showing on top like it should.
    Bumping #note-modal's z-index above the shared 100 fixes that. */
 #note-modal{ z-index: 150; }
+/* Opened via openNotePhotoViewer (clicking a photo pasted inline into a
+   note) — the photo viewer needs to sit above the note editor it was
+   opened from, which #note-modal's own bump above would otherwise
+   prevent (see comment above). */
+#photo-modal.photo-modal-above-note{ z-index: 160; }
 .modal-card{
   background: var(--panel);
   border: 1px solid var(--border);

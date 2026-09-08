@@ -9711,6 +9711,13 @@
       images: imgs.map(im => im.src),
       index,
     };
+    // The note editor's modal is deliberately raised above the shared
+    // modal z-index (see #note-modal in style.css) so it can be opened
+    // on top of the tasks/calendar modals — which otherwise leaves it
+    // sitting on top of the photo viewer too, covering up the very photo
+    // just clicked. This class bumps the photo modal one level above
+    // that for just this flow; removed again on close.
+    photoModal.classList.add("photo-modal-above-note");
     resetPhotoZoom();
     renderPhotoModal();
     zoomModalOpen(photoModal);
@@ -9782,6 +9789,7 @@
   function closePhotoModal() {
     savePhotoModalComment();
     photoModalState = null;
+    photoModal.classList.remove("photo-modal-above-note");
     zoomModalClose(photoModal, () => {
       photoModalImg.src = "";
       resetPhotoZoom();
