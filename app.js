@@ -1912,11 +1912,25 @@
   // sharp all the way to full zoom instead of turning soft once the small
   // stand-in gets stretched past its own resolution.
   const THUMB_DISPLAY_PX = Math.round(clamp(18 * 2.5 * (window.devicePixelRatio || 1) * 1.15, 96, 240));
+  // Bounded LRU: keyed by the *full* base64 photo data URL, so left
+  // unbounded this grows forever across a session (every photo ever
+  // viewed, in every map, stays resident — full-size base64 keys and
+  // all) and was a real path to an "Out of memory" tab crash on long
+  // sessions with lots of photos. Capped here so old entries get
+  // evicted once the cache fills up instead of accumulating forever.
+  const NODE_THUMB_CACHE_MAX = 300;
   const nodeThumbCache = new Map(); // full data URL -> small data URL
   const nodeThumbPending = new Set(); // full data URLs currently being downscaled
   function getMarkerThumb(fullDataUrl, onReady) {
     const cached = nodeThumbCache.get(fullDataUrl);
-    if (cached) return cached;
+    if (cached) {
+      // Refresh recency: delete + re-set moves this key to the end of
+      // the Map's iteration order, which is what makes "delete the
+      // first key" below an actual least-recently-used eviction.
+      nodeThumbCache.delete(fullDataUrl);
+      nodeThumbCache.set(fullDataUrl, cached);
+      return cached;
+    }
     if (!nodeThumbPending.has(fullDataUrl)) {
       nodeThumbPending.add(fullDataUrl);
       const img = new Image();
@@ -1927,6 +1941,10 @@
         canvas.width = THUMB_DISPLAY_PX;
         canvas.height = THUMB_DISPLAY_PX;
         canvas.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, THUMB_DISPLAY_PX, THUMB_DISPLAY_PX);
+        if (nodeThumbCache.size >= NODE_THUMB_CACHE_MAX) {
+          const oldestKey = nodeThumbCache.keys().next().value;
+          nodeThumbCache.delete(oldestKey);
+        }
         nodeThumbCache.set(fullDataUrl, canvas.toDataURL("image/jpeg", 0.7));
         nodeThumbPending.delete(fullDataUrl);
         onReady();
@@ -11182,33 +11200,79 @@
   // Enter key on a numbered or checklist line continues the pattern
   // ("1." -> "2.", "☐" -> "☐"); pressing Enter on an empty list line
   // breaks out of the list instead of continuing it forever.
+  //
+  // The split happens at the caret, not always at the end of the line:
+  // whatever was typed before the caret stays on the current line, and
+  // whatever was typed after it moves down onto the new list line (same
+  // as a normal editor). Without this, pressing Enter with the caret at
+  // the very start of a line's typed content (right after the "☐ "/"1. "
+  // prefix) would leave the line's text untouched and just add a new,
+  // empty list item below it — moving the cursor without moving the text
+  // the user meant to push down.
   function noteHandleEnter() {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
     const lineDiv = noteCurrentLine();
-    const lineText = (lineDiv || noteTextarea).textContent;
+    const el = lineDiv || noteTextarea;
+    const lineText = el.textContent;
     const numMatch = lineText.match(/^(\d+)\.\s+/);
     const checkMatch = lineText.match(/^([☐☑])\s+/);
     if (!numMatch && !checkMatch) return false;
     const prefix = (numMatch || checkMatch)[0];
     const rest = lineText.slice(prefix.length);
-    notePushUndo();
     if (rest.trim() === "") {
-      if (lineDiv) lineDiv.textContent = "";
-      placeCaretAtEnd(lineDiv || noteTextarea);
+      notePushUndo();
+      el.textContent = "";
+      placeCaretAtEnd(el);
       scheduleNoteAutosave();
       return true;
     }
+
+    // How much of the line's text (prefix included) sits before the
+    // caret, measured via a range from the start of the line to the
+    // caret — same technique as noteCaretIsAtLineStart, but keeping the
+    // length instead of just checking for zero.
+    const range = sel.getRangeAt(0);
+    let beforeCaretLen = lineText.length; // fall back to "caret at end"
+    try {
+      const preRange = document.createRange();
+      preRange.selectNodeContents(el);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      beforeCaretLen = preRange.toString().length;
+    } catch (err) { /* keep fallback */ }
+
+    const caretInRest = Math.max(0, Math.min(rest.length, beforeCaretLen - prefix.length));
+    const before = rest.slice(0, caretInRest);
+    const after = rest.slice(caretInRest);
+
+    notePushUndo();
     const nextPrefix = numMatch ? `${parseInt(numMatch[1], 10) + 1}. ` : "☐ ";
+    el.textContent = prefix + before;
+    if (numMatch) noteSetOrderedLineColor(el);
+    noteSyncLineChecked(el);
+
     const newDiv = document.createElement("div");
-    newDiv.textContent = nextPrefix;
+    newDiv.textContent = nextPrefix + after;
     if (numMatch) noteSetOrderedLineColor(newDiv);
+    noteSyncLineChecked(newDiv);
     if (lineDiv && lineDiv.parentNode) {
       lineDiv.parentNode.insertBefore(newDiv, lineDiv.nextSibling);
     } else {
       noteTextarea.appendChild(newDiv);
     }
-    placeCaretAtEnd(newDiv);
+
+    // Caret goes right after the new line's prefix — i.e. right before
+    // whatever text got pushed down onto it.
+    const textNode = newDiv.firstChild;
+    const caretRange = document.createRange();
+    if (textNode && textNode.nodeType === 3) {
+      caretRange.setStart(textNode, Math.min(nextPrefix.length, textNode.length));
+    } else {
+      caretRange.selectNodeContents(newDiv);
+    }
+    caretRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(caretRange);
     scheduleNoteAutosave();
     return true;
   }
