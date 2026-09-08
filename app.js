@@ -491,6 +491,15 @@
         });
         node.photoTags = remapped;
       }
+      // Same remap for photo comments (added later, but keyed the same way).
+      if (node.photoComments) {
+        const remapped = {};
+        Object.keys(node.photoComments).forEach((k) => {
+          const newKey = k.startsWith("data:") ? idForOldValue.get(k) : k;
+          if (newKey) remapped[newKey] = node.photoComments[k];
+        });
+        node.photoComments = remapped;
+      }
       // Same migration for a table node's per-cell photos: a portable
       // copy (import, or a device that just pulled this map from Drive/
       // a folder) stores each cell's photo as a raw data URL — see
@@ -579,6 +588,11 @@
         const remapped = {};
         Object.keys(node.photoNotes).forEach((k) => { remapped[lookup.get(k) || k] = node.photoNotes[k]; });
         node.photoNotes = remapped;
+      }
+      if (node.photoComments) {
+        const remapped = {};
+        Object.keys(node.photoComments).forEach((k) => { remapped[lookup.get(k) || k] = node.photoComments[k]; });
+        node.photoComments = remapped;
       }
       if (node.table && Array.isArray(node.table.attach)) {
         node.table.attach.forEach(row => (row || []).forEach((a) => {
@@ -1850,6 +1864,34 @@
       if (!target.photoNotes) target.photoNotes = {};
       const existing = target.photoNotes[toId] || [];
       target.photoNotes[toId] = existing.concat(notes);
+    });
+  }
+
+  // A single freeform comment per photo — same auto-growing textarea UI
+  // as the video modal's inline comment box below the player (see
+  // videoModalCommentInput), just anchored under the photo viewer
+  // instead. Keyed by the photo's own (stable) id, same reasoning as
+  // photoTags/photoNotes above, so a comment stays attached to the right
+  // photo through adds/deletes/reorders/drags/crops.
+  function getPhotoComment(node, photoId) {
+    return (node && node.photoComments && node.photoComments[photoId]) || "";
+  }
+  function setPhotoComment(node, photoId, comment) {
+    if (!node || !photoId) return;
+    if (!node.photoComments) node.photoComments = {};
+    const clean = (comment || "").trim();
+    if (clean) node.photoComments[photoId] = clean;
+    else delete node.photoComments[photoId];
+  }
+  // Same carry-along behavior as carryPhotoTags/carryPhotoNotes — a moved/
+  // copied/cropped photo keeps its comment rather than silently losing it.
+  function carryPhotoComments(source, target, idPairs) {
+    if (!source || !target || !source.photoComments) return;
+    (idPairs || []).forEach(([fromId, toId]) => {
+      const comment = source.photoComments[fromId];
+      if (!comment) return;
+      if (!target.photoComments) target.photoComments = {};
+      if (!target.photoComments[toId]) target.photoComments[toId] = comment;
     });
   }
 
@@ -4987,16 +5029,17 @@
       const pairs = srcIds.map((id, i) => [id, carriedIds[i]]);
       carryPhotoTags(source, target, pairs);
       carryPhotoNotes(source, target, pairs);
+      carryPhotoComments(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
       if (!copy) {
         source.images = []; source.image = null;
         // A real move (not a copy) reuses the same id on the target (see
-        // carriedIds above), so the tags/notes just carried over would
-        // otherwise also linger under the SOURCE's own id — a leftover
-        // that showed up as a permanently broken, unclickable entry in
-        // the tag browser once this node no longer actually held that
-        // photo (see collectPhotoTagGroups).
-        srcIds.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); });
+        // carriedIds above), so the tags/notes/comments just carried over
+        // would otherwise also linger under the SOURCE's own id — a
+        // leftover that showed up as a permanently broken, unclickable
+        // entry in the tag browser once this node no longer actually held
+        // that photo (see collectPhotoTagGroups).
+        srcIds.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); });
       }
     } else if (type === "photo") {
       // A single thumbnail, dragged by its index in the source's images.
@@ -5007,6 +5050,7 @@
       const carriedId = copy ? duplicatePhotoRecord(movedId) : movedId;
       carryPhotoTags(source, target, [[movedId, carriedId]]);
       carryPhotoNotes(source, target, [[movedId, carriedId]]);
+      carryPhotoComments(source, target, [[movedId, carriedId]]);
       target.images = getNodeImageIds(target).concat([carriedId]);
       if (!copy) {
         const remaining = srcIds.slice();
@@ -5016,6 +5060,7 @@
         // Same cleanup as the bulk "photos" case above.
         setPhotoTags(source, movedId, null);
         setPhotoNotes(source, movedId, null);
+        setPhotoComment(source, movedId, null);
       }
     } else if (type === "photos-overflow") {
       // The "+N" badge — everything past the thumbnails actually shown.
@@ -5027,12 +5072,13 @@
       const pairs = carried.map((id, i) => [id, carriedIds[i]]);
       carryPhotoTags(source, target, pairs);
       carryPhotoNotes(source, target, pairs);
+      carryPhotoComments(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
       if (!copy) {
         source.images = srcIds.slice(0, overflowFrom || 0);
         source.image = null;
         // Same cleanup as the bulk "photos" case above.
-        carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); });
+        carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); });
       }
     } else if (type === "notes") {
       // A cell's notes move as one unit, since a cell shows a single
@@ -5994,6 +6040,7 @@
     const taskProg = nodeTaskProgress(node);
 
     const nodeImages = getNodeImages(node);
+    const nodeImageIds = getNodeImageIds(node);
     const timePlayed = getNodeTimePlayed(node);
     // Note, link, affirmation-completion, and time-played markers all
     // render inline as cells of this same strip, right alongside the
@@ -6220,6 +6267,16 @@
         } else {
           thumb.title = "Click to view photo — drag onto another node to move it there (hold Alt to copy)";
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photo", { photoIndex: i }));
+          // Small dot marking that this specific photo has a comment
+          // attached (see photoComments / photo-modal-comment-row) — only
+          // meaningful here, one thumb per actual photo; the single
+          // overflow cover thumbnail above stands for the whole pile and
+          // already carries its own count badge, so it skips this.
+          const comment = getPhotoComment(node, nodeImageIds[i]);
+          if (comment) {
+            thumb.classList.add("node-photo-thumb-has-comment");
+            thumb.title += " — has a comment";
+          }
         }
         strip.appendChild(thumb);
       }
@@ -7501,7 +7558,7 @@
       items.push(["Remove all photos", () => {
         pushUndo();
         getNodeImageIds(node).forEach(deletePhotoRecord);
-        node.images = []; node.image = null; node.photoTags = {}; node.photoNotes = {};
+        node.images = []; node.image = null; node.photoTags = {}; node.photoNotes = {}; node.photoComments = {};
         renderAll(); persist();
       }]);
     }
@@ -9453,6 +9510,7 @@
   const photoModalTagInput = $("#photo-modal-tag-input");
   const photoModalTagSuggest = $("#photo-modal-tag-suggest");
   const photoModalClose = $("#photo-modal-close");
+  const photoModalCommentInput = $("#photo-modal-comment-input");
   const photoModalGoto = $("#photo-modal-goto");
   const photoModalZoomIn = $("#photo-modal-zoom-in");
   const photoModalZoomOut = $("#photo-modal-zoom-out");
@@ -9608,7 +9666,39 @@
       photoModalCount.textContent = multi ? `${photoModalState.index + 1} / ${images.length}` : "";
     }
     renderPhotoModalTags();
+    renderPhotoModalComment();
   }
+  // Fills the comment box with whichever photo is currently shown, same
+  // auto-growing paragraph textarea as the video modal's inline comment
+  // box (see autoGrowTextarea) — called whenever the visible photo
+  // changes so stepping through the gallery doesn't leave one photo's
+  // comment showing under a different photo.
+  function renderPhotoModalComment() {
+    if (!photoModalState) return;
+    const node = findNode(photoModalState.nodeId);
+    const id = getNodeImageIds(node)[photoModalState.index];
+    photoModalCommentInput.value = getPhotoComment(node, id);
+    requestAnimationFrame(() => autoGrowTextarea(photoModalCommentInput));
+  }
+  // Saves on blur (clicking/tabbing away, including stepping to the next/
+  // prev photo) and on Ctrl/Cmd+Enter — same "commit when you're done
+  // typing" behavior as the video modal's comment box.
+  function savePhotoModalComment() {
+    if (!photoModalState) return;
+    const node = findNode(photoModalState.nodeId);
+    const id = getNodeImageIds(node)[photoModalState.index];
+    if (!node || !id) return;
+    if (getPhotoComment(node, id) === photoModalCommentInput.value.trim()) return;
+    pushUndo();
+    setPhotoComment(node, id, photoModalCommentInput.value);
+    persist();
+  }
+  photoModalCommentInput.addEventListener("blur", savePhotoModalComment);
+  photoModalCommentInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); photoModalCommentInput.blur(); }
+  });
+  photoModalCommentInput.addEventListener("input", () => autoGrowTextarea(photoModalCommentInput));
   // Renders the tag chips for whichever photo is currently shown, plus
   // clears the "add a tag" input so it doesn't carry text over between
   // photos as you step through the gallery.
@@ -9643,6 +9733,7 @@
     hideTagSuggestions();
   }
   function closePhotoModal() {
+    savePhotoModalComment();
     photoModalState = null;
     zoomModalClose(photoModal, () => {
       photoModalImg.src = "";
@@ -9651,6 +9742,7 @@
   }
   function stepPhotoModal(delta) {
     if (!photoModalState) return;
+    savePhotoModalComment();
     const group = photoModalState.tagGroup;
     if (group) {
       const n = group.items.length;
@@ -9723,6 +9815,7 @@
     node.image = null;
     setPhotoTags(node, deletedId, null);
     setPhotoNotes(node, deletedId, null);
+    setPhotoComment(node, deletedId, null);
     deletePhotoRecord(deletedId);
     // Keep the tag group's item list in sync so prev/next doesn't try to
     // step onto the photo we just deleted.
@@ -10040,8 +10133,10 @@
         const oldId = liveIds[photoModalState.index];
         carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
+        carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
         setPhotoTags(liveNode, oldId, null);
         setPhotoNotes(liveNode, oldId, null);
+        setPhotoComment(liveNode, oldId, null);
         deletePhotoRecord(oldId);
         liveIds[photoModalState.index] = newId;
         liveNode.images = liveIds;
@@ -10401,8 +10496,10 @@
         const oldId = liveIds[photoModalState.index];
         carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
+        carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
         setPhotoTags(liveNode, oldId, null);
         setPhotoNotes(liveNode, oldId, null);
+        setPhotoComment(liveNode, oldId, null);
         deletePhotoRecord(oldId);
         liveIds[photoModalState.index] = newId;
         liveNode.images = liveIds;
@@ -13455,6 +13552,111 @@
         closeTagBrowserModal();
       }
     }
+  });
+
+  // Comment browser — same idea as the tag browser above (collect every
+  // photo carrying the attribute across the whole map, click to jump
+  // straight to it), but flat rather than grouped, since a comment is
+  // freeform text rather than a shared label multiple photos sit under.
+  // A search box stands in for the tag browser's grouping, so comments
+  // are still findable at scale instead of only visible one-at-a-time
+  // inside whichever photo they're attached to.
+  const commentBrowserModal = $("#commentbrowser-modal");
+  const commentBrowserGrid = $("#commentbrowser-grid");
+  const commentBrowserSearch = $("#commentbrowser-search");
+  let commentBrowserItems = [];
+
+  function collectPhotoCommentItems() {
+    const items = [];
+    let cleaned = false;
+    collectAllNodesFlat().forEach((node) => {
+      if (!node.photoComments) return;
+      const liveIds = new Set(getNodeImageIds(node));
+      Object.keys(node.photoComments).forEach((id) => {
+        // Same leftover cleanup as collectPhotoTagGroups — a photo dragged
+        // onto a different node shouldn't leave a comment behind here
+        // pointing at a photo this node no longer actually holds.
+        if (!liveIds.has(id)) {
+          delete node.photoComments[id];
+          cleaned = true;
+          return;
+        }
+        items.push({ nodeId: node.id, id, comment: node.photoComments[id], nodeLabel: node.text || "Untitled node" });
+      });
+    });
+    if (cleaned) persist();
+    return items.sort((a, b) => a.nodeLabel.localeCompare(b.nodeLabel));
+  }
+
+  function openCommentBrowserModal() {
+    commentBrowserItems = collectPhotoCommentItems();
+    commentBrowserSearch.value = "";
+    renderCommentBrowserGrid();
+    zoomModalOpen(commentBrowserModal);
+    requestAnimationFrame(() => commentBrowserSearch.focus());
+  }
+  function closeCommentBrowserModal() {
+    zoomModalClose(commentBrowserModal);
+  }
+
+  function renderCommentBrowserGrid() {
+    const q = commentBrowserSearch.value.trim().toLowerCase();
+    const filtered = !q ? commentBrowserItems : commentBrowserItems.filter(it =>
+      it.comment.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q));
+    commentBrowserGrid.innerHTML = "";
+    if (!filtered.length) {
+      const empty = document.createElement("p");
+      empty.className = "tagbrowser-hint";
+      empty.textContent = commentBrowserItems.length
+        ? "No comments match that search."
+        : "No commented photos yet — open a photo and add a comment below it to start collecting them here.";
+      commentBrowserGrid.appendChild(empty);
+      return;
+    }
+    // Every commented photo (not just the filtered/visible ones) so
+    // prev/next inside the opened photo modal steps through the full set,
+    // same as a tag group does — the search box only narrows what's shown
+    // here, not what you can browse once you're inside a photo.
+    const group = { label: "Comments", items: commentBrowserItems.map(it => ({ nodeId: it.nodeId, id: it.id })) };
+    filtered.forEach((it) => {
+      const node = findNode(it.nodeId);
+      if (!node) return; // stale entry (shouldn't normally happen)
+      const cell = document.createElement("div");
+      cell.className = "tagbrowser-gallery-item";
+
+      const thumb = document.createElement("img");
+      thumb.className = "tagbrowser-gallery-thumb";
+      thumb.alt = "";
+      const thumbUrl = photoUrl(it.id);
+      if (thumbUrl) thumb.src = thumbUrl; else thumb.style.visibility = "hidden";
+      thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
+
+      const label = document.createElement("span");
+      label.className = "tagbrowser-gallery-label";
+      label.textContent = it.nodeLabel;
+
+      const excerpt = document.createElement("span");
+      excerpt.className = "commentbrowser-excerpt";
+      excerpt.textContent = it.comment.length > 140 ? it.comment.slice(0, 140) + "…" : it.comment;
+
+      cell.append(thumb, label, excerpt);
+      cell.addEventListener("click", () => {
+        const idx = getNodeImageIds(node).indexOf(it.id);
+        if (idx < 0) return;
+        closeCommentBrowserModal();
+        openPhotoModal(it.nodeId, idx, group);
+      });
+      commentBrowserGrid.appendChild(cell);
+    });
+  }
+
+  $("#btn-commentbrowser").addEventListener("click", openCommentBrowserModal);
+  $("#commentbrowser-close").addEventListener("click", closeCommentBrowserModal);
+  commentBrowserModal.addEventListener("click", (e) => { if (e.target === commentBrowserModal) closeCommentBrowserModal(); });
+  commentBrowserSearch.addEventListener("input", renderCommentBrowserGrid);
+  document.addEventListener("keydown", (e) => {
+    if (commentBrowserModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeCommentBrowserModal();
   });
 
   /* ---------------- boot ---------------- */

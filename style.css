@@ -1098,6 +1098,22 @@ body.signed-out #title-input{ visibility:hidden; }
   flex: none;
 }
 .node-photo-thumb:hover{ border-color: var(--accent); transform: scale(1.15); }
+/* Small dot marking that this exact photo has a comment attached (see
+   photoComments / photo-modal-comment-row in app.js). Bottom-right so it
+   never collides with the top-right count badge (.node-marker-count) —
+   the two never appear on the same thumb anyway, since the count badge
+   only shows on the single overflow cover thumbnail, which this dot
+   deliberately skips. */
+.node-photo-thumb-has-comment::after{
+  content:"";
+  position:absolute;
+  right:-3px; bottom:-3px;
+  width:5px; height:5px;
+  border-radius:999px;
+  background: var(--accent);
+  border: 1px solid var(--panel);
+  pointer-events:none;
+}
 .node-photo-more{
   display:flex; align-items:center; justify-content:center;
   background: var(--panel-2);
@@ -2998,6 +3014,33 @@ kbd{
   text-align:center;
 }
 
+/* Comment browser reuses all of the tagbrowser-gallery-* classes above
+   (grid/item/thumb/label) for its cells — only the search input and the
+   comment excerpt line underneath the node label are new. */
+.commentbrowser-search{
+  width:100%;
+  box-sizing:border-box;
+  margin: 0 0 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.commentbrowser-search:focus{ outline:none; border-color: var(--accent); }
+.commentbrowser-excerpt{
+  font-size: 10.5px;
+  color: var(--text-faint);
+  line-height: 1.4;
+  text-align:center;
+  display:-webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow:hidden;
+}
+
 .theme-row{
   display:flex;
   align-items:center;
@@ -3531,6 +3574,16 @@ kbd{
 }
 .photo-modal-tag-suggest li:hover,
 .photo-modal-tag-suggest li.active{ background: rgba(255,255,255,0.16); }
+
+/* Freeform comment box under the photo viewer — same textarea style as
+   the video modal's inline comment box (.video-modal-comment-input),
+   just wrapped to fit the photo card's shrink-to-fit width instead of
+   the video card's fixed one. */
+.photo-modal-comment-row{
+  width: 100%;
+  min-width: 320px;
+  max-width: 92vw;
+}
 
 .bl-text-box{ }
 .bl-text-box-active{ outline: 1.5px dashed rgba(255,255,255,0.55); outline-offset: 3px; border-radius: 3px; }

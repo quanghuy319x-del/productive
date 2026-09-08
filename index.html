@@ -61,6 +61,7 @@
       <input type="file" id="file-import" accept=".json" hidden>
       <button id="btn-trash" class="btn-ghost" title="Trashed maps">🗑 Trash<span id="trash-count-badge" class="trash-count-badge hidden"></span></button>
       <button id="btn-tagbrowser" class="btn-ghost" title="Browse photos by tag">🏷 Tags</button>
+      <button id="btn-commentbrowser" class="btn-ghost" title="Browse photo comments">💬 Comments</button>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -187,6 +188,7 @@
       <tr><td>Add image to note</td><td>In the note editor, click the 🖼 button to pick a photo, or paste (Ctrl/⌘+V) or drag-and-drop an image straight into the note.</td></tr>
       <tr><td>Add photo…</td><td>Right-click a node and choose "Add photo…" to attach one or more pictures to it (pick multiple files at once, or repeat to add more later). Nodes with photos show a small thumbnail with a count badge — click it to view full-size and step through them. With a node selected, you can also just paste (<kbd>Ctrl/⌘</kbd> + <kbd>V</kbd>) an image straight from your clipboard — handy right after taking a screenshot.</td></tr>
       <tr><td>🏷 Tags (sidebar)</td><td>Opens a browser of every tag you've added to a photo, gathered from across the whole map. Tap a tag to see every photo carrying it, no matter which node it's on — tap a photo there to jump straight to its node (expanding any collapsed branch in the way) and open it full-size.</td></tr>
+      <tr><td>💬 Comments (sidebar)</td><td>Opens a browser of every photo comment across the whole map, with a search box to filter by comment text or node name. Tap one to open that photo full-size — prev/next there steps through every commented photo.</td></tr>
       <tr><td>Crop / Add text on photo</td><td>Open a photo full-size, then use the ⛶ button to crop it, or the "Aa" button to add a text label. Each click on the photo places one label — drag it into place (or drag its small ⠿ handle at the top-left corner, which always moves it even mid-edit, so you never fight with text-caret placement), pick a color, drag the small dot on its corner to resize the text. Click "Aa" again to place another label; click elsewhere on the photo to just finish the current one. "Apply" bakes every label permanently into the photo.</td></tr>
       <tr><td>⏱ Timer</td><td>Right-click a node and choose "Add timer…" to keep a running total of time spent on it. Tap "+1m" in the popup each time you spend a minute on it — no countdown, just a manual tally. The total shows right on the node as a small "⏱ 45m"-style badge; tap the badge (or right-click → the timer item again) to add more or reset it. Saved with the map like everything else.</td></tr>
       <tr><td>Root node clock</td><td>The map's central node always shows a small live clock below its title: the current time, UTC/US (NY)/UK world clocks, today's Vietnamese weekday and date, and the lunar date — ticking forward on its own, no setup needed.</td></tr>
@@ -227,6 +229,9 @@
     <button id="photo-modal-zoom-out" class="photo-modal-zoom photo-modal-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
     <button id="photo-modal-delete" class="photo-modal-delete" title="Delete this photo" aria-label="Delete this photo">🗑</button>
     <button id="photo-modal-close" class="photo-modal-close" title="Close" aria-label="Close">✕</button>
+    <div id="photo-modal-comment-row" class="photo-modal-comment-row">
+      <textarea id="photo-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" placeholder="Add a comment about this photo… Press Enter for a new paragraph."></textarea>
+    </div>
   </div>
 </div>
 
@@ -297,6 +302,19 @@
       </div>
       <div id="tagbrowser-gallery-grid" class="tagbrowser-gallery-grid"></div>
     </div>
+  </div>
+</div>
+
+<div id="commentbrowser-modal" class="modal hidden">
+  <div class="modal-card tagbrowser-modal-card">
+    <div class="modal-back-row">
+      <h2>Photo comments</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="commentbrowser-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="tagbrowser-hint">Every comment you've added to a photo, gathered from across this whole map.</p>
+    <input type="text" id="commentbrowser-search" class="commentbrowser-search" placeholder="Search comments or node names…" spellcheck="false">
+    <div id="commentbrowser-grid" class="tagbrowser-gallery-grid"></div>
   </div>
 </div>
 
