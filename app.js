@@ -6594,6 +6594,18 @@
     sel.addRange(range);
   }
 
+  // When the caret is moved by hand (via a Range/Selection API call rather
+  // than an actual key/mouse event the browser itself is handling), the
+  // browser's own "keep the caret on screen" auto-scroll never kicks in —
+  // that only fires for caret movement it drove itself. noteHandleEnter
+  // below builds new lines and repositions the caret this way, which is
+  // why hitting Enter at the bottom of a long note used to leave the new
+  // line (and the caret on it) scrolled out of view. Call this right after
+  // any such programmatic caret move to bring it back into view by hand.
+  function scrollCaretIntoView(el) {
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+  }
+
   /* ---------------- selection / editing ---------------- */
 
   function findNode(id, node = state.current && state.current.root) {
@@ -11274,6 +11286,7 @@
       notePushUndo();
       el.textContent = "";
       placeCaretAtEnd(el);
+      scrollCaretIntoView(el);
       scheduleNoteAutosave();
       return true;
     }
@@ -11323,6 +11336,7 @@
     caretRange.collapse(true);
     sel.removeAllRanges();
     sel.addRange(caretRange);
+    scrollCaretIntoView(newDiv);
     scheduleNoteAutosave();
     return true;
   }
@@ -11494,6 +11508,11 @@
     if (!/^[☐☑]\s/.test(text)) return;
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
+    // A click-drag that selects text (rather than a plain click) still
+    // lands here as a "click" once the mouse is released — without this,
+    // starting a text selection right at/near the glyph toggled the
+    // checkbox as a side effect instead of just selecting the line.
+    if (!sel.isCollapsed) return;
     const range = sel.getRangeAt(0);
     const preRange = range.cloneRange();
     preRange.selectNodeContents(lineDiv || noteTextarea);
