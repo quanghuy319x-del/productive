@@ -2304,7 +2304,7 @@
       total += brainstormPts;
       done += brainstormPts;
     }
-    // Every filled-in DRC note (node.notes entries with drc:true — see
+    // Every filled-in DRC note (note.title === "DRC" — see
     // drcPoints/drcNoteIsFilled) is worth another flat 5 points, same
     // "always fully done" treatment as the above.
     const drcPts = drcPoints(node);
@@ -2429,6 +2429,14 @@
       .replace(/&nbsp;/gi, " ")
       .trim());
   }
+  // A note counts as a "DRC" note purely by its title — typed manually,
+  // left over from an older note, or set by the 📋 DRC… shortcut/the
+  // task-named-"DRC" auto-prefill — so this matches consistently
+  // regardless of how the note came to be. Same comparison the task-name
+  // check above uses (trim + uppercase).
+  function isDRCNote(note) {
+    return !!(note && (note.title || "").trim().toUpperCase() === "DRC");
+  }
   function drcNoteIsFilled(note) {
     const lines = noteLinesFromHtml(note && note.html)
       .filter(l => !DRC_TEMPLATE_LABELS.some(lbl => lbl.toLowerCase() === l.toLowerCase()));
@@ -2441,7 +2449,7 @@
   // streak) is worth a flat 5 points, same "always fully done" treatment
   // as the other bonuses in nodeTaskProgress above.
   function drcPoints(node) {
-    return getNodeNotes(node).filter(n => n.drc && drcNoteIsFilled(n)).length * 5;
+    return getNodeNotes(node).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length * 5;
   }
 
   // Shared cap for the node icon strip (see renderNode/computeNodeBox):
@@ -6258,7 +6266,7 @@
       // filled to transparent, palette-quantized to keep this constant
       // small) so a "Daily Report Card" note reads as visibly different
       // from a regular note at a glance on the node itself (see the
-      // n.drc branch below).
+      // isDRCNote branch below).
       const NODE_DRC_ICON_DATA_URL = "data:image/png;base64,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";
       const NODE_DRC_ICON_IMG = '<img src="' + NODE_DRC_ICON_DATA_URL + '" alt="DRC" style="width:100%;height:100%;object-fit:contain;">';
 
@@ -6279,8 +6287,8 @@
       const notesOverflow = nodeNotes.length > STRIP_OVERFLOW_CAP;
       (notesOverflow ? nodeNotes.slice(0, 1) : nodeNotes).forEach((n, i) => {
         const noteIcon = document.createElement("span");
-        noteIcon.className = "node-photo-thumb node-note-marker" + (n.drc ? " node-drc-marker" : "");
-        noteIcon.innerHTML = n.drc ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
+        noteIcon.className = "node-photo-thumb node-note-marker" + (isDRCNote(n) ? " node-drc-marker" : "");
+        noteIcon.innerHTML = isDRCNote(n) ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
         noteIcon.draggable = true;
         noteIcon.addEventListener("dragend", endMarkerDrag);
         if (notesOverflow) {
@@ -6296,7 +6304,7 @@
           // its point value) instead of the plain content preview, so
           // hovering tells you at a glance whether today's report still
           // needs filling out.
-          noteIcon.title = n.drc
+          noteIcon.title = isDRCNote(n)
             ? (drcNoteIsFilled(n) ? "DRC — filled in (5 pts)" : "DRC — not filled in yet")
             : notePreviewText(n);
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
@@ -11277,15 +11285,18 @@
     if (isFreshTaskNote) {
       const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
       if (t && (t.text || "").trim().toUpperCase() === "DRC") {
-        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), drc: true });
+        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
       }
     }
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
     // group below) — unlike the automatic task-name prefill above, this
     // always starts a brand-new note pre-filled with the template,
-    // regardless of how many notes the node already has.
+    // regardless of how many notes the node already has. Titling it
+    // "DRC" is what makes isDRCNote/drcPoints/the node-strip icon
+    // recognize it — not a separate internal flag — so a note gets the
+    // same treatment if the title is set to "DRC" any other way too.
     if (forceDRCTemplate) {
-      noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), drc: true });
+      noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
       noteActiveIndex = noteWorkingList.length - 1;
     } else {
       const wantsNew = index != null && index >= noteWorkingList.length;
