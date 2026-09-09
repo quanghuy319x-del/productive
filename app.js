@@ -2304,6 +2304,14 @@
       total += brainstormPts;
       done += brainstormPts;
     }
+    // Every filled-in DRC note (node.notes entries with drc:true — see
+    // drcPoints/drcNoteIsFilled) is worth another flat 5 points, same
+    // "always fully done" treatment as the above.
+    const drcPts = drcPoints(node);
+    if (drcPts > 0) {
+      total += drcPts;
+      done += drcPts;
+    }
     return { done, total, pct: total ? done / total : 0 };
   }
 
@@ -2401,6 +2409,39 @@
   }
   function brainstormPoints(host) {
     return Math.floor(brainstormLineCount(host) / 2);
+  }
+
+  // A "DRC" note (see DRC_NOTE_TEMPLATE / the drc flag set on it above) is
+  // considered "filled in" — and worth points below — once the person has
+  // typed more than one line into it, or at least 10 letters total,
+  // beyond the template's own fixed section labels. Splits the note's
+  // per-line HTML (one <div> per line, matching noteHtmlFromRaw) back
+  // into plain-text lines, drops any line that's just one of the fixed
+  // labels, then checks what's left.
+  function noteLinesFromHtml(html) {
+    if (!html) return [];
+    const divChunks = html.match(/<div[^>]*>[\s\S]*?<\/div>/gi);
+    const chunks = (divChunks && divChunks.length) ? divChunks : [html];
+    return chunks.map(chunk => chunk
+      .replace(/^<div[^>]*>/i, "").replace(/<\/div>$/i, "")
+      .replace(/<br\s*\/?>/gi, "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/gi, " ")
+      .trim());
+  }
+  function drcNoteIsFilled(note) {
+    const lines = noteLinesFromHtml(note && note.html)
+      .filter(l => !DRC_TEMPLATE_LABELS.some(lbl => lbl.toLowerCase() === l.toLowerCase()));
+    const typedLines = lines.filter(l => l.length > 0);
+    const typedChars = typedLines.join("").length;
+    return typedLines.length > 1 || typedChars >= 10;
+  }
+  // Every filled-in DRC note on the node (there can be more than one —
+  // each "📋 DRC…" click starts a fresh one, so this adds up like a daily
+  // streak) is worth a flat 5 points, same "always fully done" treatment
+  // as the other bonuses in nodeTaskProgress above.
+  function drcPoints(node) {
+    return getNodeNotes(node).filter(n => n.drc && drcNoteIsFilled(n)).length * 5;
   }
 
   // Shared cap for the node icon strip (see renderNode/computeNodeBox):
@@ -7806,8 +7847,12 @@
         // with the standing DRC template (see DRC_NOTE_TEMPLATE / the
         // forceDRCTemplate branch in openNoteModal), regardless of how
         // many notes this node already has — unlike the automatic
-        // prefill that only fires on a task literally named "DRC".
-        addGroupRow("📋 DRC…", () => openNoteModal(node.id, undefined, null, null, null, true));
+        // prefill that only fires on a task literally named "DRC". The
+        // label shows points earned so far from filled-in DRC notes (see
+        // drcPoints/drcNoteIsFilled), same pattern as Brainstorm/Timer.
+        const drcPts = drcPoints(node);
+        const label = drcPts > 0 ? `📋 DRC (${drcPts} pt${drcPts === 1 ? "" : "s"})…` : "📋 DRC…";
+        addGroupRow(label, () => openNoteModal(node.id, undefined, null, null, null, true));
       }
       {
         // Only *commented* links score points (see nodeTaskProgress), so
@@ -11173,6 +11218,11 @@
     "<div><b>BAD:</b></div><div><br></div>" +
     "<div><b>CHANGE FROM TOMORROW:</b></div><div><br></div>" +
     "<div><b>TRADES IN DETAILS:</b></div><div><br></div><div><br></div>";
+  // The template's own fixed section labels — excluded when checking how
+  // much the person has actually typed into a DRC note (see
+  // drcNoteIsFilled below), so an untouched template doesn't itself count
+  // as "filled".
+  const DRC_TEMPLATE_LABELS = ["OVERVIEW:", "GOOD:", "BAD:", "CHANGE FROM TOMORROW:", "TRADES IN DETAILS:"];
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
   // on that node, or (with `taskId`) for one task on that node, or (with
@@ -11212,7 +11262,7 @@
     if (isFreshTaskNote) {
       const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
       if (t && (t.text || "").trim().toUpperCase() === "DRC") {
-        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
+        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), drc: true });
       }
     }
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
@@ -11220,7 +11270,7 @@
     // always starts a brand-new note pre-filled with the template,
     // regardless of how many notes the node already has.
     if (forceDRCTemplate) {
-      noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
+      noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), drc: true });
       noteActiveIndex = noteWorkingList.length - 1;
     } else {
       const wantsNew = index != null && index >= noteWorkingList.length;
