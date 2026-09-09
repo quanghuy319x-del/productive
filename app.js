@@ -9700,65 +9700,65 @@
   const photoModalZoomOut = $("#photo-modal-zoom-out");
 
   // Crop button — built here rather than in index.html so the whole
-  // feature lives in this one file. Styled like the delete button, just
-  // shifted further from the corner so the two don't overlap.
+  // feature lives in this one file. Sits in the same centered row above
+  // the photo as close/delete/Aa/🔢 — see positionPhotoTopCenterButtons
+  // below for why and how that position is computed.
   const photoModalCrop = document.createElement("button");
   photoModalCrop.id = "photo-modal-crop";
   photoModalCrop.className = "photo-modal-delete";
   photoModalCrop.title = "Crop this photo";
   photoModalCrop.setAttribute("aria-label", "Crop this photo");
   photoModalCrop.textContent = "⛶";
-  photoModalCrop.style.right = "calc(4vw + 72px)";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalCrop);
 
-  // Text button — sits one slot further out than crop, same styling.
-  // Lets the user drop editable labels onto the photo and bake them in.
+  // Text button — Lets the user drop editable labels onto the photo and
+  // bake them in.
   const photoModalText = document.createElement("button");
   photoModalText.id = "photo-modal-text";
   photoModalText.className = "photo-modal-delete";
   photoModalText.title = "Add text to this photo";
   photoModalText.setAttribute("aria-label", "Add text to this photo");
   photoModalText.textContent = "Aa";
-  photoModalText.style.right = "calc(4vw + 116px)";
   photoModalText.style.fontSize = "12px";
   photoModalText.style.fontWeight = "700";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalText);
 
-  // Symbol button — sits one slot further out than text, same styling.
+  // Symbol button — sits right next to the text button, same styling.
   // Opens a small popover of number-in-circle emoji (1️⃣–9️⃣) that get
-  // inserted into the comment box at the caret, for numbering points in
-  // a photo's comment without having to type/find the emoji elsewhere.
+  // dropped onto the photo as draggable labels (see startAddText/
+  // dropSymbol below), for numbering points directly on the photo.
   const photoModalSymbol = document.createElement("button");
   photoModalSymbol.id = "photo-modal-symbol";
   photoModalSymbol.className = "photo-modal-delete";
   photoModalSymbol.title = "Insert a number symbol into the photo";
   photoModalSymbol.setAttribute("aria-label", "Insert a number symbol into the photo");
   photoModalSymbol.textContent = "🔢";
-  photoModalSymbol.style.right = "calc(4vw + 160px)";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalSymbol);
 
-  // Unlike the close/delete/crop row above — which is fixed at a
-  // hardcoded viewport-relative spot that only lines up with the photo's
-  // top edge for images tall enough to hit the 88vh cap — the Aa/🔢
-  // buttons need to sit clear of the photo at any size, since they open
-  // a placement UI *on* the photo and would otherwise read as "part of"
-  // the image itself when the photo doesn't reach that cap. So their
-  // position is computed from the actual rendered <img> box instead:
-  // just above its top edge, right-aligned to its right edge, recomputed
-  // whenever the photo (or the viewport) changes.
-  function positionPhotoActionButtons() {
+  // Close/delete/crop/Aa/🔢 all sit together in one row centered
+  // directly above the photo, outside its frame, instead of hugging a
+  // fixed viewport corner. Since photos render at all sorts of sizes
+  // (capped at 92vw/88vh but often much smaller), that position has to
+  // be computed from the actual rendered <img> box rather than
+  // hardcoded, and recomputed whenever the photo or the viewport
+  // changes.
+  const PHOTO_TOP_CENTER_BUTTONS = [photoModalClose, photoModalDelete, photoModalCrop, photoModalText, photoModalSymbol];
+  function positionPhotoTopCenterButtons() {
     const rect = photoModalImg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    const gap = 10, size = 30, slot = 44;
-    const top = Math.max(8, rect.top - size - gap);
-    const right = Math.max(8, window.innerWidth - rect.right);
-    photoModalSymbol.style.top = `${top}px`;
-    photoModalSymbol.style.right = `${right}px`;
-    photoModalText.style.top = `${top}px`;
-    photoModalText.style.right = `${right + slot}px`;
+    const size = 30, gapBetween = 8, gapAbove = 10;
+    const totalWidth = PHOTO_TOP_CENTER_BUTTONS.length * size + (PHOTO_TOP_CENTER_BUTTONS.length - 1) * gapBetween;
+    const top = Math.max(8, rect.top - size - gapAbove);
+    let x = rect.left + rect.width / 2 - totalWidth / 2;
+    PHOTO_TOP_CENTER_BUTTONS.forEach(btn => {
+      btn.style.top = `${top}px`;
+      btn.style.left = `${x}px`;
+      btn.style.right = "auto";
+      x += size + gapBetween;
+    });
   }
-  photoModalImg.addEventListener("load", positionPhotoActionButtons);
-  window.addEventListener("resize", positionPhotoActionButtons);
+  photoModalImg.addEventListener("load", positionPhotoTopCenterButtons);
+  window.addEventListener("resize", positionPhotoTopCenterButtons);
 
   const PHOTO_SYMBOL_CHARS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
   const photoModalSymbolPopover = document.createElement("div");
@@ -9939,11 +9939,11 @@
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
     photoModalImg.src = images[photoModalState.index];
-    // Defer to a frame so the browser has actually laid out the new
-    // image (getBoundingClientRect right after setting .src can still
-    // report the *previous* photo's box, or a zero-size box for an
-    // uncached image) before positioning the Aa/🔢 buttons off it.
-    requestAnimationFrame(positionPhotoActionButtons);
+    // Defer to a frame so layout has actually updated for the new image
+    // (right after setting .src, getBoundingClientRect can still report
+    // the previous photo's box, or a zero-size box while it decodes)
+    // before centering the Aa/🔢 buttons above it.
+    requestAnimationFrame(positionPhotoTopCenterButtons);
     const group = photoModalState.tagGroup;
     photoModalGoto.classList.toggle("hidden", !group);
     if (group) {
