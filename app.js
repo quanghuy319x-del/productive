@@ -7693,21 +7693,6 @@
     }
     items.push(["Add link…", () => addNodeUrl(node.id)]);
     items.push([nodeHasNotes(node) ? `Notes (${getNodeNotes(node).length})…` : "Add note…", () => openNoteModal(node.id)]);
-    {
-      const prog = nodeTaskProgress(node);
-      const label = prog.total ? `Tasks… (${prog.done}/${prog.total})` : "Add tasks…";
-      items.push([label, () => openTasksModal(node.id)]);
-    }
-    {
-      const played = getNodeTimePlayed(node);
-      const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
-      items.push([label, () => openTimerModal(node.id)]);
-    }
-    {
-      const pts = brainstormPoints(node);
-      const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
-      items.push([label, () => openBrainstormModal(node.id)]);
-    }
     items.push(["Add photo…", () => openNodePhotoPicker(node.id)]);
     if (nodeHasImages(node)) {
       items.push([getNodeImageIds(node).length > 1 ? "View photos…" : "View photo…", () => openPhotoModal(node.id, 0)]);
@@ -7739,31 +7724,59 @@
       ctxMenu.appendChild(it);
     }
 
-    // Affirmation typing game — its own grouped section (separated by a
-    // divider) rather than living inside the tasks checklist. The wins
-    // counter shows on the row once at least one round's been completed;
-    // a second row opens the shared lines-editor modal.
+    // Tasks, Timer, Brainstorm, and the Affirmation game — grouped together
+    // in their own section (separated by a divider) rather than scattered
+    // among the generic node actions above, since these four are the
+    // "work on this node" actions as opposed to editing/formatting it.
+    // The Affirmation game row carries a small "✎" button on its right
+    // edge (reusing the same corner-icon slot as the ✕ remove buttons
+    // elsewhere in this menu) that opens the shared lines-editor modal
+    // instead of starting a round.
     {
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
 
-      const wins = nodeAffirmationWins(node);
-      const gameItem = document.createElement("div");
-      gameItem.className = "ctx-item";
-      const gameLabel = document.createElement("span");
-      gameLabel.className = "ctx-item-label";
-      gameLabel.textContent = wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game";
-      gameItem.appendChild(gameLabel);
-      gameItem.addEventListener("click", () => { closeContextMenu(); openAffirmationGame(node.id); });
-      ctxMenu.appendChild(gameItem);
+      const addGroupRow = (label, fn) => {
+        const row = document.createElement("div");
+        row.className = "ctx-item";
+        const labelSpan = document.createElement("span");
+        labelSpan.className = "ctx-item-label";
+        labelSpan.textContent = label;
+        row.appendChild(labelSpan);
+        row.addEventListener("click", () => { closeContextMenu(); fn(); });
+        ctxMenu.appendChild(row);
+        return row;
+      };
 
-      const editItem = document.createElement("div");
-      editItem.className = "ctx-item";
-      const editLabel = document.createElement("span");
-      editLabel.className = "ctx-item-label";
-      editLabel.textContent = "✎ Edit affirmation lines…";
-      editItem.appendChild(editLabel);
-      editItem.addEventListener("click", () => { closeContextMenu(); openAffirmationQuotesModal(); });
-      ctxMenu.appendChild(editItem);
+      {
+        const prog = nodeTaskProgress(node);
+        const label = prog.total ? `Tasks… (${prog.done}/${prog.total})` : "Add tasks…";
+        addGroupRow(label, () => openTasksModal(node.id));
+      }
+      {
+        const played = getNodeTimePlayed(node);
+        const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
+        addGroupRow(label, () => openTimerModal(node.id));
+      }
+      {
+        const pts = brainstormPoints(node);
+        const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
+        addGroupRow(label, () => openBrainstormModal(node.id));
+      }
+
+      const wins = nodeAffirmationWins(node);
+      const gameItem = addGroupRow(
+        wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game",
+        () => openAffirmationGame(node.id)
+      );
+      const editBtn = document.createElement("span");
+      editBtn.className = "ctx-item-remove ctx-item-edit-affirmation";
+      editBtn.textContent = "✎";
+      editBtn.title = "Edit affirmation lines";
+      // Stop the click from also bubbling into the row's own handler
+      // above (which would start a game round right after opening the
+      // editor).
+      editBtn.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); openAffirmationQuotesModal(); });
+      gameItem.appendChild(editBtn);
     }
 
     // Glow effect picker — several intensities/speeds rather than a plain

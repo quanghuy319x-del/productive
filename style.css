@@ -1537,6 +1537,10 @@ body.signed-out #title-input{ visibility:hidden; }
   font-size:11px;
 }
 .ctx-item-remove:hover{ background: rgba(220,80,80,0.18); color: var(--danger); }
+/* The pencil "edit affirmation lines" button reuses .ctx-item-remove's
+   corner-icon layout (size/position) but isn't a destructive action, so
+   it gets its own non-red hover treatment here. */
+.ctx-item-edit-affirmation:hover{ background: var(--accent-dim); color: var(--accent); }
 .ctx-item-rename:hover{ background: var(--accent-dim); color: var(--text); }
 .ctx-item-comment:hover{ background: var(--accent-dim); color: var(--text); }
 
