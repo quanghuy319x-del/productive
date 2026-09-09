@@ -2813,7 +2813,7 @@
                    // aren't part of the parent/child tree (e.g. "this idea relates to that one")
       view: { scale: 1, tx: 0, ty: 0 },
       theme: defaultTheme(),
-      layout: "mindmap"   // "mindmap" | "logic" | "timeline"
+      layout: "mindmap"   // "mindmap" | "righty" | "logic" | "timeline"
     };
   }
 
@@ -2859,7 +2859,7 @@
 
   function ensureLayout(map) {
     if (!map) return;
-    if (map.layout !== "logic" && map.layout !== "timeline") map.layout = "mindmap";
+    if (map.layout !== "logic" && map.layout !== "timeline" && map.layout !== "righty") map.layout = "mindmap";
   }
 
   // Per-map clock/calendar visibility — see isClockHidden/setClockHidden.
@@ -3843,7 +3843,7 @@
 
   function layout(root) {
     const mode = (state.current && state.current.layout) || "mindmap";
-    if (mode === "logic") layoutMindmap(root, false);
+    if (mode === "logic" || mode === "righty") layoutMindmap(root, false);
     else if (mode === "timeline") layoutTimeline(root);
     else layoutMindmap(root, true);
     // The layout passes above place every node at its automatic slot, then
@@ -3927,7 +3927,10 @@
   // Classic radial mind map. With splitSides=true, top-level branches
   // alternate left/right of the root (the default "Mindmap" layout). With
   // splitSides=false, every branch fans out to the right only, stacked
-  // top to bottom (the "Logic chart" layout).
+  // top to bottom — used by both the "Logic chart" layout and the
+  // "Righty mindmap" layout, which are visually/behaviorally identical
+  // (same curved-by-default connectors, same node styling) and differ
+  // from each other in name only.
   function layoutMindmap(root, splitSides) {
     const children = root.children || [];
     const right = [], left = [];
@@ -6945,9 +6948,9 @@
   // zero and re-render.
   function maybeFlipSideOnDrop(node) {
     const layoutMode = (state.current && state.current.layout) || "mindmap";
-    // "Logic chart" only ever fans one direction (right), so there's no
-    // opposite side to flip to.
-    if (layoutMode === "logic") return false;
+    // "Logic chart" and "Righty mindmap" only ever fan one direction
+    // (right), so there's no opposite side to flip to.
+    if (layoutMode === "logic" || layoutMode === "righty") return false;
     // node._x is 0 for the root, and also for a Timeline branch's own node
     // (it sits directly on the spine) — neither has a side of its own to
     // flip; only their descendants do.
@@ -6983,7 +6986,7 @@
   // direction each hop fans) actually mirrors.
   function maybeFlipSideDuringDrag(node, dxLocal, dyLocal) {
     const layoutMode = (state.current && state.current.layout) || "mindmap";
-    if (layoutMode === "logic") return false;
+    if (layoutMode === "logic" || layoutMode === "righty") return false;
     if (!node._x) return false;
     if (layoutMode === "mindmap" && node._depth !== 1) return false;
     const worldX = node._x + (node.ox || 0);
