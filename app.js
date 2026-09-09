@@ -6329,16 +6329,29 @@
       // onto another node on their own.
       tasksWithNotes.forEach((t) => {
         const taskNoteIcon = document.createElement("span");
-        taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker";
-        taskNoteIcon.innerHTML = NODE_NOTE_ICON_SVG;
+        // A task's note counts as a DRC note by the same rule as a
+        // node's own notes — title exactly "DRC" (see isDRCNote) — so it
+        // gets the same clipboard icon here too, not just at the node
+        // level.
+        const firstTaskNote = getTaskNotes(t)[0];
+        const taskNoteIsDRC = isDRCNote(firstTaskNote);
+        taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker" + (taskNoteIsDRC ? " node-drc-marker" : "");
+        taskNoteIcon.innerHTML = taskNoteIsDRC ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
         // A task's own name already works as that note's title, so unlike
         // a node's or cell's own notes (notePreviewText), this never falls
         // back to a body-text preview — only the note's own separate
         // title, if it happens to have one of its own distinct from the
-        // task name, is ever appended.
-        const noteTitle = ((getTaskNotes(t)[0] || {}).title || "").trim();
-        const titleSuffix = noteTitle ? ` — ${noteTitle.length > 40 ? noteTitle.slice(0, 39) + "…" : noteTitle}` : "";
-        taskNoteIcon.title = `Task "${t.text || "(untitled task)"}"${titleSuffix}`;
+        // task name, is ever appended. A DRC note gets the same
+        // filled-in-or-not status line the node-level DRC icon uses,
+        // instead of that title suffix.
+        if (taskNoteIsDRC) {
+          const status = drcNoteIsFilled(firstTaskNote) ? "filled in (5 pts)" : "not filled in yet";
+          taskNoteIcon.title = `Task "${t.text || "(untitled task)"}" — DRC, ${status}`;
+        } else {
+          const noteTitle = (firstTaskNote.title || "").trim();
+          const titleSuffix = noteTitle ? ` — ${noteTitle.length > 40 ? noteTitle.slice(0, 39) + "…" : noteTitle}` : "";
+          taskNoteIcon.title = `Task "${t.text || "(untitled task)"}"${titleSuffix}`;
+        }
         taskNoteIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openNoteModal(node.id, undefined, null, t.id);
