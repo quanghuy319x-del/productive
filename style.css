@@ -1996,6 +1996,8 @@ kbd{
 }
 .note-color-popover.hidden{ display:none; }
 
+.note-symbol-swatch{ font-size: 15px; }
+
 .note-textarea{
   width:100%;
   flex: 1 1 auto;
@@ -3567,6 +3569,35 @@ kbd{
   z-index: 101;
 }
 .photo-modal-delete:hover{ border-color: var(--danger); color: var(--danger); }
+
+/* Popover of number-in-circle emoji opened from #photo-modal-symbol (see
+   app.js) — same fixed-viewport-positioning pattern as .note-color-popover
+   so it's never clipped by the photo modal card. */
+.photo-modal-symbol-popover{
+  position:fixed;
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  padding:6px;
+  max-width: 172px;
+  background:#ffffff;
+  border:1px solid var(--border);
+  border-radius:8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+  z-index: 10001;
+}
+.photo-modal-symbol-popover.hidden{ display:none; }
+.photo-modal-symbol-swatch{
+  width:28px; height:28px;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background: var(--panel);
+  font-size:15px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  padding:0;
+}
+.photo-modal-symbol-swatch:hover{ border-color: var(--accent); background: var(--panel-2); }
 
 .photo-modal-zoom{
   /* Fixed the same way as .photo-modal-close — anchored to the shared

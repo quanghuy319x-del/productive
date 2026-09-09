@@ -9724,6 +9724,96 @@
   photoModalText.style.fontWeight = "700";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalText);
 
+  // Symbol button — sits one slot further out than text, same styling.
+  // Opens a small popover of number-in-circle emoji (1️⃣–9️⃣) that get
+  // inserted into the comment box at the caret, for numbering points in
+  // a photo's comment without having to type/find the emoji elsewhere.
+  const photoModalSymbol = document.createElement("button");
+  photoModalSymbol.id = "photo-modal-symbol";
+  photoModalSymbol.className = "photo-modal-delete";
+  photoModalSymbol.title = "Insert a number symbol into the comment";
+  photoModalSymbol.setAttribute("aria-label", "Insert a number symbol into the comment");
+  photoModalSymbol.textContent = "🔢";
+  photoModalSymbol.style.right = "calc(4vw + 160px)";
+  photoModal.querySelector(".photo-modal-card").appendChild(photoModalSymbol);
+
+  const PHOTO_SYMBOL_CHARS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
+  const photoModalSymbolPopover = document.createElement("div");
+  photoModalSymbolPopover.id = "photo-modal-symbol-popover";
+  photoModalSymbolPopover.className = "photo-modal-symbol-popover hidden";
+  PHOTO_SYMBOL_CHARS.forEach(ch => {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.className = "photo-modal-symbol-swatch";
+    swatch.textContent = ch;
+    // mousedown (not click) inserts, same reasoning as the note editor's
+    // color swatches — preventDefault keeps focus/caret in the comment
+    // textarea instead of jumping to this button.
+    swatch.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      insertAtCursor(photoModalCommentInput, ch);
+    });
+    swatch.addEventListener("click", () => closePhotoSymbolPopover());
+    photoModalSymbolPopover.appendChild(swatch);
+  });
+  document.body.appendChild(photoModalSymbolPopover);
+
+  // Inserts `text` at the current caret position (replacing any selected
+  // text) in a plain <textarea>, then restores focus/caret right after
+  // the inserted text and re-runs the auto-grow so the box resizes if the
+  // insert pushed it onto a new line.
+  function insertAtCursor(textarea, text) {
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const val = textarea.value;
+    textarea.value = val.slice(0, start) + text + val.slice(end);
+    const newPos = start + text.length;
+    textarea.focus();
+    textarea.setSelectionRange(newPos, newPos);
+    autoGrowTextarea(textarea);
+  }
+
+  function openPhotoSymbolPopover() {
+    photoModalSymbolPopover.classList.remove("hidden");
+    positionPhotoSymbolPopover();
+  }
+  function closePhotoSymbolPopover() {
+    photoModalSymbolPopover.classList.add("hidden");
+  }
+  // Same fixed-viewport-coordinates + clamp approach as the note editor's
+  // color popover (positionNoteColorPopover) — lives outside the modal
+  // card so it's never clipped, and flips above the button if there's
+  // not enough room below.
+  function positionPhotoSymbolPopover() {
+    const margin = 8;
+    const btnRect = photoModalSymbol.getBoundingClientRect();
+    const popRect = photoModalSymbolPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6;
+    }
+    photoModalSymbolPopover.style.left = `${left}px`;
+    photoModalSymbolPopover.style.top = `${top}px`;
+  }
+  photoModalSymbol.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (photoModalSymbolPopover.classList.contains("hidden")) openPhotoSymbolPopover();
+    else closePhotoSymbolPopover();
+  });
+  photoModalSymbolPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!photoModalSymbolPopover.classList.contains("hidden") &&
+        !photoModalSymbolPopover.contains(e.target) && e.target !== photoModalSymbol) {
+      closePhotoSymbolPopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!photoModalSymbolPopover.classList.contains("hidden")) positionPhotoSymbolPopover();
+  });
+
   let cropping = false;
   let cropCleanup = null;
   let addingText = false;
@@ -9863,6 +9953,8 @@
     photoModalDelete.style.display = notePhoto ? "none" : "";
     photoModalCrop.style.display = notePhoto ? "none" : "";
     photoModalText.style.display = notePhoto ? "none" : "";
+    photoModalSymbol.style.display = notePhoto ? "none" : "";
+    closePhotoSymbolPopover();
     if (notePhoto) return;
     renderPhotoModalTags();
     renderPhotoModalComment();
@@ -9961,6 +10053,7 @@
   }
   function closePhotoModal() {
     savePhotoModalComment();
+    closePhotoSymbolPopover();
     photoModalState = null;
     photoModal.classList.remove("photo-modal-above-note");
     zoomModalClose(photoModal, () => {
@@ -11376,6 +11469,13 @@
     scheduleNoteAutosave();
   }
 
+  function noteInsertSymbol(symbol) {
+    noteTextarea.focus();
+    notePushUndo();
+    document.execCommand("insertText", false, symbol);
+    scheduleNoteAutosave();
+  }
+
   // Enter key on a numbered or checklist line continues the pattern
   // ("1." -> "2.", "☐" -> "☐"); pressing Enter on an empty list line
   // breaks out of the list instead of continuing it forever.
@@ -11735,6 +11835,58 @@
     noteColorPopover.style.top = `${top}px`;
   }
   function setNoteColorTrigger(color){ $("#note-color-trigger-swatch").style.background = color; }
+
+  // ---- Symbol popover — same trigger+popover pattern as the color
+  // picker above, but each swatch inserts its own fixed emoji instead of
+  // applying a color. ----
+  const noteSymbolTriggerBtn = $("#note-tool-symbol");
+  const noteSymbolPopover = $("#note-symbol-popover");
+  document.querySelectorAll(".note-symbol-swatch").forEach(btn => {
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // keep focus (and the note's caret position) off this button
+      noteInsertSymbol(btn.dataset.symbol);
+    });
+    // Close on "click" rather than inside mousedown, for the same reason
+    // as the color swatches (see the comment above their listeners).
+    btn.addEventListener("click", () => { closeNoteSymbolPopover(); });
+  });
+  noteSymbolTriggerBtn.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (noteSymbolPopover.classList.contains("hidden")) {
+      openNoteSymbolPopover();
+    } else {
+      closeNoteSymbolPopover();
+    }
+  });
+  noteSymbolPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!noteSymbolPopover.classList.contains("hidden") &&
+        !noteSymbolPopover.contains(e.target) && e.target !== noteSymbolTriggerBtn) {
+      closeNoteSymbolPopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!noteSymbolPopover.classList.contains("hidden")) positionNoteSymbolPopover();
+  });
+  function openNoteSymbolPopover(){
+    noteSymbolPopover.classList.remove("hidden");
+    positionNoteSymbolPopover();
+  }
+  function closeNoteSymbolPopover(){ noteSymbolPopover.classList.add("hidden"); }
+  function positionNoteSymbolPopover(){
+    const margin = 8;
+    const btnRect = noteSymbolTriggerBtn.getBoundingClientRect();
+    const popRect = noteSymbolPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6; // not enough room below: flip above
+    }
+    noteSymbolPopover.style.left = `${left}px`;
+    noteSymbolPopover.style.top = `${top}px`;
+  }
 
   noteModal.addEventListener("click", (e) => { if (!noteIsResizing && e.target === noteModal) closeNoteModal(); });
   noteTitleInput.addEventListener("input", scheduleNoteAutosave);
