@@ -9731,8 +9731,8 @@
   const photoModalSymbol = document.createElement("button");
   photoModalSymbol.id = "photo-modal-symbol";
   photoModalSymbol.className = "photo-modal-delete";
-  photoModalSymbol.title = "Insert a number symbol into the comment";
-  photoModalSymbol.setAttribute("aria-label", "Insert a number symbol into the comment");
+  photoModalSymbol.title = "Insert a number symbol into the photo";
+  photoModalSymbol.setAttribute("aria-label", "Insert a number symbol into the photo");
   photoModalSymbol.textContent = "🔢";
   photoModalSymbol.style.right = "calc(4vw + 160px)";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalSymbol);
@@ -9746,32 +9746,19 @@
     swatch.type = "button";
     swatch.className = "photo-modal-symbol-swatch";
     swatch.textContent = ch;
-    // mousedown (not click) inserts, same reasoning as the note editor's
-    // color swatches — preventDefault keeps focus/caret in the comment
-    // textarea instead of jumping to this button.
-    swatch.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      insertAtCursor(photoModalCommentInput, ch);
+    swatch.addEventListener("mousedown", (e) => e.preventDefault());
+    swatch.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closePhotoSymbolPopover();
+      // If the "add text" overlay is already open (from a previous symbol
+      // or from the Aa button), just drop another label into that same
+      // session instead of restarting the whole placement flow.
+      if (addingText && addSymbolToActiveSession) addSymbolToActiveSession(ch);
+      else startAddText(ch);
     });
-    swatch.addEventListener("click", () => closePhotoSymbolPopover());
     photoModalSymbolPopover.appendChild(swatch);
   });
   document.body.appendChild(photoModalSymbolPopover);
-
-  // Inserts `text` at the current caret position (replacing any selected
-  // text) in a plain <textarea>, then restores focus/caret right after
-  // the inserted text and re-runs the auto-grow so the box resizes if the
-  // insert pushed it onto a new line.
-  function insertAtCursor(textarea, text) {
-    const start = textarea.selectionStart ?? textarea.value.length;
-    const end = textarea.selectionEnd ?? textarea.value.length;
-    const val = textarea.value;
-    textarea.value = val.slice(0, start) + text + val.slice(end);
-    const newPos = start + text.length;
-    textarea.focus();
-    textarea.setSelectionRange(newPos, newPos);
-    autoGrowTextarea(textarea);
-  }
 
   function openPhotoSymbolPopover() {
     photoModalSymbolPopover.classList.remove("hidden");
@@ -9819,6 +9806,10 @@
   let addingText = false;
   let textCleanup = null;
   let rearmTextPlacement = null;
+  // Set while the "add text" overlay is open, to a function that drops a
+  // new symbol label onto the photo (see photoModalSymbol below) without
+  // having to re-enter the whole placement flow.
+  let addSymbolToActiveSession = null;
 
   // ---- Scroll-to-zoom on the photo preview ----
   // A separate pan/zoom of just the currently displayed photo (independent
@@ -10488,7 +10479,7 @@
     return (0.299 * r + 0.587 * g + 0.114 * b) > 150;
   }
 
-  function startAddText() {
+  function startAddText(initialSymbol) {
     if (addingText || cropping || !photoModalState) return;
     resetPhotoZoom();
     const node = findNode(photoModalState.nodeId);
@@ -10700,6 +10691,32 @@
       return box;
     }
 
+    // Drops a number-symbol label onto the photo, already sized up and
+    // centered/selected so it's immediately visible and ready to drag
+    // into place — used both for the very first symbol (via
+    // initialSymbol below) and for any further ones added while this
+    // overlay session is still open (see addSymbolToActiveSession).
+    function dropSymbol(ch) {
+      const size = 56;
+      const x = clamp((iw - size) / 2, 0, Math.max(0, iw - size));
+      const y = clamp((ih - size) / 2, 0, Math.max(0, ih - size));
+      currentSize = size;
+      const box = makeBox(x, y);
+      box.el.textContent = ch;
+      box.size = size;
+      box.el.style.fontSize = size + "px";
+      selectBox(box);
+    }
+    addSymbolToActiveSession = dropSymbol;
+    if (initialSymbol) {
+      // A symbol is already placed, so an incidental click elsewhere on
+      // the photo shouldn't drop an unrelated blank "Text" box — the Aa
+      // button still re-arms plain text placement on demand.
+      placementArmed = false;
+      photoModalText.classList.remove("bl-text-armed");
+      dropSymbol(initialSymbol);
+    }
+
     overlay.addEventListener("pointerdown", (e) => {
       if (e.target !== overlay) return; // a click landed on an existing box, not empty space
       if (!placementArmed) { deselectAll(); return; } // click away just finishes the current label
@@ -10777,6 +10794,7 @@
       addingText = false;
       textCleanup = null;
       rearmTextPlacement = null;
+      addSymbolToActiveSession = null;
       renderPhotoModal();
     }
     textCleanup = cleanup;
@@ -11285,8 +11303,27 @@
   function noteCurrentLine(container = noteTextarea) {
     const sel = window.getSelection();
     if (!sel.rangeCount) return null;
-    let node = sel.getRangeAt(0).startContainer;
-    if (node.nodeType === 3) node = node.parentNode;
+    const range = sel.getRangeAt(0);
+    let node = range.startContainer;
+    if (node.nodeType === 3) {
+      node = node.parentNode;
+    } else if (node.childNodes.length) {
+      // The caret's container can itself be an *element* rather than a
+      // text node — most commonly right at the very end of the whole
+      // editor (after the last character of the last line), where the
+      // browser reports the selection as sitting inside `container`
+      // itself, past its last child, instead of inside a leaf text node.
+      // Left unhandled, the walk below would immediately see node ===
+      // container and bail out to null — which then made every caller
+      // (notably noteHandleEnter) fall back to treating the *entire*
+      // editor as "the current line," splitting/overwriting all lines
+      // at once instead of just the one the caret is actually on.
+      // Resolving to the adjacent child first fixes that: offset 0 means
+      // "before the first child" (use it), any other offset means "after
+      // the child before it" (use that one, clamped to the last child).
+      const idx = Math.min(Math.max(range.startOffset - 1, 0), node.childNodes.length - 1);
+      node = node.childNodes[idx];
+    }
     while (node && node !== container && node.parentNode !== container) {
       node = node.parentNode;
     }
