@@ -2817,15 +2817,15 @@ kbd{
 .brainstorm-textarea{
   display: block;
   width: 100%;
-  min-height: 220px;
-  max-height: 360px;
+  min-height: 440px;
+  max-height: 720px;
   overflow-y: auto;
   margin-top: 10px;
   padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--text);
+  border: 1px solid #d8dae0;
+  background: #ffffff;
+  color: #1c1e26;
   font-family: inherit;
   font-size: 13.5px;
   line-height: 1.6;
@@ -2843,7 +2843,7 @@ kbd{
 .brainstorm-textarea div{ min-height: 1.6em; }
 .brainstorm-textarea:empty::before{
   content: attr(data-placeholder);
-  color: var(--text-dim);
+  color: #9a9ea8;
 }
 .brainstorm-progress-label{
   margin: 8px 2px 0;
@@ -3478,15 +3478,16 @@ kbd{
   max-height: 320px;
   padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
+  border: 1px solid #d8dae0;
+  background: #ffffff;
+  color: #1c1e26;
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-y: auto;
 }
+.video-modal-comment-input::placeholder{ color: #9a9ea8; }
 .video-modal-comment-input:focus{
   outline: none;
   border-color: var(--accent);
