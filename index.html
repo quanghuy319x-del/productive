@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="style.css?v=39">
 </head>
 <body>
 <div id="app">
@@ -392,6 +392,8 @@
       <button type="button" id="note-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
       <button type="button" id="note-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
       <span class="note-tool-sep"></span>
+      <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
+      <button type="button" id="note-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
       <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
       <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
@@ -561,6 +563,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=63"></script>
+<script src="app.js?v=67"></script>
 </body>
 </html>

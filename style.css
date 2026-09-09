@@ -1099,14 +1099,14 @@ body.signed-out #title-input{ visibility:hidden; }
   flex-wrap:wrap;
   justify-content:flex-start;
   align-content:flex-start;
-  gap: 2px;
-  max-width: 53px; /* 5 * 9px + 4 * 2px gap */
+  gap: 3px;
+  max-width: 79.5px; /* 5 * 13.5px + 4 * 3px gap */
   margin-top: 5px;
   flex: none;
 }
 .node-photo-thumb{
   position: relative;
-  width: 9px; height:9px;
+  width: 13.5px; height:13.5px;
   border-radius: 3px;
   background-size: cover;
   background-position: center;
@@ -1137,7 +1137,7 @@ body.signed-out #title-input{ visibility:hidden; }
   display:flex; align-items:center; justify-content:center;
   background: var(--panel-2);
   color: var(--text);
-  font-size: 5px;
+  font-size: 7.5px;
   font-weight:700;
 }
 
@@ -1166,7 +1166,7 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-url-marker:hover{ background: transparent; border-color: transparent; box-shadow: none; transform: scale(1.15); }
 .node-note-marker svg{ width: 100%; height:100%; }
 .node-url-marker svg{ width: 100%; height:100%; }
-.node-url-marker{ font-size: 6px; }
+.node-url-marker{ font-size: 9px; }
 .node-photo-strip.large .node-url-marker{ font-size: 11px; }
 
 

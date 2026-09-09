@@ -4428,8 +4428,8 @@
       const shownCount = overflow ? 1 : nodeImages.length;
       const itemCount = stripIconCountForBox + shownCount;
       const large = itemCount <= 10;
-      const thumb = large ? 18 : 9;
-      const gap = large ? 3 : 2;
+      const thumb = large ? 18 : 13.5;
+      const gap = 3;
       const cols = Math.min(itemCount, 5);
       const rows = Math.ceil(itemCount / 5);
       stripW = cols * thumb + (cols - 1) * gap;
@@ -6190,8 +6190,8 @@
       // on the same number — a few px of drift between the two would
       // make the browser wrap to an extra row the box never made room
       // for, pushing cells outside the frame.
-      const thumbPx = large ? 18 : 9;
-      const gapPx = large ? 3 : 2;
+      const thumbPx = large ? 18 : 13.5;
+      const gapPx = 3;
       const cols = Math.min(itemCount, 5);
       strip.style.width = (cols * thumbPx + (cols - 1) * gapPx) + "px";
 
@@ -11352,6 +11352,30 @@
     scheduleNoteAutosave();
   }
 
+  function noteApplyBold() {
+    noteTextarea.focus();
+    notePushUndo();
+    const sel = window.getSelection();
+    if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
+      noteSelectLine(noteCurrentLine());
+    }
+    document.execCommand("bold");
+    scheduleNoteAutosave();
+  }
+
+  function noteApplyUppercase() {
+    noteTextarea.focus();
+    notePushUndo();
+    const sel = window.getSelection();
+    if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
+      noteSelectLine(noteCurrentLine());
+    }
+    const text = window.getSelection().toString();
+    if (!text) return;
+    document.execCommand("insertText", false, text.toUpperCase());
+    scheduleNoteAutosave();
+  }
+
   // Enter key on a numbered or checklist line continues the pattern
   // ("1." -> "2.", "☐" -> "☐"); pressing Enter on an empty list line
   // breaks out of the list instead of continuing it forever.
@@ -11634,6 +11658,14 @@
   $("#note-tool-strike").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteApplyStrikethrough();
+  });
+  $("#note-tool-bold").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    noteApplyBold();
+  });
+  $("#note-tool-upper").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    noteApplyUppercase();
   });
   document.querySelectorAll(".note-color-swatch").forEach(btn => {
     btn.addEventListener("mousedown", (e) => {
