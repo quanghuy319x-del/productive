@@ -11113,11 +11113,17 @@
 
   // Standing template for a task named "DRC" (Daily Report Card) — see
   // openNoteModal below, which drops this into that task's first note
-  // instead of a blank editor. Plain text with real newlines, same shape
-  // noteHtmlFromRaw already expects (blank lines become empty <div><br></div>
-  // lines, ready to type straight into).
+  // instead of a blank editor. Already-built HTML (one <div> per line,
+  // matching what noteHtmlFromRaw would otherwise generate itself from
+  // plain text) rather than plain text, so the section labels can be
+  // bold + uppercase; looksLikeHtml sees the <div> tags and passes this
+  // straight through unchanged instead of re-escaping it as plain text.
   const DRC_NOTE_TEMPLATE =
-    "Overview:\n\nGood:\n\nBad:\n\nChange from tomorrow:\n\nTrades in details:\n\n";
+    "<div><b>OVERVIEW:</b></div><div><br></div>" +
+    "<div><b>GOOD:</b></div><div><br></div>" +
+    "<div><b>BAD:</b></div><div><br></div>" +
+    "<div><b>CHANGE FROM TOMORROW:</b></div><div><br></div>" +
+    "<div><b>TRADES IN DETAILS:</b></div><div><br></div><div><br></div>";
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
   // on that node, or (with `taskId`) for one task on that node, or (with
