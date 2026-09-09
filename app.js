@@ -9737,6 +9737,29 @@
   photoModalSymbol.style.right = "calc(4vw + 160px)";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalSymbol);
 
+  // Unlike the close/delete/crop row above — which is fixed at a
+  // hardcoded viewport-relative spot that only lines up with the photo's
+  // top edge for images tall enough to hit the 88vh cap — the Aa/🔢
+  // buttons need to sit clear of the photo at any size, since they open
+  // a placement UI *on* the photo and would otherwise read as "part of"
+  // the image itself when the photo doesn't reach that cap. So their
+  // position is computed from the actual rendered <img> box instead:
+  // just above its top edge, right-aligned to its right edge, recomputed
+  // whenever the photo (or the viewport) changes.
+  function positionPhotoActionButtons() {
+    const rect = photoModalImg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const gap = 10, size = 30, slot = 44;
+    const top = Math.max(8, rect.top - size - gap);
+    const right = Math.max(8, window.innerWidth - rect.right);
+    photoModalSymbol.style.top = `${top}px`;
+    photoModalSymbol.style.right = `${right}px`;
+    photoModalText.style.top = `${top}px`;
+    photoModalText.style.right = `${right + slot}px`;
+  }
+  photoModalImg.addEventListener("load", positionPhotoActionButtons);
+  window.addEventListener("resize", positionPhotoActionButtons);
+
   const PHOTO_SYMBOL_CHARS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
   const photoModalSymbolPopover = document.createElement("div");
   photoModalSymbolPopover.id = "photo-modal-symbol-popover";
@@ -9916,6 +9939,11 @@
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
     photoModalImg.src = images[photoModalState.index];
+    // Defer to a frame so the browser has actually laid out the new
+    // image (getBoundingClientRect right after setting .src can still
+    // report the *previous* photo's box, or a zero-size box for an
+    // uncached image) before positioning the Aa/🔢 buttons off it.
+    requestAnimationFrame(positionPhotoActionButtons);
     const group = photoModalState.tagGroup;
     photoModalGoto.classList.toggle("hidden", !group);
     if (group) {
