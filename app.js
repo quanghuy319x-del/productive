@@ -3997,7 +3997,14 @@
       // .side (e.g. from being dragged across its branch's local spine
       // while in Timeline mode), but Mindmap mode must ignore that here,
       // or a single branch would fan both left and right at once.
-      const nodeSign = (depth === 1 && (node.side === "left" || node.side === "right"))
+      // This whole override is also gated on splitSides: in a one-direction
+      // layout (Logic chart / Righty mindmap, splitSides=false) every
+      // top-level branch must fan the same way regardless of any leftover
+      // .side a node picked up from a previous stint in real (two-sided)
+      // Mindmap mode — otherwise a branch dragged left back when the map
+      // was in Mindmap mode would keep sitting on the left forever after
+      // switching to a right-only layout.
+      const nodeSign = (splitSides && depth === 1 && (node.side === "left" || node.side === "right"))
         ? (node.side === "left" ? -1 : 1)
         : sign;
       // Distance out from the center builds up hop by hop from the parent's
