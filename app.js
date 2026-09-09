@@ -2813,7 +2813,7 @@
                    // aren't part of the parent/child tree (e.g. "this idea relates to that one")
       view: { scale: 1, tx: 0, ty: 0 },
       theme: defaultTheme(),
-      layout: "mindmap"   // "mindmap" | "righty" | "logic" | "timeline"
+      layout: "mindmap"   // "mindmap" | "righty" | "timeline" (legacy "logic" is migrated to "righty" by ensureLayout)
     };
   }
 
@@ -2859,7 +2859,12 @@
 
   function ensureLayout(map) {
     if (!map) return;
-    if (map.layout !== "logic" && map.layout !== "timeline" && map.layout !== "righty") map.layout = "mindmap";
+    // "Logic chart" was removed as its own menu option since it was
+    // identical to "Righty mindmap" (both just layoutMindmap(root, false)
+    // — see layout() below) — migrate any map saved with the old value
+    // so it keeps rendering exactly the same way under the new name.
+    if (map.layout === "logic") map.layout = "righty";
+    if (map.layout !== "timeline" && map.layout !== "righty") map.layout = "mindmap";
   }
 
   // Per-map clock/calendar visibility — see isClockHidden/setClockHidden.
@@ -3927,10 +3932,7 @@
   // Classic radial mind map. With splitSides=true, top-level branches
   // alternate left/right of the root (the default "Mindmap" layout). With
   // splitSides=false, every branch fans out to the right only, stacked
-  // top to bottom — used by both the "Logic chart" layout and the
-  // "Righty mindmap" layout, which are visually/behaviorally identical
-  // (same curved-by-default connectors, same node styling) and differ
-  // from each other in name only.
+  // top to bottom (the "Righty mindmap" layout).
   function layoutMindmap(root, splitSides) {
     const children = root.children || [];
     const right = [], left = [];
@@ -3997,8 +3999,8 @@
       // .side (e.g. from being dragged across its branch's local spine
       // while in Timeline mode), but Mindmap mode must ignore that here,
       // or a single branch would fan both left and right at once.
-      // This whole override is also gated on splitSides: in a one-direction
-      // layout (Logic chart / Righty mindmap, splitSides=false) every
+      // This whole override is also gated on splitSides: in the
+      // one-direction layout (Righty mindmap, splitSides=false) every
       // top-level branch must fan the same way regardless of any leftover
       // .side a node picked up from a previous stint in real (two-sided)
       // Mindmap mode — otherwise a branch dragged left back when the map
@@ -6955,8 +6957,8 @@
   // zero and re-render.
   function maybeFlipSideOnDrop(node) {
     const layoutMode = (state.current && state.current.layout) || "mindmap";
-    // "Logic chart" and "Righty mindmap" only ever fan one direction
-    // (right), so there's no opposite side to flip to.
+    // "Righty mindmap" only ever fans one direction (right), so there's
+    // no opposite side to flip to.
     if (layoutMode === "logic" || layoutMode === "righty") return false;
     // node._x is 0 for the root, and also for a Timeline branch's own node
     // (it sits directly on the spine) — neither has a side of its own to
@@ -7644,13 +7646,44 @@
 
   function openContextMenu(x, y, node) {
     resetContextMenu();
-    const items = [];
+
+    // Renders a plain array of [label, fn, removeFn?] rows the same way
+    // every "generic action" group below does — factored out once so
+    // each group can just build its own small array and hand it here,
+    // rather than repeating this same DOM-building loop per group.
+    const renderItemRows = (list) => {
+      for (const [label, fn, removeFn] of list) {
+        const it = document.createElement("div");
+        it.className = "ctx-item";
+        const labelSpan = document.createElement("span");
+        labelSpan.className = "ctx-item-label";
+        labelSpan.textContent = label;
+        it.appendChild(labelSpan);
+        if (removeFn) {
+          const rm = document.createElement("span");
+          rm.className = "ctx-item-remove";
+          rm.textContent = "✕";
+          rm.title = "Remove";
+          // Stop the click from also bubbling into the row's own handler
+          // below (which would open the edit prompt right after removing).
+          rm.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); removeFn(); });
+          it.appendChild(rm);
+        }
+        it.addEventListener("click", () => { closeContextMenu(); fn(); });
+        ctxMenu.appendChild(it);
+      }
+    };
+    const addSep = () => { const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep); };
+
+    // Group: structure — renaming, moving, and other actions that change
+    // where/how this node sits in the tree, not what it contains.
+    const structureItems = [];
     // Double-click/F2 rename a node's text just fine with a mouse and
     // keyboard, but neither is reliable on a touchscreen — a double-tap
     // doesn't always synthesize a dblclick event, and there's no F2 key.
     // Long-press already opens this menu on touch, so put Rename here too.
     if (!nodeIsTable(node)) {
-      items.push(["Rename", () => startEdit(node.id)]);
+      structureItems.push(["✏️ Rename", () => startEdit(node.id)]);
     }
     // Move-to-new-parent, as an alternative to dragging the node across
     // the canvas (handy when the destination is far away or off-screen).
@@ -7658,35 +7691,41 @@
     // but it's always a legal destination, handled by the block below.
     if (node !== state.current.root) {
       if (state.moveSourceId === node.id) {
-        items.push(["Cancel move", () => cancelMove()]);
+        structureItems.push(["🚫 Cancel move", () => cancelMove()]);
       } else {
-        items.push(["Move…", () => startMoveFrom(node.id)]);
+        structureItems.push(["📦 Move…", () => startMoveFrom(node.id)]);
       }
     }
     if (state.moveSourceId && state.moveSourceId !== node.id && canMoveSourceTo(node.id)) {
-      items.push(["Move to here", () => completeMoveTo(node.id)]);
+      structureItems.push(["📥 Move to here", () => completeMoveTo(node.id)]);
     }
-    items.push([node.struck ? "Remove strikethrough" : "Strikethrough", () => { pushUndo(); node.struck = !node.struck; renderAll(); persist(); }]);
+    structureItems.push([node.struck ? "~~ Remove strikethrough" : "~~ Strikethrough", () => { pushUndo(); node.struck = !node.struck; renderAll(); persist(); }]);
     if (node.children && node.children.length > 0) {
-      items.push([node.collapsed ? "Expand" : "Collapse", () => { pushUndo(); node.collapsed = !node.collapsed; renderAll(); persist(); }]);
+      structureItems.push([node.collapsed ? "▸ Expand" : "▾ Collapse", () => { pushUndo(); node.collapsed = !node.collapsed; renderAll(); persist(); }]);
     }
-    items.push(["Copy as outline", () => copyNodeBranchToClipboard(node)]);
-    items.push([state.highlightId === node.id ? "Remove highlight" : "Highlight branch", () => setHighlight(node.id)]);
     if (node.ox || node.oy) {
-      items.push(["Reset position", () => { pushUndo(); delete node.ox; delete node.oy; renderAll(); persist(); }]);
+      structureItems.push(["↺ Reset position", () => { pushUndo(); delete node.ox; delete node.oy; renderAll(); persist(); }]);
     }
-    items.push(["Add table child", () => {
+    renderItemRows(structureItems);
+
+    // Group: content — the stuff actually living on this node (table
+    // structure, notes, photos), kept apart from the structural actions
+    // above since these add/change what the node holds rather than where
+    // it sits.
+    addSep();
+    const contentItems = [];
+    contentItems.push(["▦ Add table child", () => {
       const n = addTableChild(node.id);
       if (n) { state.selectedId = n.id; renderAll(); persist(); }
     }]);
     if (nodeIsTable(node)) {
-      items.push(["Add row", () => { pushUndo(); tableAddRow(node); renderAll(); persist(); }]);
-      items.push(["Add column", () => { pushUndo(); tableAddColumn(node); renderAll(); persist(); }]);
+      contentItems.push(["⬇️ Add row", () => { pushUndo(); tableAddRow(node); renderAll(); persist(); }]);
+      contentItems.push(["➡️ Add column", () => { pushUndo(); tableAddColumn(node); renderAll(); persist(); }]);
       if (node.table.cells.length > 1) {
-        items.push(["Remove row", () => { pushUndo(); tableRemoveRow(node); renderAll(); persist(); }]);
+        contentItems.push(["⬆️ Remove row", () => { pushUndo(); tableRemoveRow(node); renderAll(); persist(); }]);
       }
       if (node.table.cells[0].length > 1) {
-        items.push(["Remove column", () => { pushUndo(); tableRemoveColumn(node); renderAll(); persist(); }]);
+        contentItems.push(["⬅️ Remove column", () => { pushUndo(); tableRemoveColumn(node); renderAll(); persist(); }]);
       }
       // "Outline only" hides every interior cell border and keeps just
       // the table's outer edge (plus a thin rule under the second row,
@@ -7694,56 +7733,46 @@
       // and renderTableGrid's table.classList.add below. Handy for
       // calendar-style tables where a full interior grid looks noisy.
       const outline = node.table.gridStyle === "outline";
-      items.push([outline ? "Grid lines: show all cells" : "Grid lines: outline only", () => {
+      contentItems.push([outline ? "▦ Grid lines: show all cells" : "▦ Grid lines: outline only", () => {
         pushUndo();
         node.table.gridStyle = outline ? "grid" : "outline";
         renderAll();
         persist();
       }]);
     }
-    items.push(["Add link…", () => addNodeUrl(node.id)]);
-    items.push([nodeHasNotes(node) ? `Notes (${getNodeNotes(node).length})…` : "Add note…", () => openNoteModal(node.id)]);
-    items.push(["Add photo…", () => openNodePhotoPicker(node.id)]);
+    contentItems.push([nodeHasNotes(node) ? `📝 Notes (${getNodeNotes(node).length})…` : "📝 Add note…", () => openNoteModal(node.id)]);
+    contentItems.push(["🖼️ Add photo…", () => openNodePhotoPicker(node.id)]);
     if (nodeHasImages(node)) {
-      items.push([getNodeImageIds(node).length > 1 ? "View photos…" : "View photo…", () => openPhotoModal(node.id, 0)]);
-      items.push(["Remove all photos", () => {
+      contentItems.push([getNodeImageIds(node).length > 1 ? "👁️ View photos…" : "👁️ View photo…", () => openPhotoModal(node.id, 0)]);
+      contentItems.push(["🗑️ Remove all photos", () => {
         pushUndo();
         getNodeImageIds(node).forEach(deletePhotoRecord);
         node.images = []; node.image = null; node.photoTags = {}; node.photoNotes = {}; node.photoComments = {};
         renderAll(); persist();
       }]);
     }
-    for (const [label, fn, removeFn] of items) {
-      const it = document.createElement("div");
-      it.className = "ctx-item";
-      const labelSpan = document.createElement("span");
-      labelSpan.className = "ctx-item-label";
-      labelSpan.textContent = label;
-      it.appendChild(labelSpan);
-      if (removeFn) {
-        const rm = document.createElement("span");
-        rm.className = "ctx-item-remove";
-        rm.textContent = "✕";
-        rm.title = "Remove";
-        // Stop the click from also bubbling into the row's own handler
-        // below (which would open the edit prompt right after removing).
-        rm.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); removeFn(); });
-        it.appendChild(rm);
-      }
-      it.addEventListener("click", () => { closeContextMenu(); fn(); });
-      ctxMenu.appendChild(it);
-    }
+    renderItemRows(contentItems);
 
-    // Tasks, Timer, Brainstorm, and the Affirmation game — grouped together
-    // in their own section (separated by a divider) rather than scattered
-    // among the generic node actions above, since these four are the
-    // "work on this node" actions as opposed to editing/formatting it.
+    // Group: reference — actions that read/export/mark this branch
+    // rather than change or add to it.
+    addSep();
+    renderItemRows([
+      ["📋 Copy as outline", () => copyNodeBranchToClipboard(node)],
+      [state.highlightId === node.id ? "🖍️ Remove highlight" : "🖍️ Highlight branch", () => setHighlight(node.id)],
+    ]);
+
+    // Tasks, Timer, Brainstorm, commented Links, and the Affirmation game —
+    // grouped together in their own section (separated by a divider)
+    // rather than scattered among the generic node actions above, since
+    // these five are exactly the things nodeTaskProgress adds points for
+    // (see that function's comments), i.e. the "work on this node for
+    // score" actions as opposed to editing/formatting it.
     // The Affirmation game row carries a small "✎" button on its right
     // edge (reusing the same corner-icon slot as the ✕ remove buttons
     // elsewhere in this menu) that opens the shared lines-editor modal
     // instead of starting a round.
     {
-      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      addSep();
 
       const addGroupRow = (label, fn) => {
         const row = document.createElement("div");
@@ -7759,18 +7788,38 @@
 
       {
         const prog = nodeTaskProgress(node);
-        const label = prog.total ? `Tasks… (${prog.done}/${prog.total})` : "Add tasks…";
+        const label = prog.total ? `✅ Tasks… (${prog.done}/${prog.total})` : "✅ Add tasks…";
         addGroupRow(label, () => openTasksModal(node.id));
       }
       {
         const played = getNodeTimePlayed(node);
-        const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
+        const label = played ? `⏱️ Timer — ${formatTimePlayed(played)}…` : "⏱️ Add timer…";
         addGroupRow(label, () => openTimerModal(node.id));
       }
       {
         const pts = brainstormPoints(node);
         const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
         addGroupRow(label, () => openBrainstormModal(node.id));
+      }
+      {
+        // Shortcut: always opens a brand-new node-level note pre-filled
+        // with the standing DRC template (see DRC_NOTE_TEMPLATE / the
+        // forceDRCTemplate branch in openNoteModal), regardless of how
+        // many notes this node already has — unlike the automatic
+        // prefill that only fires on a task literally named "DRC".
+        addGroupRow("📋 DRC…", () => openNoteModal(node.id, undefined, null, null, null, true));
+      }
+      {
+        // Only *commented* links score points (see nodeTaskProgress), so
+        // the count shown here — unlike the plain "Add link…" action this
+        // replaces — reflects how many of the node's links have a comment
+        // set, not just how many links exist. Still just opens the normal
+        // add-link prompt; commenting on a link itself happens from that
+        // link's own icon.
+        const urls = getNodeUrls(node);
+        const commented = urls.filter(u => getLinkComment(node, u)).length;
+        const label = commented > 0 ? `🔗 Links (${commented} commented)…` : "🔗 Add link…";
+        addGroupRow(label, () => addNodeUrl(node.id));
       }
 
       const wins = nodeAffirmationWins(node);
@@ -7796,7 +7845,7 @@
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const label = document.createElement("div");
       label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Glow effect";
+      label.textContent = "✨ Glow effect";
       ctxMenu.appendChild(label);
 
       const row = document.createElement("div");
@@ -7830,7 +7879,7 @@
     // that hop (see the bulk "children" picker below, and
     // openConnectorContextMenu for a single hop).
     if (node === state.current.root) {
-      renderConnectorStyleRow(ctxMenu, "Connector style",
+      renderConnectorStyleRow(ctxMenu, "🔀 Connector style",
         () => {
           ensureTheme(state.current);
           return state.current.theme.connectorArrow ? "arrow" : (state.current.theme.connectorShape || "curved");
@@ -7858,7 +7907,7 @@
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const clockItem = document.createElement("div");
       clockItem.className = "ctx-item";
-      clockItem.textContent = isClockHidden() ? "Show root node clock & 📅 Calendar button" : "Hide root node clock & 📅 Calendar button";
+      clockItem.textContent = isClockHidden() ? "🕐 Show root node clock & 📅 Calendar button" : "🕐 Hide root node clock & 📅 Calendar button";
       clockItem.addEventListener("click", () => { closeContextMenu(); setClockHidden(!isClockHidden()); });
       ctxMenu.appendChild(clockItem);
     }
@@ -7874,7 +7923,7 @@
       const distLabel = document.createElement("div");
       distLabel.className = "ctx-item";
       distLabel.style.cursor = "default";
-      distLabel.textContent = "Children distance";
+      distLabel.textContent = "↔️ Children distance";
       ctxMenu.appendChild(distLabel);
 
       const distRow = document.createElement("div");
@@ -7914,7 +7963,7 @@
       if (anyCustomGap) {
         const resetAll = document.createElement("div");
         resetAll.className = "ctx-item";
-        resetAll.textContent = "Reset all to default spacing";
+        resetAll.textContent = "↺ Reset all to default spacing";
         resetAll.addEventListener("click", () => {
           closeContextMenu();
           pushUndo();
@@ -7928,7 +7977,7 @@
       // Bulk connector style — same combined Curved/Elbow/Arrow picker as
       // the per-connector menu (see openConnectorContextMenu), but applied
       // to every direct child's connector at once instead of one at a time.
-      renderConnectorStyleRow(ctxMenu, "Children connector style",
+      renderConnectorStyleRow(ctxMenu, "🔀 Children connector style",
         () => {
           ensureTheme(state.current);
           const values = node.children.map((c) => {
@@ -7959,7 +8008,7 @@
         const other = findNode(otherId);
         const it = document.createElement("div");
         it.className = "ctx-item danger";
-        it.textContent = `Remove link to "${other ? (other.text || "(untitled)") : "unknown node"}"`;
+        it.textContent = `🔗 Remove link to "${other ? (other.text || "(untitled)") : "unknown node"}"`;
         it.addEventListener("click", () => { closeContextMenu(); removeLink(link.id); });
         ctxMenu.appendChild(it);
       }
@@ -7970,7 +8019,7 @@
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const label = document.createElement("div");
       label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Branch color";
+      label.textContent = "🎨 Branch color";
       ctxMenu.appendChild(label);
       const sw = document.createElement("div"); sw.className = "ctx-swatches";
       PALETTE.forEach(c => {
@@ -7989,7 +8038,7 @@
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const label = document.createElement("div");
       label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Node color";
+      label.textContent = "🎨 Node color";
       ctxMenu.appendChild(label);
       const sw = document.createElement("div"); sw.className = "ctx-swatches";
       PALETTE.forEach(c => {
@@ -8012,7 +8061,7 @@
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const label = document.createElement("div");
       label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Font color";
+      label.textContent = "🔤 Font color";
       ctxMenu.appendChild(label);
       const sw = document.createElement("div"); sw.className = "ctx-swatches";
       const resetSwatch = document.createElement("span");
@@ -8034,7 +8083,7 @@
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const del = document.createElement("div");
       del.className = "ctx-item danger";
-      del.textContent = "Delete branch (Del)";
+      del.textContent = "🗑️ Delete branch (Del)";
       del.addEventListener("click", () => { closeContextMenu(); deleteBranch(node.id); });
       ctxMenu.appendChild(del);
     }
@@ -11134,7 +11183,7 @@
   // last (most recently added) one, or pass notes.length (or any
   // out-of-range index) to start a brand-new blank note instead of an
   // existing one.
-  function openNoteModal(nodeId, index, photoId, taskId, cellPos) {
+  function openNoteModal(nodeId, index, photoId, taskId, cellPos, forceDRCTemplate) {
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
@@ -11166,12 +11215,21 @@
         noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
       }
     }
-    const wantsNew = index != null && index >= noteWorkingList.length;
-    if (!noteWorkingList.length || wantsNew) {
-      noteWorkingList.push({ id: uid(), title: "", html: "" });
+    // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
+    // group below) — unlike the automatic task-name prefill above, this
+    // always starts a brand-new note pre-filled with the template,
+    // regardless of how many notes the node already has.
+    if (forceDRCTemplate) {
+      noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
+      noteActiveIndex = noteWorkingList.length - 1;
+    } else {
+      const wantsNew = index != null && index >= noteWorkingList.length;
+      if (!noteWorkingList.length || wantsNew) {
+        noteWorkingList.push({ id: uid(), title: "", html: "" });
+      }
+      noteActiveIndex = wantsNew ? noteWorkingList.length - 1
+        : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
     }
-    noteActiveIndex = wantsNew ? noteWorkingList.length - 1
-      : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
     loadNoteIntoEditor();
     // A photo's note is really a caption/comment on that photo, viewed
     // right after (or over) the photo itself, so it benefits from more
