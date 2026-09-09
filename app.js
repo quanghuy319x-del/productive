@@ -1729,7 +1729,7 @@
     return a;
   }
   function cellAttachHasAny(a) {
-    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.tasks && a.tasks.length) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec));
+    return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.tasks && a.tasks.length) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec || (a.brainstorm && a.brainstorm.text)));
   }
 
   // A handful of features (the affirmation typing game, the countdown
@@ -2295,6 +2295,15 @@
       total += commentPoints;
       done += commentPoints;
     }
+    // Every 2 non-empty lines jotted in the node's Brainstorm scratchpad
+    // (node.brainstorm.text — see getNodeBrainstorm/brainstormPoints) is
+    // worth 1 more point toward the same tally, same "always fully done"
+    // treatment as the above: 2 lines = 1, 4 lines = 2, 6 lines = 3, etc.
+    const brainstormPts = brainstormPoints(node);
+    if (brainstormPts > 0) {
+      total += brainstormPts;
+      done += brainstormPts;
+    }
     return { done, total, pct: total ? done / total : 0 };
   }
 
@@ -2370,6 +2379,28 @@
   }
   function normalizeAffirmationText(s) {
     return (s || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
+  }
+
+  // The "Brainstorm" note-typing score task — reached from the same
+  // right-click menu as the Affirmation game and Timer, but simpler than
+  // either: no target quote, no countdown, just a plain free-typed
+  // scratchpad (host.brainstorm = {text}) that autosaves as you type.
+  // Follows the same host-based {nodeId, r, c} pattern as the timer/game
+  // above (see resolveHost) so it works identically on a whole node or a
+  // single table cell. Every 2 non-empty lines written is worth 1 point
+  // toward the node's task score (see nodeTaskProgress above).
+  function getNodeBrainstorm(host) {
+    return (host && host.brainstorm) ? host.brainstorm : null;
+  }
+  function getBrainstormText(host) {
+    const b = getNodeBrainstorm(host);
+    return (b && b.text) || "";
+  }
+  function brainstormLineCount(host) {
+    return getBrainstormText(host).split("\n").filter(l => l.trim().length > 0).length;
+  }
+  function brainstormPoints(host) {
+    return Math.floor(brainstormLineCount(host) / 2);
   }
 
   // Shared cap for the node icon strip (see renderNode/computeNodeBox):
@@ -4386,7 +4417,7 @@
     // Notes and links each collapse to a single stand-in cell past
     // STRIP_OVERFLOW_CAP too (see stripBucketCount/renderNode), so the
     // box reserves exactly as much room as actually gets drawn either way.
-    const stripIconCountForBox = stripBucketCount(getNodeNotes(node).length) + stripBucketCount(getNodeUrls(node).length) + (nodeAffirmationWins(node) ? 1 : 0) + (getNodeTimePlayed(node) ? 1 : 0);
+    const stripIconCountForBox = stripBucketCount(getNodeNotes(node).length) + stripBucketCount(getNodeUrls(node).length) + (nodeAffirmationWins(node) ? 1 : 0) + (getNodeTimePlayed(node) ? 1 : 0) + (brainstormPoints(node) > 0 ? 1 : 0);
     let stripW = 0, stripH = 0;
     if (stripIconCountForBox || nodeImages.length) {
       // Past STRIP_OVERFLOW_CAP photos, collapse down to a single cover
@@ -5195,6 +5226,11 @@
   // to a whole node.
   const CELL_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
 
+  // Same lightbulb glyph the node-level brainstorm marker uses (see the
+  // photo/note/link strip in renderNode) — shared here so a cell's own
+  // Brainstorm scratchpad reads as the same icon as a node's.
+  const CELL_BRAINSTORM_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21.5h4"/><path d="M12 2.5a6.7 6.7 0 00-3.8 12.2c.65.5 1.05 1.35 1.05 2.3h5.5c0-.95.4-1.8 1.05-2.3A6.7 6.7 0 0012 2.5z"/></svg>';
+
   // A hidden, dedicated file input for cell photos (kept separate from
   // nodeImageInput so picking a photo for a cell can never get confused
   // with picking one for the node itself if both were somehow triggered
@@ -5462,6 +5498,11 @@
       const wins = nodeAffirmationWins(a);
       const label = wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game";
       items.push([label, () => openAffirmationGame(node.id, r, c)]);
+    }
+    {
+      const pts = brainstormPoints(a);
+      const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
+      items.push([label, () => openBrainstormModal(node.id, r, c)]);
     }
     // "Merge cells" only shows up once a multi-cell rectangle is actually
     // selected in this same table (see state.cellRange/handleTableCellClick,
@@ -5732,11 +5773,28 @@
       tbadge.appendChild(tlabel);
       strip.appendChild(tbadge);
     }
+    const cellBrainstormPts = brainstormPoints(a);
+    if (cellBrainstormPts > 0) {
+      // Same lightbulb-with-count marker as the node-level strip (see
+      // renderNode) — click jumps straight into the scratchpad for this cell.
+      const bIcon = document.createElement("span");
+      bIcon.className = "node-table-cell-icon node-table-cell-brainstorm";
+      bIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+      bIcon.title = `Brainstorm — ${cellBrainstormPts} point${cellBrainstormPts === 1 ? "" : "s"} (${brainstormLineCount(a)} lines). Click to keep writing.`;
+      bIcon.addEventListener("click", () => openBrainstormModal(node.id, r, c));
+      if (cellBrainstormPts > 1) {
+        const bCount = document.createElement("span");
+        bCount.className = "node-marker-count";
+        bCount.textContent = String(cellBrainstormPts);
+        bIcon.appendChild(bCount);
+      }
+      strip.appendChild(bIcon);
+    }
 
     const addBtn = document.createElement("span");
     addBtn.className = "node-table-cell-icon node-table-cell-add";
     addBtn.textContent = "+";
-    addBtn.title = "Add a photo, note, link, task, timer, or affirmation game to this cell";
+    addBtn.title = "Add a photo, note, link, task, timer, affirmation game, or brainstorm to this cell";
     addBtn.addEventListener("click", (e) => openCellAddMenu(node, r, c, e.clientX, e.clientY));
     strip.appendChild(addBtn);
 
@@ -6093,13 +6151,14 @@
     const nodeImages = getNodeImages(node);
     const nodeImageIds = getNodeImageIds(node);
     const timePlayed = getNodeTimePlayed(node);
+    const brainstormPts = brainstormPoints(node);
     // Note, link, affirmation-completion, and time-played markers all
     // render inline as cells of this same strip, right alongside the
     // photo thumbnails, instead of floating outside the node — so every
     // attachment/status indicator for a node lives in one place, all at
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
-    const stripIconCount = stripBucketCount(nodeNotes.length) + stripBucketCount(nodeUrls.length) + tasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0);
+    const stripIconCount = stripBucketCount(nodeNotes.length) + stripBucketCount(nodeUrls.length) + tasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0) + (brainstormPts > 0 ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
@@ -6140,6 +6199,12 @@
       // node's own notes, a task's note, or (once collapsed) the single
       // stand-in icon for an overflowed pile of notes.
       const NODE_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
+
+      // Brainstorm marker icon — a simple lightbulb outline (bulb +
+      // filament "waist" + two base bars), drawn with currentColor like
+      // the affirmation checkmark so its purple tint comes purely from
+      // CSS (.node-brainstorm-marker) rather than being baked into the SVG.
+      const NODE_BRAINSTORM_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21.5h4"/><path d="M12 2.5a6.7 6.7 0 00-3.8 12.2c.65.5 1.05 1.35 1.05 2.3h5.5c0-.95.4-1.8 1.05-2.3A6.7 6.7 0 0012 2.5z"/></svg>';
 
       // One icon per note (instead of a single icon plus a count badge),
       // same cell size/box as a photo thumbnail — each is independently
@@ -6348,6 +6413,29 @@
         tlabel.textContent = formatTimePlayed(timePlayed);
         tbadge.appendChild(tlabel);
         strip.appendChild(tbadge);
+      }
+
+      if (brainstormPts > 0) {
+        // Same small cell box as the note/link/timer markers above — a
+        // lightbulb glyph with a purple tint, plus a count badge holding
+        // the point total once it's more than 1 (mirrors the affirmation
+        // checkmark's own count badge). Click jumps straight into the
+        // scratchpad to keep writing.
+        const bIcon = document.createElement("span");
+        bIcon.className = "node-photo-thumb node-brainstorm-marker";
+        bIcon.innerHTML = NODE_BRAINSTORM_ICON_SVG;
+        bIcon.title = `Brainstorm — ${brainstormPts} point${brainstormPts === 1 ? "" : "s"} (${brainstormLineCount(node)} lines). Click to keep writing.`;
+        bIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openBrainstormModal(node.id);
+        });
+        if (brainstormPts > 1) {
+          const bCount = document.createElement("span");
+          bCount.className = "node-marker-count";
+          bCount.textContent = String(brainstormPts);
+          bIcon.appendChild(bCount);
+        }
+        strip.appendChild(bIcon);
       }
 
       div.appendChild(strip);
@@ -7614,6 +7702,11 @@
       const played = getNodeTimePlayed(node);
       const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
       items.push([label, () => openTimerModal(node.id)]);
+    }
+    {
+      const pts = brainstormPoints(node);
+      const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
+      items.push([label, () => openBrainstormModal(node.id)]);
     }
     items.push(["Add photo…", () => openNodePhotoPicker(node.id)]);
     if (nodeHasImages(node)) {
@@ -13596,6 +13689,128 @@
     if (timerModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closeTimerModal();
   });
+
+  /* ---------------- node brainstorm scratchpad ---------------- */
+  // A per-node (or per-cell) free-typed note scratchpad — reached from
+  // the same right-click menu as the Timer and Affirmation game, but far
+  // simpler than either: just a plain textarea that autosaves as you
+  // type (host.brainstorm = {text}), no quote to match and nothing to
+  // start or stop. Every 2 non-empty lines written is worth 1 point
+  // toward the task score (see nodeTaskProgress/brainstormPoints above)
+  // and shows as a small lightbulb badge on the node/cell itself (see
+  // renderNode). Uses the same host-based {nodeId, r, c} target pattern
+  // as the timer above (see resolveHost).
+  const brainstormModal = $("#brainstorm-modal");
+  const brainstormNodeLabel = $("#brainstorm-node-label");
+  const brainstormTextarea = $("#brainstorm-textarea");
+  const brainstormProgressLabel = $("#brainstorm-progress-label");
+  const brainstormClearBtn = $("#brainstorm-clear-btn");
+  let brainstormEditingId = null; // {nodeId, r, c} — r/c omitted for a node-level scratchpad, both given for a table-cell one
+  let brainstormSaveTimer = null;
+
+  function openBrainstormModal(nodeId, r, c) {
+    const host = resolveHost(nodeId, r, c);
+    if (!host) return;
+    commitEditIfActive();
+    closeContextMenu();
+    brainstormEditingId = { nodeId, r, c };
+    renderBrainstormModal();
+    zoomModalOpen(brainstormModal);
+    requestAnimationFrame(() => brainstormTextarea.focus());
+  }
+
+  function closeBrainstormModal() {
+    flushBrainstormAutosave();
+    brainstormEditingId = null;
+    renderAll();
+    zoomModalClose(brainstormModal);
+  }
+
+  function renderBrainstormModal() {
+    const t = brainstormEditingId;
+    const host = t ? resolveHost(t.nodeId, t.r, t.c) : null;
+    if (!host) { closeBrainstormModal(); return; }
+    const node = findNode(t.nodeId);
+    const cellText = (t.r != null && node && node.table && node.table.cells[t.r]) ? node.table.cells[t.r][t.c] : null;
+    brainstormNodeLabel.textContent = t.r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${t.r + 1}, col ${t.c + 1})`);
+    brainstormTextarea.value = getBrainstormText(host);
+    renderBrainstormProgress(host);
+  }
+
+  function renderBrainstormProgress(host) {
+    const lines = brainstormLineCount(host);
+    const pts = brainstormPoints(host);
+    brainstormProgressLabel.textContent = `${lines} line${lines === 1 ? "" : "s"} · ${pts} pt${pts === 1 ? "" : "s"}`;
+  }
+
+  // Debounced autosave: fires a short beat after the user stops typing,
+  // so the scratchpad saves itself without needing an explicit Save
+  // click — same 500ms pattern as the node/task note editor (see
+  // scheduleNoteAutosave).
+  function scheduleBrainstormAutosave() {
+    const t = brainstormEditingId;
+    if (!t) return;
+    const host = resolveHost(t.nodeId, t.r, t.c);
+    if (!host) return;
+    if (!host.brainstorm) host.brainstorm = { text: "" };
+    host.brainstorm.text = brainstormTextarea.value;
+    unsavedEdits = true;
+    renderBrainstormProgress(host);
+    updateBrainstormLiveUI(t);
+    clearTimeout(brainstormSaveTimer);
+    brainstormSaveTimer = setTimeout(() => { pushUndo(); persist(); }, 500);
+  }
+
+  function flushBrainstormAutosave() {
+    if (!brainstormSaveTimer) return;
+    clearTimeout(brainstormSaveTimer);
+    brainstormSaveTimer = null;
+    persist();
+  }
+
+  // Cheap live update — pushes the new line/point count straight into
+  // the node's (or table cell's) badge on the canvas without a full
+  // renderAll(), same idea as updateNodeTimerLiveUI above.
+  function updateBrainstormLiveUI(target) {
+    if (!target) return;
+    const host = resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
+    const pts = brainstormPoints(host);
+    const badge = target.r == null
+      ? nodesLayer.querySelector(`.node[data-id="${target.nodeId}"] .node-brainstorm-marker`)
+      : nodesLayer.querySelector(`.node[data-id="${target.nodeId}"] .node-table-cell[data-r="${target.r}"][data-c="${target.c}"] .node-table-cell-brainstorm`);
+    if (badge) {
+      badge.title = `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(host)} lines). Click to keep writing.`;
+    } else if (pts > 0 && target.nodeId !== state.editingId) {
+      // The badge doesn't exist in the DOM yet (this is the first line
+      // pair that's earned a point) — a one-time full render creates it
+      // if it's actually visible right now, same fallback
+      // updateNodeTimerLiveUI uses above.
+      renderAll();
+    }
+  }
+
+  brainstormTextarea.addEventListener("input", scheduleBrainstormAutosave);
+  brainstormTextarea.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // don't let Enter/Delete/etc trigger canvas shortcuts while typing
+    if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); }
+  });
+
+  brainstormClearBtn.addEventListener("click", () => {
+    const t = brainstormEditingId;
+    if (!t) return;
+    const host = resolveHost(t.nodeId, t.r, t.c);
+    if (!host || !getBrainstormText(host)) return;
+    pushUndo();
+    host.brainstorm = { text: "" };
+    brainstormTextarea.value = "";
+    renderBrainstormProgress(host);
+    persist();
+    updateBrainstormLiveUI(t);
+  });
+
+  $("#brainstorm-back").addEventListener("click", closeBrainstormModal);
+  brainstormModal.addEventListener("click", (e) => { if (e.target === brainstormModal) closeBrainstormModal(); });
 
   /* ---------------- affirmation lines manager ---------------- */
   // Lets the person edit the pool of lines itself: rename any existing

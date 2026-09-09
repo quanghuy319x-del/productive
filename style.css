@@ -857,6 +857,17 @@ body.signed-out #title-input{ visibility:hidden; }
   white-space: nowrap;
   pointer-events: none;
 }
+.node-table-cell-brainstorm{
+  position: relative;
+  background: rgba(179, 136, 245, 0.18);
+  border: 1px solid rgba(179, 136, 245, 0.45);
+  color: #c39bf5;
+}
+.node-table-cell-brainstorm:hover{
+  background: rgba(179, 136, 245, 0.32);
+  color: #d8bbfa;
+}
+.node-table-cell-brainstorm svg{ width: 70%; height: 70%; }
 /* Cell-scale "done/total" pill for a cell's task list — same gradient
    family as the node-level .node-progress-fill bar (see that block
    below), just condensed to a single small chip since a cell has no
@@ -1222,6 +1233,23 @@ body.signed-out #title-input{ visibility:hidden; }
   height: 2.6px;
   top: -4px;
 }
+
+/* Brainstorm scratchpad marker — same small cell box as the note/link/
+   affirmation/timer icons above, tinted violet/purple (distinct from the
+   warm note tint and the green affirmation tint) so a node that's earned
+   Brainstorm points reads clearly among the other strip cells. Carries a
+   lightbulb glyph (see NODE_BRAINSTORM_ICON_SVG in app.js) plus the usual
+   .node-marker-count badge once more than 1 point has been earned. */
+.node-brainstorm-marker{
+  background: rgba(179, 136, 245, 0.18);
+  border-color: rgba(179, 136, 245, 0.45);
+  color: #c39bf5;
+}
+.node-brainstorm-marker:hover{
+  background: rgba(179, 136, 245, 0.32);
+  color: #d8bbfa;
+}
+.node-brainstorm-marker svg{ width: 70%; height: 70%; }
 
 /* Root node's live clock — current time, UTC/US/UK world clocks, the
    Vietnamese weekday+date, and the lunar date, all rendered in normal
@@ -2776,6 +2804,34 @@ kbd{
   letter-spacing: 0.3px;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+
+/* ---- Brainstorm modal (free-typed note scratchpad, 2 lines = 1 pt) ---- */
+.brainstorm-modal-card{ max-width: 420px; }
+.brainstorm-textarea{
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+.brainstorm-textarea:focus{ border-color: var(--accent); }
+.brainstorm-progress-label{
+  margin: 8px 2px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c39bf5;
+  text-align: right;
 }
 .timer-countdown-row.hidden, .timer-done-label.hidden{ display:none; }
 .timer-countdown-row{

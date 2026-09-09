@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=36">
 </head>
 <body>
 <div id="app">
@@ -543,9 +543,24 @@
   </div>
 </div>
 
+<div id="brainstorm-modal" class="modal hidden">
+  <div class="modal-card brainstorm-modal-card">
+    <div class="modal-back-row">
+      <button type="button" id="brainstorm-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
+      <h2>Brainstorm</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="brainstorm-clear-btn" class="modal-back-btn" title="Clear" aria-label="Clear">↺</button>
+    </div>
+    <p id="brainstorm-node-label" class="timer-node-label"></p>
+    <textarea id="brainstorm-textarea" class="brainstorm-textarea" spellcheck="false" placeholder="Jot down ideas, one per line…"></textarea>
+    <p id="brainstorm-progress-label" class="brainstorm-progress-label">0 lines · 0 pts</p>
+    <p class="timer-hint">Every 2 lines you write earns 1 point toward this node's task score.</p>
+  </div>
+</div>
+
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>
