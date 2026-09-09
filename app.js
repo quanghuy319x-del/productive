@@ -6253,6 +6253,13 @@
       // stand-in icon for an overflowed pile of notes.
       const NODE_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
 
+      // DRC note marker — a clipboard-with-checkmark instead of the plain
+      // sticky note above, so a "Daily Report Card" note reads as visibly
+      // different from a regular note at a glance on the node itself (see
+      // the n.drc branch below). Blue clip + white body + a green check
+      // where the sticky note has its folded corner.
+      const NODE_DRC_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="4" y="3.3" width="16" height="19" rx="1.5" fill="#F4F7FB" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><rect x="8" y="1.6" width="8" height="3.6" rx="1" fill="#6D93C7" stroke="#000" stroke-width="1.1"/><line x1="7" y1="9.4" x2="17" y2="9.4" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="7" y1="12.5" x2="17" y2="12.5" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="7" y1="15.6" x2="13" y2="15.6" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M13.8 17.7l1.7 1.7 3.4-3.6" fill="none" stroke="#2E9E4F" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
       // Brainstorm marker icon — a simple lightbulb outline (bulb +
       // filament "waist" + two base bars), drawn with currentColor like
       // the affirmation checkmark so its purple tint comes purely from
@@ -6270,8 +6277,8 @@
       const notesOverflow = nodeNotes.length > STRIP_OVERFLOW_CAP;
       (notesOverflow ? nodeNotes.slice(0, 1) : nodeNotes).forEach((n, i) => {
         const noteIcon = document.createElement("span");
-        noteIcon.className = "node-photo-thumb node-note-marker";
-        noteIcon.innerHTML = NODE_NOTE_ICON_SVG;
+        noteIcon.className = "node-photo-thumb node-note-marker" + (n.drc ? " node-drc-marker" : "");
+        noteIcon.innerHTML = n.drc ? NODE_DRC_ICON_SVG : NODE_NOTE_ICON_SVG;
         noteIcon.draggable = true;
         noteIcon.addEventListener("dragend", endMarkerDrag);
         if (notesOverflow) {
@@ -6283,7 +6290,13 @@
           badge.textContent = String(nodeNotes.length);
           noteIcon.appendChild(badge);
         } else {
-          noteIcon.title = notePreviewText(n);
+          // DRC notes get a status-aware tooltip (filled-in or not, and
+          // its point value) instead of the plain content preview, so
+          // hovering tells you at a glance whether today's report still
+          // needs filling out.
+          noteIcon.title = n.drc
+            ? (drcNoteIsFilled(n) ? "DRC — filled in (5 pts)" : "DRC — not filled in yet")
+            : notePreviewText(n);
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
           noteIcon.addEventListener("click", (e) => {
             e.stopPropagation();
