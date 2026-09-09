@@ -9742,7 +9742,7 @@
   // be computed from the actual rendered <img> box rather than
   // hardcoded, and recomputed whenever the photo or the viewport
   // changes.
-  const PHOTO_TOP_CENTER_BUTTONS = [photoModalClose, photoModalDelete, photoModalCrop, photoModalText, photoModalSymbol];
+  const PHOTO_TOP_CENTER_BUTTONS = [photoModalSymbol, photoModalText, photoModalCrop, photoModalDelete, photoModalClose];
   function positionPhotoTopCenterButtons() {
     const rect = photoModalImg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -9759,6 +9759,20 @@
   }
   photoModalImg.addEventListener("load", positionPhotoTopCenterButtons);
   window.addEventListener("resize", positionPhotoTopCenterButtons);
+  // A plain requestAnimationFrame after setting a new photo isn't
+  // enough when the *modal itself* is also mid-open: zoomModalOpen's
+  // grow-in animation (see MODAL_ZOOM_MS) is still shrinking/scaling the
+  // card via CSS transition at that point, so measuring the photo's box
+  // one frame later still catches it mid-transition — landing this row
+  // wherever the photo happened to be at that instant rather than its
+  // final resting spot. Re-measuring again once that transition has had
+  // time to finish (in addition to the immediate rAF, which is what
+  // actually matters when just stepping prev/next in an already-open
+  // modal) covers both cases.
+  function schedulePositionPhotoTopCenterButtons() {
+    requestAnimationFrame(positionPhotoTopCenterButtons);
+    setTimeout(positionPhotoTopCenterButtons, MODAL_ZOOM_MS + 30);
+  }
 
   const PHOTO_SYMBOL_CHARS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
   const photoModalSymbolPopover = document.createElement("div");
@@ -9939,11 +9953,11 @@
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
     photoModalImg.src = images[photoModalState.index];
-    // Defer to a frame so layout has actually updated for the new image
-    // (right after setting .src, getBoundingClientRect can still report
-    // the previous photo's box, or a zero-size box while it decodes)
-    // before centering the Aa/🔢 buttons above it.
-    requestAnimationFrame(positionPhotoTopCenterButtons);
+    // Defer so layout has actually updated for the new image before
+    // centering the close/delete/crop/Aa/🔢 row above it — see
+    // schedulePositionPhotoTopCenterButtons for why this needs more
+    // than a single rAF.
+    schedulePositionPhotoTopCenterButtons();
     const group = photoModalState.tagGroup;
     photoModalGoto.classList.toggle("hidden", !group);
     if (group) {
