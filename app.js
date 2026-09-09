@@ -13693,13 +13693,20 @@
   /* ---------------- node brainstorm scratchpad ---------------- */
   // A per-node (or per-cell) free-typed note scratchpad — reached from
   // the same right-click menu as the Timer and Affirmation game, but far
-  // simpler than either: just a plain textarea that autosaves as you
-  // type (host.brainstorm = {text}), no quote to match and nothing to
-  // start or stop. Every 2 non-empty lines written is worth 1 point
-  // toward the task score (see nodeTaskProgress/brainstormPoints above)
-  // and shows as a small lightbulb badge on the node/cell itself (see
-  // renderNode). Uses the same host-based {nodeId, r, c} target pattern
-  // as the timer above (see resolveHost).
+  // simpler than either: a contenteditable scratchpad (host.brainstorm =
+  // {text, html}) that autosaves as you type, no quote to match and
+  // nothing to start or stop. Every 2 non-empty lines written is worth 1
+  // point toward the task score (see nodeTaskProgress/brainstormPoints
+  // above) and shows as a small lightbulb badge on the node/cell itself
+  // (see renderNode). Uses the same host-based {nodeId, r, c} target
+  // pattern as the timer above (see resolveHost).
+  //
+  // `text` is the plain-text version (one line per paragraph, via
+  // .innerText) that brainstormLineCount/brainstormPoints score against;
+  // `html` is the same content with each line's own color baked in (see
+  // brainstormAutoColorLines below), reusing the exact same per-paragraph
+  // cycling palette as the node note editor (see noteColorForOrdinal) so
+  // separate lines are just as easy to tell apart here as they are there.
   const brainstormModal = $("#brainstorm-modal");
   const brainstormNodeLabel = $("#brainstorm-node-label");
   const brainstormTextarea = $("#brainstorm-textarea");
@@ -13707,6 +13714,30 @@
   const brainstormClearBtn = $("#brainstorm-clear-btn");
   let brainstormEditingId = null; // {nodeId, r, c} — r/c omitted for a node-level scratchpad, both given for a table-cell one
   let brainstormSaveTimer = null;
+
+  // Gives every line its own color, cycling through the same palette as
+  // the note editor's numbered-list lines (see noteAutoColorParagraphs) —
+  // only touches lines that don't have a color yet, so existing lines
+  // keep the color they were given rather than shifting as new ones are
+  // added below them.
+  function brainstormAutoColorLines(container = brainstormTextarea) {
+    let idx = 0;
+    Array.from(container.children).forEach(el => {
+      if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
+      idx++;
+    });
+  }
+
+  // Renders host.brainstorm.html if it's already been colored, or builds
+  // a fresh one-<div>-per-line version from the plain-text field (same
+  // conversion the note editor uses for old plain-text notes — see
+  // noteHtmlFromRaw) for a scratchpad that predates this coloring, or was
+  // never opened in a browser session yet.
+  function getBrainstormHtml(host) {
+    const b = getNodeBrainstorm(host);
+    if (b && b.html) return b.html;
+    return noteHtmlFromRaw(getBrainstormText(host));
+  }
 
   function openBrainstormModal(nodeId, r, c) {
     const host = resolveHost(nodeId, r, c);
@@ -13733,7 +13764,8 @@
     const node = findNode(t.nodeId);
     const cellText = (t.r != null && node && node.table && node.table.cells[t.r]) ? node.table.cells[t.r][t.c] : null;
     brainstormNodeLabel.textContent = t.r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${t.r + 1}, col ${t.c + 1})`);
-    brainstormTextarea.value = getBrainstormText(host);
+    brainstormTextarea.innerHTML = getBrainstormHtml(host);
+    brainstormAutoColorLines();
     renderBrainstormProgress(host);
   }
 
@@ -13752,8 +13784,10 @@
     if (!t) return;
     const host = resolveHost(t.nodeId, t.r, t.c);
     if (!host) return;
-    if (!host.brainstorm) host.brainstorm = { text: "" };
-    host.brainstorm.text = brainstormTextarea.value;
+    brainstormAutoColorLines();
+    if (!host.brainstorm) host.brainstorm = { text: "", html: "" };
+    host.brainstorm.text = brainstormTextarea.innerText;
+    host.brainstorm.html = brainstormTextarea.innerHTML;
     unsavedEdits = true;
     renderBrainstormProgress(host);
     updateBrainstormLiveUI(t);
@@ -13802,8 +13836,8 @@
     const host = resolveHost(t.nodeId, t.r, t.c);
     if (!host || !getBrainstormText(host)) return;
     pushUndo();
-    host.brainstorm = { text: "" };
-    brainstormTextarea.value = "";
+    host.brainstorm = { text: "", html: "" };
+    brainstormTextarea.innerHTML = "";
     renderBrainstormProgress(host);
     persist();
     updateBrainstormLiveUI(t);

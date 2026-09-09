@@ -2812,6 +2812,8 @@ kbd{
   display: block;
   width: 100%;
   min-height: 220px;
+  max-height: 360px;
+  overflow-y: auto;
   margin-top: 10px;
   padding: 10px 12px;
   border-radius: 8px;
@@ -2820,12 +2822,23 @@ kbd{
   color: var(--text);
   font-family: inherit;
   font-size: 13.5px;
-  line-height: 1.5;
-  resize: vertical;
+  line-height: 1.6;
+  white-space: pre-wrap;
   outline: none;
   box-sizing: border-box;
+  text-align: left;
 }
 .brainstorm-textarea:focus{ border-color: var(--accent); }
+/* Each line/paragraph is its own child <div> (same structure as
+   .note-textarea — see noteHtmlFromRaw/brainstormAutoColorLines in
+   app.js) and gets its own cycling color so separate lines are easy to
+   tell apart at a glance, matching the node note editor's per-paragraph
+   coloring. */
+.brainstorm-textarea div{ min-height: 1.6em; }
+.brainstorm-textarea:empty::before{
+  content: attr(data-placeholder);
+  color: var(--text-dim);
+}
 .brainstorm-progress-label{
   margin: 8px 2px 0;
   font-size: 12px;
