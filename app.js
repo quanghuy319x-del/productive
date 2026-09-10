@@ -11564,6 +11564,25 @@
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
+    // A task literally named "DRC" shares the exact same single per-node
+    // DRC note as the right-click "📋 DRC…" shortcut below, instead of
+    // owning a separate note of its own — otherwise a node could end up
+    // showing two DRC clipboard icons at once (one from the node's own
+    // notes, one from this task). Only redirect on a genuinely fresh
+    // click (this task doesn't have a note of its own yet); a task that
+    // already has previously-written note content of its own keeps
+    // opening that note untouched, so nothing existing gets silently
+    // orphaned.
+    if (taskId) {
+      const taskHostForRedirect = cellPos ? getCellAttach(node, cellPos.r, cellPos.c) : node;
+      const drcTask = getNodeTasks(taskHostForRedirect).find(x => x.id === taskId);
+      if (drcTask && (drcTask.text || "").trim().toUpperCase() === "DRC" && !getTaskNotes(drcTask).length) {
+        taskId = null;
+        cellPos = null;
+        photoId = null;
+        forceDRCTemplate = true;
+      }
+    }
     noteEditingId = nodeId;
     noteEditingPhotoId = photoId || null;
     noteEditingTaskId = taskId || null;
@@ -11580,18 +11599,6 @@
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
     noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, favorite: !!n.favorite, createdAt: n.createdAt, updatedAt: n.updatedAt }));
-    // A task named "DRC" (Daily Report Card) gets its very first note
-    // pre-filled with the standing review template below, instead of a
-    // blank editor — only when this is genuinely the first note on that
-    // task (noteWorkingList was empty going in); adding a second note to
-    // the same task, or reopening an already-written one, is untouched.
-    const isFreshTaskNote = noteEditingTaskId && !noteWorkingList.length;
-    if (isFreshTaskNote) {
-      const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
-      if (t && (t.text || "").trim().toUpperCase() === "DRC") {
-        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), createdAt: Date.now(), updatedAt: Date.now() });
-      }
-    }
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
     // group below). Only one DRC note is allowed per node: if one
     // already exists among this node's notes (title "DRC" — see
