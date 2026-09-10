@@ -6227,6 +6227,7 @@
 
     if (node.id === state.editingId) {
       div.contentEditable = "true";
+      div.spellcheck = false;
       div.addEventListener("input", () => autosizeEditingBox(div, node));
       // Pasting an image while typing a node's text would otherwise let
       // the browser embed it directly inline in the contenteditable box
@@ -10932,6 +10933,25 @@
       photoModalText.classList.add("bl-text-armed");
     };
 
+    // Declared here (rather than down by the toolbar it actually belongs
+    // to) because selectBox — called below by dropSymbol as soon as a
+    // number-symbol is placed — needs it immediately. A number-symbol
+    // click supplies startAddText's initialSymbol and drops+selects a box
+    // before the toolbar further down ever gets built, so defining
+    // swatchEls there instead left it in the temporal dead zone at the
+    // moment selectBox's syncSwatches() call ran — a ReferenceError that
+    // aborted startAddText mid-setup, after it had already hidden the
+    // modal's nav/close buttons and flipped addingText on, but before it
+    // ever appended the overlay/toolbar (with the Cancel button) that
+    // would have undone that. That's what left the photo viewer with
+    // nothing left to click and no way to close it.
+    const swatchEls = [];
+    function syncSwatches() {
+      swatchEls.forEach((sw, i) => {
+        sw.style.border = TEXT_COLORS[i] === currentColor ? "2px solid var(--accent, #7c9eff)" : "1.5px solid rgba(255,255,255,0.4)";
+      });
+    }
+
     function deselectAll() {
       boxes.forEach(b => { b.wrap.classList.remove("bl-text-box-active"); if (b.del) b.del.style.display = "none"; if (b.resize) b.resize.style.display = "none"; if (b.grab) b.grab.style.display = "none"; });
       activeBox = null;
@@ -11160,12 +11180,8 @@
       display: "flex", alignItems: "center", gap: "8px", zIndex: "6", whiteSpace: "nowrap"
     });
 
-    const swatchEls = [];
-    function syncSwatches() {
-      swatchEls.forEach((sw, i) => {
-        sw.style.border = TEXT_COLORS[i] === currentColor ? "2px solid var(--accent, #7c9eff)" : "1.5px solid rgba(255,255,255,0.4)";
-      });
-    }
+    // (swatchEls/syncSwatches now declared earlier, alongside the rest of
+    // this session's state — see the comment there for why.)
     TEXT_COLORS.forEach(c => {
       const sw = document.createElement("button");
       sw.type = "button"; sw.title = c;

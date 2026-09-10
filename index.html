@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=49">
+<link rel="stylesheet" href="style.css?v=50">
 </head>
 <body>
 <div id="app">
@@ -65,7 +65,7 @@
       <button id="btn-favoritesbrowser" class="btn-ghost" title="Browse your favorites">⭐ Favorites</button>
       <button id="btn-notesbrowser" class="btn-ghost" title="Browse all your notes">🗒 Notes</button>
       <button id="btn-photosbrowser" class="btn-ghost" title="Browse every photo on this map">🖼 Photos</button>
-      <button id="btn-videosbrowser" class="btn-ghost" title="Browse every video on this map">📺 Videos</button>
+      <button id="btn-videosbrowser" class="btn-ghost" title="Browse every video on this map"><svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="5" width="22" height="14" rx="4" fill="#FF0000"/><path d="M10 8.6l6.5 3.4-6.5 3.4z" fill="#fff"/></svg> Videos</button>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -223,7 +223,7 @@
     <div id="photo-modal-tags" class="photo-modal-tags">
       <div id="photo-modal-tag-chips" class="photo-modal-tag-chips"></div>
       <div class="photo-modal-tag-input-wrap">
-        <input id="photo-modal-tag-input" class="photo-modal-tag-input" type="text" placeholder="Add tag…" maxlength="24" autocomplete="off" aria-label="Add a tag to this photo">
+        <input id="photo-modal-tag-input" class="photo-modal-tag-input" type="text" placeholder="Add tag…" maxlength="24" autocomplete="off" spellcheck="false" aria-label="Add a tag to this photo">
         <ul id="photo-modal-tag-suggest" class="photo-modal-tag-suggest hidden"></ul>
       </div>
     </div>
@@ -235,7 +235,7 @@
     <button id="photo-modal-delete" class="photo-modal-delete" title="Delete this photo" aria-label="Delete this photo">🗑</button>
     <button id="photo-modal-close" class="photo-modal-close" title="Close" aria-label="Close">✕</button>
     <div id="photo-modal-comment-row" class="photo-modal-comment-row">
-      <textarea id="photo-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" placeholder="Add a comment about this photo… Press Enter for a new paragraph."></textarea>
+      <textarea id="photo-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this photo… Press Enter for a new paragraph."></textarea>
     </div>
   </div>
 </div>
@@ -248,7 +248,7 @@
       <button id="link-comment-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="link-comment-modal-url" class="link-comment-modal-url"></div>
-    <textarea id="link-comment-modal-input" class="video-modal-comment-input" rows="4" maxlength="2000" placeholder="Add a comment about this link… (shown on hover). Press Enter for a new paragraph."></textarea>
+    <textarea id="link-comment-modal-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this link… (shown on hover). Press Enter for a new paragraph."></textarea>
   </div>
 </div>
 
@@ -284,7 +284,7 @@
       <button id="video-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="video-modal-comment-row" class="video-modal-comment-row hidden">
-      <textarea id="video-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" placeholder="Add a comment about this link… (shown on hover). Press Enter for a new paragraph."></textarea>
+      <textarea id="video-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this link… (shown on hover). Press Enter for a new paragraph."></textarea>
     </div>
   </div>
 </div>
@@ -642,7 +642,7 @@
       <button type="button" id="brainstorm-clear-btn" class="modal-back-btn" title="Clear" aria-label="Clear">↺</button>
     </div>
     <p id="brainstorm-node-label" class="timer-node-label"></p>
-    <div id="brainstorm-textarea" class="brainstorm-textarea" contenteditable="true" spellcheck="true" data-placeholder="Jot down ideas, one per line…"></div>
+    <div id="brainstorm-textarea" class="brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line…"></div>
     <p id="brainstorm-progress-label" class="brainstorm-progress-label">0 lines · 0 pts</p>
     <p class="timer-hint">Every 2 lines you write earns 1 point toward this node's task score.</p>
   </div>
@@ -651,6 +651,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=100"></script>
+<script src="app.js?v=103"></script>
 </body>
 </html>

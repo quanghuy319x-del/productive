@@ -302,6 +302,12 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
   border: 1px solid var(--border);
 }
 .btn-ghost:hover{ color: var(--text); border-color: #3a4054; }
+.btn-icon-svg{
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+  margin-right: 1px;
+}
 .btn-ghost.danger:hover{ color: var(--danger); border-color: rgba(255,107,107,0.4); }
 .btn-ghost:disabled, .btn-primary:disabled{ opacity:0.4; cursor:not-allowed; }
 .btn-ghost:disabled:hover, .btn-primary:disabled:hover{ filter:none; color: var(--text-dim); border-color: var(--border); }
