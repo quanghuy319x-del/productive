@@ -10029,6 +10029,7 @@
   const photoModalClose = $("#photo-modal-close");
   const photoModalCommentInput = $("#photo-modal-comment-input");
   const photoModalCommentRow = $("#photo-modal-comment-row");
+  const photoModalCommentToggle = $("#photo-modal-comment-toggle");
   const photoModalGoto = $("#photo-modal-goto");
   const photoModalZoomIn = $("#photo-modal-zoom-in");
   const photoModalZoomOut = $("#photo-modal-zoom-out");
@@ -10396,7 +10397,17 @@
     if (!photoModalState || photoModalState.noteMode) return;
     const node = findNode(photoModalState.nodeId);
     const id = getNodeImageIds(node)[photoModalState.index];
-    photoModalCommentInput.value = getPhotoComment(node, id);
+    const comment = getPhotoComment(node, id);
+    photoModalCommentInput.value = comment;
+    // The comment box stays collapsed by default (see .photo-modal-
+    // comment-row.hidden) — only auto-opened here when the photo being
+    // shown already has a saved comment, so existing comments are never
+    // hidden from view; an empty photo starts collapsed until the 💬
+    // toggle button is clicked. Re-evaluated every time the visible
+    // photo changes so stepping through the gallery doesn't leave one
+    // photo's open/closed state stuck on the next one.
+    photoModalCommentRow.classList.toggle("hidden", !comment);
+    photoModalCommentToggle.classList.toggle("has-comment", !!comment);
     requestAnimationFrame(() => autoGrowTextarea(photoModalCommentInput));
   }
   // Saves on blur (clicking/tabbing away, including stepping to the next/
@@ -10410,8 +10421,25 @@
     if (getPhotoComment(node, id) === photoModalCommentInput.value.trim()) return;
     pushUndo();
     setPhotoComment(node, id, photoModalCommentInput.value);
+    photoModalCommentToggle.classList.toggle("has-comment", !!getPhotoComment(node, id));
     persist();
   }
+  // 💬 toggle button — the comment box is collapsed by default (see
+  // renderPhotoModalComment), so this is the only way to open it for a
+  // photo that doesn't have a comment yet. Clicking again while open
+  // collapses it back (but only if there's nothing typed, so an in-
+  // progress comment can't be accidentally hidden without saving —
+  // blur/Ctrl+Enter still commit it first either way).
+  photoModalCommentToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willShow = photoModalCommentRow.classList.contains("hidden");
+    if (willShow) {
+      photoModalCommentRow.classList.remove("hidden");
+      requestAnimationFrame(() => { photoModalCommentInput.focus(); autoGrowTextarea(photoModalCommentInput); });
+    } else if (!photoModalCommentInput.value.trim()) {
+      photoModalCommentRow.classList.add("hidden");
+    }
+  });
   photoModalCommentInput.addEventListener("blur", savePhotoModalComment);
   photoModalCommentInput.addEventListener("keydown", (e) => {
     e.stopPropagation();

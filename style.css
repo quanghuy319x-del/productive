@@ -3727,6 +3727,28 @@ kbd{
 }
 .photo-modal-delete:hover{ border-color: var(--danger); color: var(--danger); }
 
+/* Comment box toggle — hidden by default (see .photo-modal-comment-row.
+   hidden below); clicking this reveals the textarea instead of it always
+   taking up space under the photo. Stacked one slot left of the delete
+   button, same fixed-circle treatment. Gets .has-comment (filled accent)
+   when the current photo already has a saved comment, so there's a
+   visible hint even while the box itself is collapsed. */
+.photo-modal-comment-toggle{
+  position: fixed;
+  top: calc(6vh - 16px); right: calc(4vw + 66px);
+  width:30px; height:30px;
+  border-radius:50%;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer;
+  z-index: 101;
+}
+.photo-modal-comment-toggle:hover{ border-color: var(--accent); color: var(--accent); }
+.photo-modal-comment-toggle.has-comment{ border-color: var(--accent); background: var(--accent); color:#fff; }
+
 /* Popover of number-in-circle emoji opened from #photo-modal-symbol (see
    app.js) — same fixed-viewport-positioning pattern as .note-color-popover
    so it's never clipped by the photo modal card. */
@@ -3884,6 +3906,7 @@ kbd{
   min-width: 640px;
   max-width: 92vw;
 }
+.photo-modal-comment-row.hidden{ display:none; }
 
 .bl-text-box{ }
 .bl-text-box-active{ outline: 1.5px dashed rgba(255,255,255,0.55); outline-offset: 3px; border-radius: 3px; }
