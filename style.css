@@ -1473,17 +1473,17 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-collapse.node-collapse-count{
   opacity: 1;
   pointer-events: auto;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  border-color: var(--accent);
+  background: var(--text-dim);
+  color: var(--panel);
+  border-color: var(--text-dim);
   font-weight: 700;
   width: auto;
   min-width: 16px;
   padding: 0 4px;
 }
 .node-collapse.node-collapse-count:hover{
-  border-color: var(--accent);
-  color: var(--accent-contrast);
+  border-color: var(--text-dim);
+  color: var(--panel);
   filter: brightness(1.1);
 }
 
