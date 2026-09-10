@@ -3162,6 +3162,15 @@ kbd{
   margin:0;
   padding:0;
 }
+.favoritesbrowser-heading{
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 12px 4px 4px;
+}
+.favoritesbrowser-heading:first-child{ padding-top: 4px; }
 .favoritesbrowser-row{
   display:flex;
   align-items:center;
@@ -3219,6 +3228,45 @@ kbd{
   border-radius:4px;
 }
 .favoritesbrowser-row .item-star:hover{ background: rgba(242,201,76,0.12); }
+
+/* Notes browser — reuses .favoritesbrowser-row/-icon/-text/-name/-preview
+   and .item-star from the Favorites browser above (same row shape, one
+   kind of item instead of three), plus its own sort-mode toggle row and
+   a relative-date column next to the star. */
+.notesbrowser-sort-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin: 0 0 10px;
+}
+.notesbrowser-sort-label{
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+.notesbrowser-sort-btn{
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor:pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.notesbrowser-sort-btn:hover{ color: var(--text); }
+.notesbrowser-sort-btn.active{
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+.notesbrowser-row-date{
+  flex:none;
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 0 2px;
+}
 
 .theme-row{
   display:flex;

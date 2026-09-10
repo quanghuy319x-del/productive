@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=44">
+<link rel="stylesheet" href="style.css?v=46">
 </head>
 <body>
 <div id="app">
@@ -63,6 +63,7 @@
       <button id="btn-tagbrowser" class="btn-ghost" title="Browse photos by tag">🏷 Tags</button>
       <button id="btn-commentbrowser" class="btn-ghost" title="Browse photo comments">💬 Comments</button>
       <button id="btn-favoritesbrowser" class="btn-ghost" title="Browse your favorites">⭐ Favorites</button>
+      <button id="btn-notesbrowser" class="btn-ghost" title="Browse all your notes">🗒 Notes</button>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -335,6 +336,25 @@
   </div>
 </div>
 
+<div id="notesbrowser-modal" class="modal hidden">
+  <div class="modal-card tagbrowser-modal-card">
+    <div class="modal-back-row">
+      <h2>Notes</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="notesbrowser-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="tagbrowser-hint">Every note across this whole map, in one list.</p>
+    <input type="text" id="notesbrowser-search" class="commentbrowser-search" placeholder="Search notes or node names…" spellcheck="false">
+    <div class="notesbrowser-sort-row">
+      <span class="notesbrowser-sort-label">Sort by</span>
+      <button type="button" id="notesbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date">Date</button>
+      <button type="button" id="notesbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite">Favorite</button>
+      <button type="button" id="notesbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha">A–Z</button>
+    </div>
+    <ul id="notesbrowser-list" class="favoritesbrowser-list"></ul>
+  </div>
+</div>
+
 <div id="signin-required-modal" class="modal hidden">
   <div class="modal-card signin-required-modal-card">
     <h2>Sign in to edit</h2>
@@ -591,6 +611,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=92"></script>
+<script src="app.js?v=94"></script>
 </body>
 </html>

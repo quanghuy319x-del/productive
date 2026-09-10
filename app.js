@@ -11439,7 +11439,7 @@
       : noteEditingCellPos
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
-    noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, favorite: !!n.favorite }));
+    noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, favorite: !!n.favorite, createdAt: n.createdAt, updatedAt: n.updatedAt }));
     // A task named "DRC" (Daily Report Card) gets its very first note
     // pre-filled with the standing review template below, instead of a
     // blank editor — only when this is genuinely the first note on that
@@ -11449,7 +11449,7 @@
     if (isFreshTaskNote) {
       const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
       if (t && (t.text || "").trim().toUpperCase() === "DRC") {
-        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
+        noteWorkingList.push({ id: uid(), title: "", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), createdAt: Date.now(), updatedAt: Date.now() });
       }
     }
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
@@ -11460,12 +11460,12 @@
     // recognize it — not a separate internal flag — so a note gets the
     // same treatment if the title is set to "DRC" any other way too.
     if (forceDRCTemplate) {
-      noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE) });
+      noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), createdAt: Date.now(), updatedAt: Date.now() });
       noteActiveIndex = noteWorkingList.length - 1;
     } else {
       const wantsNew = index != null && index >= noteWorkingList.length;
       if (!noteWorkingList.length || wantsNew) {
-        noteWorkingList.push({ id: uid(), title: "", html: "" });
+        noteWorkingList.push({ id: uid(), title: "", html: "", createdAt: Date.now(), updatedAt: Date.now() });
       }
       noteActiveIndex = wantsNew ? noteWorkingList.length - 1
         : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
@@ -11563,8 +11563,19 @@
   function captureActiveNote() {
     const current = noteWorkingList[noteActiveIndex];
     if (!current) return;
-    current.title = noteTitleInput.value;
-    current.html = noteTextarea.innerHTML;
+    const newTitle = noteTitleInput.value;
+    const newHtml = noteTextarea.innerHTML;
+    if (current.title !== newTitle || current.html !== newHtml) {
+      current.updatedAt = Date.now();
+      // Backfills a timestamp for notes written before this field existed,
+      // the first time one of them actually gets touched again — rather
+      // than leaving createdAt permanently blank for every pre-existing
+      // note (see the Notes browser's date sort, which falls back to "no
+      // date" only when neither field is set).
+      if (!current.createdAt) current.createdAt = current.updatedAt;
+    }
+    current.title = newTitle;
+    current.html = newHtml;
   }
 
   function goToNote(delta) {
@@ -11576,7 +11587,7 @@
 
   function addAnotherNote() {
     captureActiveNote();
-    noteWorkingList.push({ id: uid(), title: "", html: "" });
+    noteWorkingList.push({ id: uid(), title: "", html: "", createdAt: Date.now(), updatedAt: Date.now() });
     noteActiveIndex = noteWorkingList.length - 1;
     loadNoteIntoEditor();
     commitNotesToNode();
@@ -14967,6 +14978,52 @@
     }
   }
 
+  const FAVORITE_TYPE_LABEL = { note: "Notes", photo: "Photos", link: "Links", video: "Videos" };
+  const FAVORITE_TYPE_ORDER = ["note", "photo", "link", "video"];
+
+  function buildFavoritesBrowserRow(it) {
+    const li = document.createElement("li");
+    li.className = "favoritesbrowser-row";
+
+    const icon = document.createElement("span");
+    icon.className = "favoritesbrowser-row-icon";
+    if (it.type === "photo") {
+      const thumbUrl = photoUrl(it.photoId);
+      if (thumbUrl) {
+        const thumb = document.createElement("img");
+        thumb.className = "tagbrowser-tag-thumb";
+        thumb.alt = "";
+        thumb.src = thumbUrl;
+        thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
+        icon.appendChild(thumb);
+      } else {
+        icon.textContent = FAVORITE_TYPE_ICON.photo;
+      }
+    } else {
+      icon.textContent = FAVORITE_TYPE_ICON[it.type];
+    }
+
+    const text = document.createElement("span");
+    text.className = "favoritesbrowser-row-text";
+    const name = document.createElement("span");
+    name.className = "favoritesbrowser-row-name";
+    name.textContent = it.nodeLabel;
+    const preview = document.createElement("span");
+    preview.className = "favoritesbrowser-row-preview";
+    preview.textContent = it.preview.length > 90 ? it.preview.slice(0, 89) + "…" : it.preview;
+    text.append(name, preview);
+
+    const star = document.createElement("span");
+    star.className = "item-star favorited";
+    star.textContent = "★";
+    star.title = "Remove from favorites";
+    star.addEventListener("click", (e) => { e.stopPropagation(); unfavoriteItem(it); renderFavoritesBrowserList(); });
+
+    li.append(icon, text, star);
+    li.addEventListener("click", () => jumpToFavoriteItem(it));
+    return li;
+  }
+
   function renderFavoritesBrowserList() {
     const q = favoritesBrowserSearch.value.trim().toLowerCase();
     const filtered = !q ? favoritesBrowserItems : favoritesBrowserItems.filter(it =>
@@ -14981,7 +15038,127 @@
       favoritesBrowserList.appendChild(empty);
       return;
     }
-    filtered.forEach((it) => {
+    // Grouped by kind (Notes / Photos / Links / Videos), each its own
+    // section with a heading and count — only sections that actually
+    // have a match are shown, in the fixed order above rather than
+    // whatever order items happen to appear in.
+    FAVORITE_TYPE_ORDER.forEach((type) => {
+      const group = filtered.filter(it => it.type === type);
+      if (!group.length) return;
+      const heading = document.createElement("li");
+      heading.className = "favoritesbrowser-heading";
+      heading.textContent = `${FAVORITE_TYPE_ICON[type]} ${FAVORITE_TYPE_LABEL[type]} (${group.length})`;
+      favoritesBrowserList.appendChild(heading);
+      group.forEach((it) => {
+        const node = findNode(it.nodeId);
+        if (!node) return; // stale entry (shouldn't normally happen)
+        favoritesBrowserList.appendChild(buildFavoritesBrowserRow(it));
+      });
+    });
+  }
+
+  $("#btn-favoritesbrowser").addEventListener("click", openFavoritesBrowserModal);
+  $("#favoritesbrowser-close").addEventListener("click", closeFavoritesBrowserModal);
+  favoritesBrowserModal.addEventListener("click", (e) => { if (e.target === favoritesBrowserModal) closeFavoritesBrowserModal(); });
+  favoritesBrowserSearch.addEventListener("input", renderFavoritesBrowserList);
+  document.addEventListener("keydown", (e) => {
+    if (favoritesBrowserModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeFavoritesBrowserModal();
+  });
+
+  /* ---------------- notes browser ---------------- */
+
+  // Lists every node-level note across the whole map (see getNodeNotes)
+  // in one place — versus the Favorites browser above, which only shows
+  // the subset you've starred. Sortable by date (most recently touched
+  // first — see captureActiveNote for where updatedAt/createdAt get
+  // set), favorite status, or alphabetically by the note's own preview
+  // text (see notePreviewText: its title, or else its first line).
+  const notesBrowserModal = $("#notesbrowser-modal");
+  const notesBrowserList = $("#notesbrowser-list");
+  const notesBrowserSearch = $("#notesbrowser-search");
+  const notesBrowserSortBtns = [$("#notesbrowser-sort-date"), $("#notesbrowser-sort-favorite"), $("#notesbrowser-sort-alpha")];
+  let notesBrowserItems = [];
+  let notesBrowserSort = "date";
+
+  function collectAllNotes() {
+    const items = [];
+    collectAllNodesFlat().forEach((node) => {
+      const nodeLabel = node.text || "Untitled node";
+      getNodeNotes(node).forEach((n) => {
+        items.push({
+          nodeId: node.id,
+          noteId: n.id,
+          nodeLabel,
+          preview: notePreviewText(n),
+          favorite: !!n.favorite,
+          ts: n.updatedAt || n.createdAt || 0,
+        });
+      });
+    });
+    return items;
+  }
+
+  function sortNotesBrowserItems(items) {
+    const sorted = items.slice();
+    if (notesBrowserSort === "favorite") {
+      sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
+    } else if (notesBrowserSort === "alpha") {
+      sorted.sort((a, b) => a.preview.localeCompare(b.preview));
+    } else {
+      sorted.sort((a, b) => b.ts - a.ts);
+    }
+    return sorted;
+  }
+
+  function openNotesBrowserModal() {
+    notesBrowserItems = collectAllNotes();
+    notesBrowserSearch.value = "";
+    renderNotesBrowserList();
+    zoomModalOpen(notesBrowserModal);
+    requestAnimationFrame(() => notesBrowserSearch.focus());
+  }
+  function closeNotesBrowserModal() {
+    zoomModalClose(notesBrowserModal);
+  }
+
+  function jumpToNoteBrowserItem(it) {
+    const node = findNode(it.nodeId);
+    if (!node) return;
+    const idx = getNodeNotes(node).findIndex(n => n.id === it.noteId);
+    closeNotesBrowserModal();
+    openNoteModal(it.nodeId, idx >= 0 ? idx : undefined);
+  }
+
+  // Same direct toggle as unfavoriteItem in the Favorites browser above —
+  // lets you star/unstar right from the list without opening the note.
+  function toggleNoteBrowserFavorite(it) {
+    const node = findNode(it.nodeId);
+    if (!node) return;
+    const n = getNodeNotes(node).find(x => x.id === it.noteId);
+    if (!n) return;
+    pushUndo();
+    n.favorite = !n.favorite;
+    it.favorite = n.favorite;
+    persist();
+  }
+
+  function renderNotesBrowserList() {
+    const q = notesBrowserSearch.value.trim().toLowerCase();
+    const filtered = !q ? notesBrowserItems : notesBrowserItems.filter(it =>
+      it.preview.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q));
+    const sorted = sortNotesBrowserItems(filtered);
+    notesBrowserList.innerHTML = "";
+    if (!sorted.length) {
+      const empty = document.createElement("li");
+      empty.className = "tagbrowser-empty";
+      empty.textContent = notesBrowserItems.length
+        ? "No notes match that search."
+        : "No notes yet — add one from any node to see it here.";
+      notesBrowserList.appendChild(empty);
+      return;
+    }
+    sorted.forEach((it) => {
       const node = findNode(it.nodeId);
       if (!node) return; // stale entry (shouldn't normally happen)
       const li = document.createElement("li");
@@ -14989,21 +15166,7 @@
 
       const icon = document.createElement("span");
       icon.className = "favoritesbrowser-row-icon";
-      if (it.type === "photo") {
-        const thumbUrl = photoUrl(it.photoId);
-        if (thumbUrl) {
-          const thumb = document.createElement("img");
-          thumb.className = "tagbrowser-tag-thumb";
-          thumb.alt = "";
-          thumb.src = thumbUrl;
-          thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
-          icon.appendChild(thumb);
-        } else {
-          icon.textContent = FAVORITE_TYPE_ICON.photo;
-        }
-      } else {
-        icon.textContent = FAVORITE_TYPE_ICON[it.type];
-      }
+      icon.textContent = "📝";
 
       const text = document.createElement("span");
       text.className = "favoritesbrowser-row-text";
@@ -15015,25 +15178,44 @@
       preview.textContent = it.preview.length > 90 ? it.preview.slice(0, 89) + "…" : it.preview;
       text.append(name, preview);
 
-      const star = document.createElement("span");
-      star.className = "item-star favorited";
-      star.textContent = "★";
-      star.title = "Remove from favorites";
-      star.addEventListener("click", (e) => { e.stopPropagation(); unfavoriteItem(it); renderFavoritesBrowserList(); });
+      const meta = document.createElement("span");
+      meta.className = "notesbrowser-row-date";
+      meta.textContent = it.ts ? relTime(it.ts) : "—";
+      meta.title = it.ts ? new Date(it.ts).toLocaleString() : "No date recorded";
 
-      li.append(icon, text, star);
-      li.addEventListener("click", () => jumpToFavoriteItem(it));
-      favoritesBrowserList.appendChild(li);
+      const star = document.createElement("span");
+      star.className = "item-star" + (it.favorite ? " favorited" : "");
+      star.textContent = it.favorite ? "★" : "☆";
+      star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+      star.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleNoteBrowserFavorite(it);
+        star.textContent = it.favorite ? "★" : "☆";
+        star.classList.toggle("favorited", it.favorite);
+        star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+        if (notesBrowserSort === "favorite") renderNotesBrowserList();
+      });
+
+      li.append(icon, text, meta, star);
+      li.addEventListener("click", () => jumpToNoteBrowserItem(it));
+      notesBrowserList.appendChild(li);
     });
   }
 
-  $("#btn-favoritesbrowser").addEventListener("click", openFavoritesBrowserModal);
-  $("#favoritesbrowser-close").addEventListener("click", closeFavoritesBrowserModal);
-  favoritesBrowserModal.addEventListener("click", (e) => { if (e.target === favoritesBrowserModal) closeFavoritesBrowserModal(); });
-  favoritesBrowserSearch.addEventListener("input", renderFavoritesBrowserList);
+  $("#btn-notesbrowser").addEventListener("click", openNotesBrowserModal);
+  $("#notesbrowser-close").addEventListener("click", closeNotesBrowserModal);
+  notesBrowserModal.addEventListener("click", (e) => { if (e.target === notesBrowserModal) closeNotesBrowserModal(); });
+  notesBrowserSearch.addEventListener("input", renderNotesBrowserList);
+  notesBrowserSortBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      notesBrowserSort = btn.dataset.sort;
+      notesBrowserSortBtns.forEach(b => b.classList.toggle("active", b === btn));
+      renderNotesBrowserList();
+    });
+  });
   document.addEventListener("keydown", (e) => {
-    if (favoritesBrowserModal.classList.contains("hidden")) return;
-    if (e.key === "Escape") closeFavoritesBrowserModal();
+    if (notesBrowserModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeNotesBrowserModal();
   });
 
   /* ---------------- boot ---------------- */
