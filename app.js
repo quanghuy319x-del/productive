@@ -11356,6 +11356,32 @@
     noteRedoStack = [];
     noteLastPushAt = 0;
     updateNoteUndoButtons();
+    noteUppercasePending = false;
+    updateNoteToolActiveStates();
+  }
+
+  // --- Bold / AA "pressed while it applies to what you type next" state ---
+  //
+  // Bold piggybacks on the browser's own contenteditable behavior: calling
+  // execCommand("bold") with a collapsed caret (no selection) doesn't touch
+  // any existing text — it just flips the style that new text will be
+  // typed in, same as Word/Docs. document.queryCommandState("bold") then
+  // tells us whether that's currently "on", so the toolbar button can show
+  // pressed exactly when it applies.
+  //
+  // AA (uppercase) has no native browser equivalent, so noteUppercasePending
+  // recreates the same idea by hand: toggling it on with a collapsed caret
+  // doesn't uppercase anything yet, it just arms a beforeinput hook (below)
+  // that uppercases each character as it's typed, until toggled off or the
+  // caret is moved by a click.
+  let noteUppercasePending = false;
+  let noteUppercaseInserting = false; // re-entrancy guard for the hook below
+
+  function updateNoteToolActiveStates() {
+    let boldOn = false;
+    try { boldOn = document.queryCommandState("bold"); } catch (_) { /* ignore */ }
+    $("#note-tool-bold").classList.toggle("active", !!boldOn);
+    $("#note-tool-upper").classList.toggle("active", noteUppercasePending);
   }
 
   function noteRestoreSnapshot(html) {
@@ -11963,26 +11989,40 @@
 
   function noteApplyBold() {
     noteTextarea.focus();
-    notePushUndo();
     const sel = window.getSelection();
-    if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
-      noteSelectLine(noteCurrentLine());
+    const collapsed = !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    if (collapsed) {
+      // No selection: don't touch existing text. Just flip the "type in
+      // bold" state for whatever gets typed next — the button below
+      // reflects this via queryCommandState so it shows pressed exactly
+      // while it's in effect, same as Word.
+      document.execCommand("bold");
+    } else {
+      notePushUndo();
+      document.execCommand("bold");
+      scheduleNoteAutosave();
     }
-    document.execCommand("bold");
-    scheduleNoteAutosave();
+    updateNoteToolActiveStates();
   }
 
   function noteApplyUppercase() {
     noteTextarea.focus();
-    notePushUndo();
     const sel = window.getSelection();
-    if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
-      noteSelectLine(noteCurrentLine());
+    const collapsed = !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    if (collapsed) {
+      // No selection: arm/disarm "type in caps" mode for what comes next
+      // (see the beforeinput hook below) instead of uppercasing anything
+      // that already exists.
+      noteUppercasePending = !noteUppercasePending;
+      updateNoteToolActiveStates();
+      return;
     }
-    const text = window.getSelection().toString();
+    notePushUndo();
+    const text = sel.toString();
     if (!text) return;
     document.execCommand("insertText", false, text.toUpperCase());
     scheduleNoteAutosave();
+    updateNoteToolActiveStates();
   }
 
   function noteInsertSymbol(symbol) {
@@ -12430,6 +12470,34 @@
     noteRedoStack = [];
     noteLastPushAt = now;
     updateNoteUndoButtons();
+  });
+  // While "type in caps" mode is armed (AA button pressed), transform each
+  // character as it's typed rather than inserting it as-is. Guarded by
+  // noteUppercaseInserting so the re-inserted (already-uppercase) text
+  // doesn't loop back through this same handler.
+  noteTextarea.addEventListener("beforeinput", (e) => {
+    if (!noteUppercasePending || noteUppercaseInserting) return;
+    if (e.inputType === "insertText" && e.data) {
+      e.preventDefault();
+      noteUppercaseInserting = true;
+      document.execCommand("insertText", false, e.data.toUpperCase());
+      noteUppercaseInserting = false;
+    }
+  });
+  // Clicking to reposition the caret (rather than typing) drops caps
+  // mode, mirroring how Word's Bold button un-presses once you click
+  // somewhere that isn't bold — this "AA" is otherwise a plain toggle,
+  // so it has no such position to check and just resets on click.
+  noteTextarea.addEventListener("mousedown", () => {
+    if (noteUppercasePending) {
+      noteUppercasePending = false;
+      updateNoteToolActiveStates();
+    }
+  });
+  document.addEventListener("selectionchange", () => {
+    if (!noteModal.classList.contains("hidden") && document.activeElement === noteTextarea) {
+      updateNoteToolActiveStates();
+    }
   });
   noteTextarea.addEventListener("input", () => { noteAutoColorParagraphs(); scheduleNoteAutosave(); });
   noteTextarea.addEventListener("keydown", (e) => {
@@ -15171,6 +15239,44 @@
     if (e.key === "Escape") closeFavoritesBrowserModal();
   });
 
+  /* ---------------- shared sort-toggle helper ---------------- */
+
+  // Wires up a row of "Sort by" buttons (Notes/Photos/Videos browsers
+  // below all use the same markup: a few buttons with a data-sort
+  // attribute and a nested .notesbrowser-sort-arrow span) so that
+  // clicking a button switches to that sort, and clicking the
+  // already-active button reverses its direction instead — same click
+  // toggles ascending/descending, rather than needing separate buttons
+  // for "newest first" vs "oldest first". Returns a live { sort, dir }
+  // object the caller's own sort function reads on every render.
+  const SORT_TOGGLE_DEFAULT_DIR = { date: "desc", favorite: "desc", alpha: "asc" };
+  function setupSortToggle(buttons, initialSort, onChange) {
+    const state = { sort: initialSort, dir: SORT_TOGGLE_DEFAULT_DIR[initialSort] || "desc" };
+    function updateArrows() {
+      buttons.forEach((btn) => {
+        const isActive = btn.dataset.sort === state.sort;
+        btn.classList.toggle("active", isActive);
+        const arrow = btn.querySelector(".notesbrowser-sort-arrow");
+        if (arrow) arrow.textContent = isActive ? (state.dir === "asc" ? " ▲" : " ▼") : "";
+      });
+    }
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const sort = btn.dataset.sort;
+        if (sort === state.sort) {
+          state.dir = state.dir === "asc" ? "desc" : "asc";
+        } else {
+          state.sort = sort;
+          state.dir = SORT_TOGGLE_DEFAULT_DIR[sort] || "desc";
+        }
+        updateArrows();
+        onChange();
+      });
+    });
+    updateArrows();
+    return state;
+  }
+
   /* ---------------- notes browser ---------------- */
 
   // Lists every node-level note across the whole map (see getNodeNotes)
@@ -15178,13 +15284,15 @@
   // the subset you've starred. Sortable by date (most recently touched
   // first — see captureActiveNote for where updatedAt/createdAt get
   // set), favorite status, or alphabetically by the note's own preview
-  // text (see notePreviewText: its title, or else its first line).
+  // text (see notePreviewText: its title, or else its first line). Click
+  // the active sort button again to reverse its direction (see
+  // setupSortToggle above).
   const notesBrowserModal = $("#notesbrowser-modal");
   const notesBrowserList = $("#notesbrowser-list");
   const notesBrowserSearch = $("#notesbrowser-search");
   const notesBrowserSortBtns = [$("#notesbrowser-sort-date"), $("#notesbrowser-sort-favorite"), $("#notesbrowser-sort-alpha")];
   let notesBrowserItems = [];
-  let notesBrowserSort = "date";
+
 
   function collectAllNotes() {
     const items = [];
@@ -15243,12 +15351,13 @@
 
   function sortNotesBrowserItems(items) {
     const sorted = items.slice();
-    if (notesBrowserSort === "favorite") {
-      sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
-    } else if (notesBrowserSort === "alpha") {
-      sorted.sort((a, b) => noteBrowserRowLabel(a).localeCompare(noteBrowserRowLabel(b)));
+    const dir = notesBrowserSortState.dir === "asc" ? 1 : -1;
+    if (notesBrowserSortState.sort === "favorite") {
+      sorted.sort((a, b) => (((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (b.ts - a.ts)) * dir);
+    } else if (notesBrowserSortState.sort === "alpha") {
+      sorted.sort((a, b) => noteBrowserRowLabel(a).localeCompare(noteBrowserRowLabel(b)) * dir);
     } else {
-      sorted.sort((a, b) => b.ts - a.ts);
+      sorted.sort((a, b) => (b.ts - a.ts) * dir);
     }
     return sorted;
   }
@@ -15323,7 +15432,7 @@
       star.textContent = it.favorite ? "★" : "☆";
       star.classList.toggle("favorited", it.favorite);
       star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-      if (notesBrowserSort === "favorite") renderNotesBrowserList();
+      if (notesBrowserSortState.sort === "favorite") renderNotesBrowserList();
     });
 
     li.append(icon, text, meta, star);
@@ -15376,13 +15485,7 @@
   $("#notesbrowser-close").addEventListener("click", closeNotesBrowserModal);
   notesBrowserModal.addEventListener("click", (e) => { if (e.target === notesBrowserModal) closeNotesBrowserModal(); });
   notesBrowserSearch.addEventListener("input", renderNotesBrowserList);
-  notesBrowserSortBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      notesBrowserSort = btn.dataset.sort;
-      notesBrowserSortBtns.forEach(b => b.classList.toggle("active", b === btn));
-      renderNotesBrowserList();
-    });
-  });
+  const notesBrowserSortState = setupSortToggle(notesBrowserSortBtns, "date", renderNotesBrowserList);
   document.addEventListener("keydown", (e) => {
     if (notesBrowserModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closeNotesBrowserModal();
@@ -15403,7 +15506,6 @@
   const photosBrowserSearch = $("#photosbrowser-search");
   const photosBrowserSortBtns = [$("#photosbrowser-sort-date"), $("#photosbrowser-sort-favorite"), $("#photosbrowser-sort-alpha")];
   let photosBrowserItems = [];
-  let photosBrowserSort = "date";
 
   function collectAllPhotos() {
     const items = [];
@@ -15436,12 +15538,13 @@
 
   function sortPhotosBrowserItems(items) {
     const sorted = items.slice();
-    if (photosBrowserSort === "favorite") {
-      sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
-    } else if (photosBrowserSort === "alpha") {
-      sorted.sort((a, b) => a.alphaKey.localeCompare(b.alphaKey));
+    const dir = photosBrowserSortState.dir === "asc" ? 1 : -1;
+    if (photosBrowserSortState.sort === "favorite") {
+      sorted.sort((a, b) => (((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (b.ts - a.ts)) * dir);
+    } else if (photosBrowserSortState.sort === "alpha") {
+      sorted.sort((a, b) => a.alphaKey.localeCompare(b.alphaKey) * dir);
     } else {
-      sorted.sort((a, b) => b.ts - a.ts);
+      sorted.sort((a, b) => (b.ts - a.ts) * dir);
     }
     return sorted;
   }
@@ -15545,7 +15648,7 @@
         star.textContent = it.favorite ? "★" : "☆";
         star.classList.toggle("favorited", it.favorite);
         star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-        if (photosBrowserSort === "favorite") renderPhotosBrowserList();
+        if (photosBrowserSortState.sort === "favorite") renderPhotosBrowserList();
       });
 
       li.append(icon, text, meta, star);
@@ -15558,13 +15661,7 @@
   $("#photosbrowser-close").addEventListener("click", closePhotosBrowserModal);
   photosBrowserModal.addEventListener("click", (e) => { if (e.target === photosBrowserModal) closePhotosBrowserModal(); });
   photosBrowserSearch.addEventListener("input", renderPhotosBrowserList);
-  photosBrowserSortBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      photosBrowserSort = btn.dataset.sort;
-      photosBrowserSortBtns.forEach(b => b.classList.toggle("active", b === btn));
-      renderPhotosBrowserList();
-    });
-  });
+  const photosBrowserSortState = setupSortToggle(photosBrowserSortBtns, "date", renderPhotosBrowserList);
   document.addEventListener("keydown", (e) => {
     if (photosBrowserModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closePhotosBrowserModal();
@@ -15585,7 +15682,6 @@
   const videosBrowserSearch = $("#videosbrowser-search");
   const videosBrowserSortBtns = [$("#videosbrowser-sort-date"), $("#videosbrowser-sort-favorite"), $("#videosbrowser-sort-alpha")];
   let videosBrowserItems = [];
-  let videosBrowserSort = "date";
 
   function collectAllVideos() {
     const items = [];
@@ -15615,12 +15711,13 @@
 
   function sortVideosBrowserItems(items) {
     const sorted = items.slice();
-    if (videosBrowserSort === "favorite") {
-      sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
-    } else if (videosBrowserSort === "alpha") {
-      sorted.sort((a, b) => a.title.localeCompare(b.title));
+    const dir = videosBrowserSortState.dir === "asc" ? 1 : -1;
+    if (videosBrowserSortState.sort === "favorite") {
+      sorted.sort((a, b) => (((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (b.ts - a.ts)) * dir);
+    } else if (videosBrowserSortState.sort === "alpha") {
+      sorted.sort((a, b) => a.title.localeCompare(b.title) * dir);
     } else {
-      sorted.sort((a, b) => b.ts - a.ts);
+      sorted.sort((a, b) => (b.ts - a.ts) * dir);
     }
     return sorted;
   }
@@ -15711,7 +15808,7 @@
         star.textContent = it.favorite ? "★" : "☆";
         star.classList.toggle("favorited", it.favorite);
         star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-        if (videosBrowserSort === "favorite") renderVideosBrowserList();
+        if (videosBrowserSortState.sort === "favorite") renderVideosBrowserList();
       });
 
       li.append(icon, text, meta, star);
@@ -15724,13 +15821,7 @@
   $("#videosbrowser-close").addEventListener("click", closeVideosBrowserModal);
   videosBrowserModal.addEventListener("click", (e) => { if (e.target === videosBrowserModal) closeVideosBrowserModal(); });
   videosBrowserSearch.addEventListener("input", renderVideosBrowserList);
-  videosBrowserSortBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      videosBrowserSort = btn.dataset.sort;
-      videosBrowserSortBtns.forEach(b => b.classList.toggle("active", b === btn));
-      renderVideosBrowserList();
-    });
-  });
+  const videosBrowserSortState = setupSortToggle(videosBrowserSortBtns, "date", renderVideosBrowserList);
   document.addEventListener("keydown", (e) => {
     if (videosBrowserModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closeVideosBrowserModal();

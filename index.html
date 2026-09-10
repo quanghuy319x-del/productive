@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=47">
+<link rel="stylesheet" href="style.css?v=49">
 </head>
 <body>
 <div id="app">
@@ -349,9 +349,9 @@
     <input type="text" id="notesbrowser-search" class="commentbrowser-search" placeholder="Search notes or node names…" spellcheck="false">
     <div class="notesbrowser-sort-row">
       <span class="notesbrowser-sort-label">Sort by</span>
-      <button type="button" id="notesbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date">Date</button>
-      <button type="button" id="notesbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite">Favorite</button>
-      <button type="button" id="notesbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha">A–Z</button>
+      <button type="button" id="notesbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date" title="Click again to reverse order">Date<span class="notesbrowser-sort-arrow"></span></button>
+      <button type="button" id="notesbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite" title="Click again to reverse order">Favorite<span class="notesbrowser-sort-arrow"></span></button>
+      <button type="button" id="notesbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha" title="Click again to reverse order">A–Z<span class="notesbrowser-sort-arrow"></span></button>
     </div>
     <ul id="notesbrowser-list" class="favoritesbrowser-list"></ul>
   </div>
@@ -368,9 +368,9 @@
     <input type="text" id="photosbrowser-search" class="commentbrowser-search" placeholder="Search tags or node names…" spellcheck="false">
     <div class="notesbrowser-sort-row">
       <span class="notesbrowser-sort-label">Sort by</span>
-      <button type="button" id="photosbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date">Date</button>
-      <button type="button" id="photosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite">Favorite</button>
-      <button type="button" id="photosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha">A–Z</button>
+      <button type="button" id="photosbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date" title="Click again to reverse order">Date<span class="notesbrowser-sort-arrow"></span></button>
+      <button type="button" id="photosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite" title="Click again to reverse order">Favorite<span class="notesbrowser-sort-arrow"></span></button>
+      <button type="button" id="photosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha" title="Click again to reverse order">A–Z<span class="notesbrowser-sort-arrow"></span></button>
     </div>
     <ul id="photosbrowser-list" class="favoritesbrowser-list"></ul>
   </div>
@@ -387,9 +387,9 @@
     <input type="text" id="videosbrowser-search" class="commentbrowser-search" placeholder="Search titles or node names…" spellcheck="false">
     <div class="notesbrowser-sort-row">
       <span class="notesbrowser-sort-label">Sort by</span>
-      <button type="button" id="videosbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date">Date</button>
-      <button type="button" id="videosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite">Favorite</button>
-      <button type="button" id="videosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha">A–Z</button>
+      <button type="button" id="videosbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date" title="Click again to reverse order">Date<span class="notesbrowser-sort-arrow"></span></button>
+      <button type="button" id="videosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite" title="Click again to reverse order">Favorite<span class="notesbrowser-sort-arrow"></span></button>
+      <button type="button" id="videosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha" title="Click again to reverse order">A–Z<span class="notesbrowser-sort-arrow"></span></button>
     </div>
     <ul id="videosbrowser-list" class="favoritesbrowser-list"></ul>
   </div>
@@ -651,6 +651,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=98"></script>
+<script src="app.js?v=100"></script>
 </body>
 </html>
