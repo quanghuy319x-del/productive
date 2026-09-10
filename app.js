@@ -8006,13 +8006,14 @@
         addGroupRow(label, () => openBrainstormModal(node.id));
       }
       {
-        // Shortcut: always opens a brand-new node-level note pre-filled
-        // with the standing DRC template (see DRC_NOTE_TEMPLATE / the
-        // forceDRCTemplate branch in openNoteModal), regardless of how
-        // many notes this node already has — unlike the automatic
-        // prefill that only fires on a task literally named "DRC". The
-        // label shows points earned so far from filled-in DRC notes (see
-        // drcPoints/drcNoteIsFilled), same pattern as Brainstorm/Timer.
+        // Shortcut: opens this node's DRC note, pre-filled with the
+        // standing template (see DRC_NOTE_TEMPLATE / the forceDRCTemplate
+        // branch in openNoteModal) the first time, or just reopens the
+        // existing one on every click after that — only one DRC note is
+        // allowed per node. Unlike the automatic prefill, this isn't tied
+        // to any task being named "DRC". The label shows points earned so
+        // far from filled-in DRC notes (see drcPoints/drcNoteIsFilled),
+        // same pattern as Brainstorm/Timer.
         const drcPts = drcPoints(node);
         const label = drcPts > 0 ? `📋 DRC (${drcPts} pt${drcPts === 1 ? "" : "s"})…` : "📋 DRC…";
         addGroupRow(label, () => openNoteModal(node.id, undefined, null, null, null, true));
@@ -10320,19 +10321,22 @@
       photoModalCount.classList.toggle("hidden", !multi);
       photoModalCount.textContent = multi ? `${photoModalState.index + 1} / ${images.length}` : "";
     }
-    // Tags, comments, crop, and the text-label tool all read/write a
-    // per-photo record keyed by an id that only exists for photos
-    // actually attached to a node (see getPhotoTags/getPhotoComment
-    // etc.) — an image just pasted inline into a note has no such
-    // record, so those controls are hidden rather than rendered against
-    // a missing node.
+    // Tags, comments, crop, and favoriting all read/write a per-photo
+    // record keyed by an id that only exists for photos actually
+    // attached to a node (see getPhotoTags/getPhotoComment etc.) — an
+    // image just pasted inline into a note has no such record, so those
+    // controls are hidden rather than rendered against a missing node.
+    // The text-label tool (and its number-symbol shortcut) is the
+    // exception: it bakes the label straight into the photo's pixels and
+    // writes the result back into the note's own HTML (see startAddText
+    // and its noteMode branch below), so it works here too.
     const notePhoto = !!photoModalState.noteMode;
     photoModalTags.style.display = notePhoto ? "none" : "";
     photoModalCommentRow.style.display = notePhoto ? "none" : "";
     photoModalDelete.style.display = notePhoto ? "none" : "";
     photoModalCrop.style.display = notePhoto ? "none" : "";
-    photoModalText.style.display = notePhoto ? "none" : "";
-    photoModalSymbol.style.display = notePhoto ? "none" : "";
+    photoModalText.style.display = "";
+    photoModalSymbol.style.display = "";
     photoModalFavorite.style.display = notePhoto ? "none" : "";
     closePhotoSymbolPopover();
     if (notePhoto) return;
@@ -10723,7 +10727,7 @@
   });
   photoModalText.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (cropping || (photoModalState && photoModalState.noteMode)) return;
+    if (cropping) return;
     if (addingText) { if (rearmTextPlacement) rearmTextPlacement(); return; }
     startAddText();
   });
@@ -10902,8 +10906,12 @@
   function startAddText(initialSymbol) {
     if (addingText || cropping || !photoModalState) return;
     resetPhotoZoom();
-    const node = findNode(photoModalState.nodeId);
-    const images = getNodeImages(node);
+    // A note-photo session (see openNotePhotoViewer) has no backing node —
+    // its images live only in photoModalState.images, taken straight from
+    // the note's own <img> elements — so read from there instead of the
+    // node's attached-photo list.
+    const node = photoModalState.noteMode ? null : findNode(photoModalState.nodeId);
+    const images = photoModalState.noteMode ? photoModalState.images : getNodeImages(node);
     const src = images[photoModalState.index];
     if (!src) return;
 
@@ -11270,27 +11278,40 @@
       const isPng = src.startsWith("data:image/png");
       const outUrl = encodePhotoCanvas(canvas, isPng ? "image/png" : "image/jpeg", canvas.width * canvas.height, 1.0);
 
-      const liveNode = findNode(photoModalState.nodeId);
-      const liveIds = getNodeImageIds(liveNode);
-      if (liveIds.length) {
-        pushUndo();
-        const newId = addPhotoRecord(outUrl);
-        const oldId = liveIds[photoModalState.index];
-        carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
-        carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
-        carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
-        carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
-        carryPhotoTimestamps(liveNode, liveNode, [[oldId, newId]]);
-        setPhotoTags(liveNode, oldId, null);
-        setPhotoNotes(liveNode, oldId, null);
-        setPhotoComment(liveNode, oldId, null);
-        setPhotoTimestamp(liveNode, oldId, null);
-        deletePhotoRecord(oldId);
-        liveIds[photoModalState.index] = newId;
-        liveNode.images = liveIds;
-        liveNode.image = null;
-        renderAll();
-        persist();
+      if (photoModalState.noteMode) {
+        // No PhotoDB record to swap here — just write the baked-in image
+        // straight back onto the actual <img> element sitting in the note
+        // editor's live DOM. commitNotesToNode() then reads that updated
+        // innerHTML back into the note (see captureActiveNote), same as
+        // any other in-note edit, and handles its own pushUndo/persist.
+        const noteImgs = Array.from(noteTextarea.querySelectorAll("img"));
+        const targetImg = noteImgs[photoModalState.index];
+        if (targetImg) targetImg.src = outUrl;
+        photoModalState.images[photoModalState.index] = outUrl;
+        commitNotesToNode();
+      } else {
+        const liveNode = findNode(photoModalState.nodeId);
+        const liveIds = getNodeImageIds(liveNode);
+        if (liveIds.length) {
+          pushUndo();
+          const newId = addPhotoRecord(outUrl);
+          const oldId = liveIds[photoModalState.index];
+          carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
+          carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
+          carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
+          carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
+          carryPhotoTimestamps(liveNode, liveNode, [[oldId, newId]]);
+          setPhotoTags(liveNode, oldId, null);
+          setPhotoNotes(liveNode, oldId, null);
+          setPhotoComment(liveNode, oldId, null);
+          setPhotoTimestamp(liveNode, oldId, null);
+          deletePhotoRecord(oldId);
+          liveIds[photoModalState.index] = newId;
+          liveNode.images = liveIds;
+          liveNode.image = null;
+          renderAll();
+          persist();
+        }
       }
       cleanup();
     });
@@ -11572,15 +11593,22 @@
       }
     }
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
-    // group below) — unlike the automatic task-name prefill above, this
-    // always starts a brand-new note pre-filled with the template,
-    // regardless of how many notes the node already has. Titling it
-    // "DRC" is what makes isDRCNote/drcPoints/the node-strip icon
-    // recognize it — not a separate internal flag — so a note gets the
-    // same treatment if the title is set to "DRC" any other way too.
+    // group below). Only one DRC note is allowed per node: if one
+    // already exists among this node's notes (title "DRC" — see
+    // isDRCNote), just jump to it instead of starting another; only when
+    // there isn't one yet does this start a brand-new note pre-filled
+    // with the template. Titling it "DRC" is what makes isDRCNote/
+    // drcPoints/the node-strip icon recognize it — not a separate
+    // internal flag — so a note gets the same treatment if the title is
+    // set to "DRC" any other way too.
     if (forceDRCTemplate) {
-      noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), createdAt: Date.now(), updatedAt: Date.now() });
-      noteActiveIndex = noteWorkingList.length - 1;
+      const existingDRCIndex = noteWorkingList.findIndex(n => isDRCNote(n));
+      if (existingDRCIndex >= 0) {
+        noteActiveIndex = existingDRCIndex;
+      } else {
+        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), createdAt: Date.now(), updatedAt: Date.now() });
+        noteActiveIndex = noteWorkingList.length - 1;
+      }
     } else {
       const wantsNew = index != null && index >= noteWorkingList.length;
       if (!noteWorkingList.length || wantsNew) {
