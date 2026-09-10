@@ -6302,7 +6302,17 @@
         toggle.style.right = "auto";
         toggle.style.left = "-9px";
       }
-      toggle.textContent = node.collapsed ? "+" : "–";
+      if (node.collapsed) {
+        // Collapsed: the toggle doubles as the child-count badge — the
+        // number itself sits on the clickable circle instead of a separate
+        // inert badge floating at the corner, so tapping the count is what
+        // expands the branch back open.
+        toggle.classList.add("node-collapse-count");
+        toggle.textContent = String(countAll(node));
+        toggle.title = "Expand children";
+      } else {
+        toggle.textContent = "–";
+      }
       toggle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       toggle.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
       toggle.addEventListener("click", (e) => {
@@ -6313,12 +6323,6 @@
         persist();
       });
       div.appendChild(toggle);
-      if (node.collapsed) {
-        const badge = document.createElement("span");
-        badge.className = "node-badge";
-        badge.textContent = countAll(node);
-        div.appendChild(badge);
-      }
     }
 
     const nodeUrls = getNodeUrls(node);

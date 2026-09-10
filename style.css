@@ -1466,6 +1466,27 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-collapse:hover{ border-color: var(--accent); color: var(--accent); }
 
+/* Collapsed state: the toggle shows the descendant count instead of "+",
+   so it doubles as the old standalone badge — but clickable. It stays
+   visible at all times (not just on hover) since it's the only sign that
+   a branch is tucked away, and sizes to fit multi-digit counts. */
+.node-collapse.node-collapse-count{
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  font-weight: 700;
+  width: auto;
+  min-width: 16px;
+  padding: 0 4px;
+}
+.node-collapse.node-collapse-count:hover{
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  filter: brightness(1.1);
+}
+
 /* ---------------- Context menu ---------------- */
 
 .app-toast{
