@@ -1895,6 +1895,36 @@
     });
   }
 
+  // A photo can be starred as a favorite, same "keyed by the photo's own
+  // stable id" pattern as photoTags/photoNotes/photoComments above, so the
+  // star stays attached to the right photo through adds/deletes/reorders/
+  // drags/crops. Powers both the star toggle in the photo viewer and the
+  // "Favorites" sidebar browser (see collectFavoriteItems).
+  function getPhotoFavorite(node, photoId) {
+    return !!(node && node.photoFavorites && photoId && node.photoFavorites[photoId]);
+  }
+  function setPhotoFavorite(node, photoId, val) {
+    if (!node || !photoId) return;
+    if (!node.photoFavorites) node.photoFavorites = {};
+    if (val) node.photoFavorites[photoId] = true;
+    else delete node.photoFavorites[photoId];
+  }
+  function togglePhotoFavorite(node, photoId) {
+    setPhotoFavorite(node, photoId, !getPhotoFavorite(node, photoId));
+    return getPhotoFavorite(node, photoId);
+  }
+  // Same carry-along behavior as carryPhotoTags/carryPhotoNotes/
+  // carryPhotoComments — a moved/copied/cropped photo keeps its favorite
+  // star rather than silently losing it.
+  function carryPhotoFavorites(source, target, idPairs) {
+    if (!source || !target || !source.photoFavorites) return;
+    (idPairs || []).forEach(([fromId, toId]) => {
+      if (!source.photoFavorites[fromId]) return;
+      if (!target.photoFavorites) target.photoFavorites = {};
+      target.photoFavorites[toId] = true;
+    });
+  }
+
   // On-canvas photo markers are tiny (9–18px), but a full photo is stored
   // at its original resolution (no downscaling) so the lightbox still
   // looks sharp — full quality, exactly as attached. Painting that
@@ -2134,6 +2164,24 @@
     const clean = (title || "").trim();
     if (clean) node.linkTitles[url] = clean;
     else delete node.linkTitles[url];
+  }
+  // A link (or, since a YouTube URL is just a link that opens in the video
+  // player, a video too) can be starred as a favorite — same { [url]: true }
+  // map on the node as linkTitles/linkComments. Powers the star toggle in
+  // the link comment modal and the video modal, and the "Favorites"
+  // sidebar browser (see collectFavoriteItems).
+  function getLinkFavorite(node, url) {
+    return !!(node && node.linkFavorites && url && node.linkFavorites[url]);
+  }
+  function setLinkFavorite(node, url, val) {
+    if (!node || !url) return;
+    if (!node.linkFavorites) node.linkFavorites = {};
+    if (val) node.linkFavorites[url] = true;
+    else delete node.linkFavorites[url];
+  }
+  function toggleLinkFavorite(node, url) {
+    setLinkFavorite(node, url, !getLinkFavorite(node, url));
+    return getLinkFavorite(node, url);
   }
   // Carries link titles along when links are dragged onto another node
   // (see completeMarkerDrop's "urls" branch) — same idea as carryPhotoTags.
@@ -2766,6 +2814,8 @@
         openLinkSmart(u, {
           get: () => getLinkComment(findNode(nodeId) || node, u),
           set: (v) => setLinkComment(findNode(nodeId) || node, u, v),
+          getFavorite: () => getLinkFavorite(findNode(nodeId) || node, u),
+          setFavorite: (v) => setLinkFavorite(findNode(nodeId) || node, u, v),
         });
       });
       it.appendChild(labelSpan);
@@ -2845,6 +2895,8 @@
     openLinkCommentModal(u, {
       get: () => getLinkComment(findNode(nodeId) || node, u),
       set: (v) => setLinkComment(findNode(nodeId) || node, u, v),
+      getFavorite: () => getLinkFavorite(findNode(nodeId) || node, u),
+      setFavorite: (v) => setLinkFavorite(findNode(nodeId) || node, u, v),
     });
   }
 
@@ -5173,6 +5225,7 @@
       carryPhotoTags(source, target, pairs);
       carryPhotoNotes(source, target, pairs);
       carryPhotoComments(source, target, pairs);
+      carryPhotoFavorites(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
       if (!copy) {
         source.images = []; source.image = null;
@@ -5194,6 +5247,7 @@
       carryPhotoTags(source, target, [[movedId, carriedId]]);
       carryPhotoNotes(source, target, [[movedId, carriedId]]);
       carryPhotoComments(source, target, [[movedId, carriedId]]);
+      carryPhotoFavorites(source, target, [[movedId, carriedId]]);
       target.images = getNodeImageIds(target).concat([carriedId]);
       if (!copy) {
         const remaining = srcIds.slice();
@@ -5216,6 +5270,7 @@
       carryPhotoTags(source, target, pairs);
       carryPhotoNotes(source, target, pairs);
       carryPhotoComments(source, target, pairs);
+      carryPhotoFavorites(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
       if (!copy) {
         source.images = srcIds.slice(0, overflowFrom || 0);
@@ -6397,6 +6452,8 @@
             openLinkSmart(u, {
               get: () => getLinkComment(findNode(node.id) || node, u),
               set: (v) => setLinkComment(findNode(node.id) || node, u, v),
+              getFavorite: () => getLinkFavorite(findNode(node.id) || node, u),
+              setFavorite: (v) => setLinkFavorite(findNode(node.id) || node, u, v),
             });
           });
         }
@@ -9241,6 +9298,7 @@
   const videoModalCard = $(".video-modal-card");
   const videoModalIframe = $("#video-modal-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
+  const videoModalFavoriteBtn = $("#video-modal-favorite");
   const videoModalMinimizeBtn = $("#video-modal-minimize");
   const videoModalSizeBtn = $("#video-modal-size");
   const videoModalCloseBtn = $("#video-modal-close");
@@ -9382,6 +9440,7 @@
     videoModalCommentCtx = commentCtx || null;
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
+    renderVideoModalFavorite();
     zoomModalOpen(videoModal);
     if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
 
@@ -9409,6 +9468,32 @@
       });
     }
   }
+  // Syncs the ☆/★ favorite button to whichever video is currently loaded
+  // (see openVideoModal) — hidden when this video's commentCtx doesn't
+  // carry favorite accessors (shouldn't normally happen, since every
+  // caller of openLinkSmart for a node-level URL supplies them; only a
+  // cell-scoped link omits them, and those never reach the video modal
+  // today, but this stays defensive rather than assuming so).
+  function renderVideoModalFavorite() {
+    if (!videoModalCommentCtx || !videoModalCommentCtx.getFavorite) {
+      videoModalFavoriteBtn.style.display = "none";
+      return;
+    }
+    videoModalFavoriteBtn.style.display = "";
+    const fav = !!videoModalCommentCtx.getFavorite();
+    videoModalFavoriteBtn.textContent = fav ? "★" : "☆";
+    videoModalFavoriteBtn.classList.toggle("favorited", fav);
+    videoModalFavoriteBtn.title = fav ? "Remove from favorites" : "Add to favorites";
+    videoModalFavoriteBtn.setAttribute("aria-label", videoModalFavoriteBtn.title);
+  }
+  videoModalFavoriteBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!videoModalCommentCtx || !videoModalCommentCtx.getFavorite || !videoModalCommentCtx.setFavorite) return;
+    pushUndo();
+    videoModalCommentCtx.setFavorite(!videoModalCommentCtx.getFavorite());
+    persist();
+    renderVideoModalFavorite();
+  });
   function closeVideoModal() {
     if (ytPlayer && ytPlayerCurrentId && typeof ytPlayer.getCurrentTime === "function") {
       try { saveYtPosition(ytPlayerCurrentId, ytPlayer.getCurrentTime()); } catch {}
@@ -9452,11 +9537,25 @@
   const linkCommentModalUrl = $("#link-comment-modal-url");
   const linkCommentModalInput = $("#link-comment-modal-input");
   const linkCommentModalCloseBtn = $("#link-comment-modal-close");
+  const linkCommentModalFavorite = $("#link-comment-modal-favorite");
   let linkCommentModalCtx = null;
+  function renderLinkCommentModalFavorite() {
+    if (!linkCommentModalCtx || !linkCommentModalCtx.getFavorite) {
+      linkCommentModalFavorite.style.display = "none";
+      return;
+    }
+    linkCommentModalFavorite.style.display = "";
+    const fav = !!linkCommentModalCtx.getFavorite();
+    linkCommentModalFavorite.textContent = fav ? "★" : "☆";
+    linkCommentModalFavorite.classList.toggle("favorited", fav);
+    linkCommentModalFavorite.title = fav ? "Remove from favorites" : "Add to favorites";
+    linkCommentModalFavorite.setAttribute("aria-label", linkCommentModalFavorite.title);
+  }
   function openLinkCommentModal(url, commentCtx) {
     linkCommentModalCtx = commentCtx;
     linkCommentModalUrl.textContent = url;
     linkCommentModalInput.value = commentCtx.get();
+    renderLinkCommentModalFavorite();
     zoomModalOpen(linkCommentModal);
     requestAnimationFrame(() => { autoGrowTextarea(linkCommentModalInput); linkCommentModalInput.focus(); });
   }
@@ -9471,6 +9570,14 @@
     linkCommentModalCtx = null;
     zoomModalClose(linkCommentModal);
   }
+  linkCommentModalFavorite.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!linkCommentModalCtx || !linkCommentModalCtx.setFavorite || !linkCommentModalCtx.getFavorite) return;
+    pushUndo();
+    linkCommentModalCtx.setFavorite(!linkCommentModalCtx.getFavorite());
+    persist();
+    renderLinkCommentModalFavorite();
+  });
   linkCommentModalCloseBtn.addEventListener("click", closeLinkCommentModal);
   linkCommentModal.addEventListener("click", (e) => { if (e.target === linkCommentModal) closeLinkCommentModal(); });
   linkCommentModalInput.addEventListener("keydown", (e) => {
@@ -9888,14 +9995,27 @@
   photoModalSymbol.textContent = "🔢";
   photoModal.querySelector(".photo-modal-card").appendChild(photoModalSymbol);
 
-  // Close/delete/crop/Aa/🔢 all sit together in one row centered
+  // Favorite star — same ☆/★ toggle as the note editor and link/video
+  // modals (see toggleNoteFavorite/getPhotoFavorite), sat in the same
+  // centered top row as crop/text/symbol. Hidden for an inline note photo
+  // (see notePhoto branch in renderPhotoModal below) since there's no
+  // per-node attach record backing one of those to star.
+  const photoModalFavorite = document.createElement("button");
+  photoModalFavorite.id = "photo-modal-favorite";
+  photoModalFavorite.className = "photo-modal-delete item-star-btn";
+  photoModalFavorite.title = "Add to favorites";
+  photoModalFavorite.setAttribute("aria-label", "Add to favorites");
+  photoModalFavorite.textContent = "☆";
+  photoModal.querySelector(".photo-modal-card").appendChild(photoModalFavorite);
+
+  // Close/delete/crop/Aa/🔢/☆ all sit together in one row centered
   // directly above the photo, outside its frame, instead of hugging a
   // fixed viewport corner. Since photos render at all sorts of sizes
   // (capped at 92vw/88vh but often much smaller), that position has to
   // be computed from the actual rendered <img> box rather than
   // hardcoded, and recomputed whenever the photo or the viewport
   // changes.
-  const PHOTO_TOP_CENTER_BUTTONS = [photoModalSymbol, photoModalText, photoModalCrop, photoModalDelete, photoModalClose];
+  const PHOTO_TOP_CENTER_BUTTONS = [photoModalSymbol, photoModalText, photoModalCrop, photoModalFavorite, photoModalDelete, photoModalClose];
   function positionPhotoTopCenterButtons() {
     const rect = photoModalImg.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -10140,10 +10260,27 @@
     photoModalCrop.style.display = notePhoto ? "none" : "";
     photoModalText.style.display = notePhoto ? "none" : "";
     photoModalSymbol.style.display = notePhoto ? "none" : "";
+    photoModalFavorite.style.display = notePhoto ? "none" : "";
     closePhotoSymbolPopover();
     if (notePhoto) return;
     renderPhotoModalTags();
     renderPhotoModalComment();
+    renderPhotoModalFavorite();
+  }
+
+  // Syncs the ☆/★ favorite button to match whichever photo is currently
+  // shown — called whenever the visible photo changes (see
+  // renderPhotoModal) so stepping through the gallery doesn't leave one
+  // photo's star showing on a different photo.
+  function renderPhotoModalFavorite() {
+    if (!photoModalState || photoModalState.noteMode) return;
+    const node = findNode(photoModalState.nodeId);
+    const id = getNodeImageIds(node)[photoModalState.index];
+    const fav = getPhotoFavorite(node, id);
+    photoModalFavorite.textContent = fav ? "★" : "☆";
+    photoModalFavorite.classList.toggle("favorited", fav);
+    photoModalFavorite.title = fav ? "Remove from favorites" : "Add to favorites";
+    photoModalFavorite.setAttribute("aria-label", photoModalFavorite.title);
   }
 
   // Opens the same lightbox used for a node's attached photos, but for an
@@ -10299,6 +10436,17 @@
     const nodeId = photoModalState.nodeId;
     closePhotoModal();
     focusNodeInCanvas(nodeId);
+  });
+  photoModalFavorite.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!photoModalState || photoModalState.noteMode) return;
+    const node = findNode(photoModalState.nodeId);
+    const id = getNodeImageIds(node)[photoModalState.index];
+    if (!node || !id) return;
+    pushUndo();
+    togglePhotoFavorite(node, id);
+    persist();
+    renderPhotoModalFavorite();
   });
   // Zoom buttons — same centered zoom math as the scroll-wheel handler
   // below, just anchored to the image's center instead of the cursor.
@@ -10649,6 +10797,7 @@
         carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
+        carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
         setPhotoTags(liveNode, oldId, null);
         setPhotoNotes(liveNode, oldId, null);
         setPhotoComment(liveNode, oldId, null);
@@ -11039,6 +11188,7 @@
         carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
+        carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
         setPhotoTags(liveNode, oldId, null);
         setPhotoNotes(liveNode, oldId, null);
         setPhotoComment(liveNode, oldId, null);
@@ -11087,6 +11237,7 @@
   let noteWorkingList = [];
   let noteActiveIndex = 0;
   const noteNavAdd = $("#note-nav-add");
+  const noteNavFavorite = $("#note-nav-favorite");
   const noteNavDelete = $("#note-nav-delete");
 
   // ---- Note editor undo/redo ----
@@ -11288,7 +11439,7 @@
       : noteEditingCellPos
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
-    noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html }));
+    noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, favorite: !!n.favorite }));
     // A task named "DRC" (Daily Report Card) gets its very first note
     // pre-filled with the standing review template below, instead of a
     // blank editor — only when this is genuinely the first note on that
@@ -11372,6 +11523,32 @@
     noteResetUndoHistory();
     updateNoteNavUI();
     updateNoteLineCount();
+    updateNoteFavoriteUI();
+  }
+
+  // Syncs the ☆/★ favorite button in the note editor's nav row to match
+  // whichever note is currently loaded (see loadNoteIntoEditor) — same
+  // idea as toggleNoteFavorite below, just the read side.
+  function updateNoteFavoriteUI() {
+    const current = noteWorkingList[noteActiveIndex];
+    const fav = !!(current && current.favorite);
+    noteNavFavorite.textContent = fav ? "★" : "☆";
+    noteNavFavorite.classList.toggle("favorited", fav);
+    noteNavFavorite.title = fav ? "Remove from favorites" : "Add to favorites";
+    noteNavFavorite.setAttribute("aria-label", noteNavFavorite.title);
+  }
+
+  // Toggles the favorite star on whichever note is currently loaded in the
+  // editor and saves immediately — same commit-on-change behavior as
+  // adding/deleting a note (see addAnotherNote/deleteActiveNote), so the
+  // star shows up in the "Favorites" sidebar browser right away.
+  function toggleNoteFavorite() {
+    const current = noteWorkingList[noteActiveIndex];
+    if (!current) return;
+    captureActiveNote();
+    current.favorite = !current.favorite;
+    updateNoteFavoriteUI();
+    commitNotesToNode();
   }
 
   function updateNoteNavUI() {
@@ -12190,6 +12367,8 @@
 
   noteNavAdd.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavAdd.addEventListener("click", addAnotherNote);
+  noteNavFavorite.addEventListener("mousedown", (e) => e.preventDefault());
+  noteNavFavorite.addEventListener("click", toggleNoteFavorite);
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
   $("#note-nav-close").addEventListener("click", closeNoteModal);
@@ -14664,6 +14843,197 @@
   document.addEventListener("keydown", (e) => {
     if (commentBrowserModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closeCommentBrowserModal();
+  });
+
+  /* ---------------- favorites browser ---------------- */
+
+  // Same idea as the tag/comment browsers above (collect a starred
+  // attribute from across the whole map, click to jump straight to it),
+  // but spanning three different kinds of thing at once — a favorited
+  // note, photo, or link/video — since that's what "favorite" means here
+  // (see getPhotoFavorite/getLinkFavorite and the note editor's own
+  // .favorite field, toggled from the ☆ buttons added alongside each).
+  const favoritesBrowserModal = $("#favoritesbrowser-modal");
+  const favoritesBrowserList = $("#favoritesbrowser-list");
+  const favoritesBrowserSearch = $("#favoritesbrowser-search");
+  let favoritesBrowserItems = [];
+
+  function collectFavoriteItems() {
+    const items = [];
+    let cleaned = false;
+    collectAllNodesFlat().forEach((node) => {
+      const nodeLabel = node.text || "Untitled node";
+
+      getNodeNotes(node).forEach((n) => {
+        if (!n.favorite) return;
+        items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n) });
+      });
+
+      if (node.photoFavorites) {
+        const liveIds = new Set(getNodeImageIds(node));
+        Object.keys(node.photoFavorites).forEach((id) => {
+          // Same leftover cleanup as collectPhotoTagGroups/
+          // collectPhotoCommentItems — a photo dragged onto a different
+          // node (which carries its star along, see carryPhotoFavorites)
+          // shouldn't leave a stale star behind here pointing at a photo
+          // this node no longer actually holds.
+          if (!liveIds.has(id)) { delete node.photoFavorites[id]; cleaned = true; return; }
+          if (!node.photoFavorites[id]) return;
+          items.push({ type: "photo", nodeId: node.id, photoId: id, nodeLabel, preview: "Photo" });
+        });
+      }
+
+      if (node.linkFavorites) {
+        const liveUrls = new Set(getNodeUrls(node));
+        Object.keys(node.linkFavorites).forEach((url) => {
+          if (!liveUrls.has(url)) { delete node.linkFavorites[url]; cleaned = true; return; }
+          if (!node.linkFavorites[url]) return;
+          const isVideo = !!youtubeVideoId(url);
+          items.push({
+            type: isVideo ? "video" : "link",
+            nodeId: node.id,
+            url,
+            nodeLabel,
+            preview: getLinkTitle(node, url) || url,
+          });
+        });
+      }
+    });
+    if (cleaned) persist();
+    return items.sort((a, b) => a.nodeLabel.localeCompare(b.nodeLabel));
+  }
+
+  const FAVORITE_TYPE_ICON = { note: "📝", photo: "🖼", link: "🔗", video: "📺" };
+
+  function openFavoritesBrowserModal() {
+    favoritesBrowserItems = collectFavoriteItems();
+    favoritesBrowserSearch.value = "";
+    renderFavoritesBrowserList();
+    zoomModalOpen(favoritesBrowserModal);
+    requestAnimationFrame(() => favoritesBrowserSearch.focus());
+  }
+  function closeFavoritesBrowserModal() {
+    zoomModalClose(favoritesBrowserModal);
+  }
+
+  // Unstars one item directly from the list (the row's own ☆) without
+  // opening it — same underlying toggle each item's own star button uses
+  // (toggleNoteFavorite's field write / togglePhotoFavorite/
+  // toggleLinkFavorite), just entered from here instead.
+  function unfavoriteItem(item) {
+    const node = findNode(item.nodeId);
+    if (!node) return;
+    pushUndo();
+    if (item.type === "note") {
+      const n = getNodeNotes(node).find(x => x.id === item.noteId);
+      if (n) n.favorite = false;
+    } else if (item.type === "photo") {
+      setPhotoFavorite(node, item.photoId, false);
+    } else {
+      setLinkFavorite(node, item.url, false);
+    }
+    persist();
+    renderAll();
+  }
+
+  function jumpToFavoriteItem(item) {
+    const node = findNode(item.nodeId);
+    if (!node) return;
+    closeFavoritesBrowserModal();
+    if (item.type === "note") {
+      const idx = getNodeNotes(node).findIndex(n => n.id === item.noteId);
+      openNoteModal(item.nodeId, idx >= 0 ? idx : undefined);
+    } else if (item.type === "photo") {
+      const idx = getNodeImageIds(node).indexOf(item.photoId);
+      if (idx < 0) return;
+      // Every favorited photo (not just the filtered/visible ones), so
+      // prev/next inside the opened photo modal steps through the whole
+      // starred set — same idea as the tag browser's group.
+      const group = {
+        label: "Favorites",
+        items: favoritesBrowserItems.filter(it => it.type === "photo").map(it => ({ nodeId: it.nodeId, id: it.photoId })),
+      };
+      openPhotoModal(item.nodeId, idx, group);
+    } else {
+      // Plain link or YouTube video — same click behavior as the link's
+      // own icon on the canvas (see openLinkSmart): a video opens in the
+      // in-app player, anything else opens its own popup window.
+      openLinkSmart(item.url, {
+        get: () => getLinkComment(findNode(item.nodeId) || node, item.url),
+        set: (v) => setLinkComment(findNode(item.nodeId) || node, item.url, v),
+        getFavorite: () => getLinkFavorite(findNode(item.nodeId) || node, item.url),
+        setFavorite: (v) => setLinkFavorite(findNode(item.nodeId) || node, item.url, v),
+      });
+    }
+  }
+
+  function renderFavoritesBrowserList() {
+    const q = favoritesBrowserSearch.value.trim().toLowerCase();
+    const filtered = !q ? favoritesBrowserItems : favoritesBrowserItems.filter(it =>
+      it.preview.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q));
+    favoritesBrowserList.innerHTML = "";
+    if (!filtered.length) {
+      const empty = document.createElement("li");
+      empty.className = "tagbrowser-empty";
+      empty.textContent = favoritesBrowserItems.length
+        ? "No favorites match that search."
+        : "No favorites yet — tap the ☆ on a note, photo, link, or video to start collecting them here.";
+      favoritesBrowserList.appendChild(empty);
+      return;
+    }
+    filtered.forEach((it) => {
+      const node = findNode(it.nodeId);
+      if (!node) return; // stale entry (shouldn't normally happen)
+      const li = document.createElement("li");
+      li.className = "favoritesbrowser-row";
+
+      const icon = document.createElement("span");
+      icon.className = "favoritesbrowser-row-icon";
+      if (it.type === "photo") {
+        const thumbUrl = photoUrl(it.photoId);
+        if (thumbUrl) {
+          const thumb = document.createElement("img");
+          thumb.className = "tagbrowser-tag-thumb";
+          thumb.alt = "";
+          thumb.src = thumbUrl;
+          thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
+          icon.appendChild(thumb);
+        } else {
+          icon.textContent = FAVORITE_TYPE_ICON.photo;
+        }
+      } else {
+        icon.textContent = FAVORITE_TYPE_ICON[it.type];
+      }
+
+      const text = document.createElement("span");
+      text.className = "favoritesbrowser-row-text";
+      const name = document.createElement("span");
+      name.className = "favoritesbrowser-row-name";
+      name.textContent = it.nodeLabel;
+      const preview = document.createElement("span");
+      preview.className = "favoritesbrowser-row-preview";
+      preview.textContent = it.preview.length > 90 ? it.preview.slice(0, 89) + "…" : it.preview;
+      text.append(name, preview);
+
+      const star = document.createElement("span");
+      star.className = "item-star favorited";
+      star.textContent = "★";
+      star.title = "Remove from favorites";
+      star.addEventListener("click", (e) => { e.stopPropagation(); unfavoriteItem(it); renderFavoritesBrowserList(); });
+
+      li.append(icon, text, star);
+      li.addEventListener("click", () => jumpToFavoriteItem(it));
+      favoritesBrowserList.appendChild(li);
+    });
+  }
+
+  $("#btn-favoritesbrowser").addEventListener("click", openFavoritesBrowserModal);
+  $("#favoritesbrowser-close").addEventListener("click", closeFavoritesBrowserModal);
+  favoritesBrowserModal.addEventListener("click", (e) => { if (e.target === favoritesBrowserModal) closeFavoritesBrowserModal(); });
+  favoritesBrowserSearch.addEventListener("input", renderFavoritesBrowserList);
+  document.addEventListener("keydown", (e) => {
+    if (favoritesBrowserModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeFavoritesBrowserModal();
   });
 
   /* ---------------- boot ---------------- */

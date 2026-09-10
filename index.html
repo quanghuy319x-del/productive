@@ -62,6 +62,7 @@
       <button id="btn-trash" class="btn-ghost" title="Trashed maps">🗑 Trash<span id="trash-count-badge" class="trash-count-badge hidden"></span></button>
       <button id="btn-tagbrowser" class="btn-ghost" title="Browse photos by tag">🏷 Tags</button>
       <button id="btn-commentbrowser" class="btn-ghost" title="Browse photo comments">💬 Comments</button>
+      <button id="btn-favoritesbrowser" class="btn-ghost" title="Browse your favorites">⭐ Favorites</button>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -240,6 +241,7 @@
   <div class="modal-card link-comment-modal-card">
     <div class="link-comment-modal-head">
       <h2>Comment</h2>
+      <button id="link-comment-modal-favorite" class="video-modal-close item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
       <button id="link-comment-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="link-comment-modal-url" class="link-comment-modal-url"></div>
@@ -273,6 +275,7 @@
     </div>
     <div class="video-modal-actions">
       <a id="video-modal-open-link" class="video-modal-open-link" target="_blank" rel="noopener">Open on YouTube ↗</a>
+      <button id="video-modal-favorite" class="video-modal-size item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
       <button id="video-modal-minimize" class="video-modal-size" title="Minimize player" aria-label="Minimize player">─</button>
       <button id="video-modal-size" class="video-modal-size" title="Make player bigger" aria-label="Change player size">⤢</button>
       <button id="video-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
@@ -316,6 +319,19 @@
     <p class="tagbrowser-hint">Every comment you've added to a photo, gathered from across this whole map.</p>
     <input type="text" id="commentbrowser-search" class="commentbrowser-search" placeholder="Search comments or node names…" spellcheck="false">
     <div id="commentbrowser-grid" class="tagbrowser-gallery-grid"></div>
+  </div>
+</div>
+
+<div id="favoritesbrowser-modal" class="modal hidden">
+  <div class="modal-card tagbrowser-modal-card">
+    <div class="modal-back-row">
+      <h2>Favorites</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="favoritesbrowser-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="tagbrowser-hint">Every note, photo, link, and video you've starred, gathered from across this whole map.</p>
+    <input type="text" id="favoritesbrowser-search" class="commentbrowser-search" placeholder="Search favorites or node names…" spellcheck="false">
+    <ul id="favoritesbrowser-list" class="favoritesbrowser-list"></ul>
   </div>
 </div>
 
@@ -385,6 +401,7 @@
     <div class="note-nav-row">
       <span class="note-nav-gap"></span>
       <button type="button" id="note-nav-add" class="note-nav-btn" title="Start a new note on this node">+ New note</button>
+      <button type="button" id="note-nav-favorite" class="note-nav-btn item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
       <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
       <button type="button" id="note-nav-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>

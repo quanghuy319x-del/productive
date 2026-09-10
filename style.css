@@ -217,6 +217,14 @@ html,body{
 .map-item .item-star.favorited{ opacity:1; color:#f2c94c; }
 .map-item .item-star:hover{ color:#f2c94c; background: rgba(242,201,76,0.12); }
 
+/* Shared favorite-star toggle used in the note editor, photo viewer, link
+   comment modal, and video modal (see note-nav-favorite/photo-modal-
+   favorite/link-comment-modal-favorite/video-modal-favorite in app.js) —
+   layered on top of each button's own base class, just recoloring the
+   glyph gold once favorited. */
+.item-star-btn.favorited{ color:#f2c94c; }
+.item-star-btn:hover{ color:#f2c94c; }
+
 .sidebar-folder{
   display:flex;
   flex-direction:column;
@@ -3143,6 +3151,74 @@ kbd{
   -webkit-box-orient: vertical;
   overflow:hidden;
 }
+
+/* Favorites browser — a flat list (unlike the tag/comment browsers'
+   grids) since it mixes three different kinds of starred thing (note,
+   photo, link/video) rather than one uniform gallery. Reuses the same
+   row layout as .tagbrowser-tag-row, plus its own icon/thumb, two-line
+   text block, and a remove-star action on the right. */
+.favoritesbrowser-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+}
+.favoritesbrowser-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 4px;
+  border-bottom:1px solid var(--border);
+  cursor:pointer;
+  border-radius: 6px;
+  transition: background .12s ease;
+}
+.favoritesbrowser-row:last-child{ border-bottom:none; }
+.favoritesbrowser-row:hover{ background: var(--panel-2); }
+.favoritesbrowser-row-icon{
+  flex:none;
+  width:36px; height:36px;
+  border-radius:6px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:16px;
+  border:1px solid var(--border);
+  background: var(--panel-2);
+  overflow:hidden;
+}
+.favoritesbrowser-row-icon img{
+  width:100%; height:100%;
+  object-fit:cover;
+}
+.favoritesbrowser-row-text{
+  flex:1 1 auto;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.favoritesbrowser-row-name{
+  font-size:13px;
+  color: var(--text);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.favoritesbrowser-row-preview{
+  font-size:11px;
+  color: var(--text-faint);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.favoritesbrowser-row .item-star{
+  flex:none;
+  opacity: 1;
+  font-size: 15px;
+  padding: 2px 4px;
+  border-radius:4px;
+}
+.favoritesbrowser-row .item-star:hover{ background: rgba(242,201,76,0.12); }
 
 .theme-row{
   display:flex;
