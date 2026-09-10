@@ -14498,8 +14498,55 @@
   const brainstormTextarea = $("#brainstorm-textarea");
   const brainstormProgressLabel = $("#brainstorm-progress-label");
   const brainstormClearBtn = $("#brainstorm-clear-btn");
+  const brainstormCard = $(".brainstorm-modal-card");
+  const brainstormResizeHandle = $("#brainstorm-resize-handle");
   let brainstormEditingId = null; // {nodeId, r, c} — r/c omitted for a node-level scratchpad, both given for a table-cell one
   let brainstormSaveTimer = null;
+  let brainstormIsResizing = false;
+
+  // Same custom drag-to-resize grip as the note editor (see
+  // setupNoteResize) — kept as its own copy rather than a shared function
+  // since the two modals' card/handle elements differ, but the behavior
+  // (and min/max bounds) match exactly for a consistent feel.
+  (function setupBrainstormResize() {
+    let startX, startY, startW, startH;
+    function onMove(e) {
+      const dw = e.clientX - startX;
+      const dh = e.clientY - startY;
+      const maxW = window.innerWidth * 0.96;
+      const maxH = window.innerHeight * 0.92;
+      brainstormCard.style.width = clamp(startW + dw, 420, maxW) + "px";
+      brainstormCard.style.height = clamp(startH + dh, 320, maxH) + "px";
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      setTimeout(() => { brainstormIsResizing = false; }, 0);
+    }
+    function onResizeStart(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      brainstormIsResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = brainstormCard.getBoundingClientRect();
+      startW = rect.width;
+      startH = rect.height;
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    }
+    brainstormResizeHandle.addEventListener("mousedown", onResizeStart);
+    brainstormResizeHandle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      onResizeStart(e);
+    });
+  })();
 
   // Gives every line its own color, cycling through the same palette as
   // the note editor's numbered-list lines (see noteAutoColorParagraphs) —
@@ -14630,7 +14677,7 @@
   });
 
   $("#brainstorm-back").addEventListener("click", closeBrainstormModal);
-  brainstormModal.addEventListener("click", (e) => { if (e.target === brainstormModal) closeBrainstormModal(); });
+  brainstormModal.addEventListener("click", (e) => { if (!brainstormIsResizing && e.target === brainstormModal) closeBrainstormModal(); });
 
   /* ---------------- affirmation lines manager ---------------- */
   // Lets the person edit the pool of lines itself: rename any existing

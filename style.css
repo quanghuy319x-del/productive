@@ -2836,46 +2836,31 @@ kbd{
   color: var(--text-dim);
 }
 
-/* ---- Brainstorm modal (free-typed note scratchpad, 2 lines = 1 pt) ---- */
-.brainstorm-modal-card{ max-width: 420px; }
-.brainstorm-textarea{
-  display: block;
-  width: 100%;
-  min-height: 440px;
-  max-height: 720px;
-  overflow-y: auto;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #d8dae0;
-  background: #ffffff;
-  color: #1c1e26;
-  font-family: inherit;
-  font-size: 13.5px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  outline: none;
-  box-sizing: border-box;
-  text-align: left;
-}
-.brainstorm-textarea:focus{ border-color: var(--accent); }
-/* Each line/paragraph is its own child <div> (same structure as
-   .note-textarea — see noteHtmlFromRaw/brainstormAutoColorLines in
-   app.js) and gets its own cycling color so separate lines are easy to
-   tell apart at a glance, matching the node note editor's per-paragraph
-   coloring. */
-.brainstorm-textarea div{ min-height: 1.6em; }
-.brainstorm-textarea:empty::before{
-  content: attr(data-placeholder);
-  color: #9a9ea8;
-}
-.brainstorm-progress-label{
-  margin: 8px 2px 0;
-  font-size: 12px;
+/* ---- Brainstorm modal (free-typed note scratchpad, 2 lines = 1 pt) ----
+   Deliberately built on top of .note-modal-card / .note-textarea /
+   .note-line-count (see note-modal-card etc. above) rather than its own
+   look, so the two writing surfaces in the app — the per-node Note and
+   this per-node Brainstorm scratchpad — feel like the same interface:
+   same paper card, same monospace type, same per-line auto-coloring,
+   same drag-to-resize corner grip. Only the bits that are genuinely
+   different (the node-context label up top, the "N lines · N pts"
+   readout instead of a plain line count) get their own small rules
+   below. */
+.brainstorm-modal-card{ /* inherits size/paper look from .note-modal-card */ }
+.brainstorm-node-label{
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 700;
-  color: #c39bf5;
-  text-align: right;
+  font-size: 12px;
+  color: var(--paper-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+/* Text content ("N lines · N pts") differs from the plain "Lines: N"
+   note counter, but position/size/color match .note-line-count exactly
+   via that shared class on the element in index.html. */
+.brainstorm-progress-label{ font-weight: 700; }
 .timer-countdown-row.hidden, .timer-done-label.hidden{ display:none; }
 .timer-countdown-row{
   display:flex;

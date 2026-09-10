@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=50">
+<link rel="stylesheet" href="style.css?v=51">
 </head>
 <body>
 <div id="app">
@@ -634,23 +634,22 @@
 </div>
 
 <div id="brainstorm-modal" class="modal hidden">
-  <div class="modal-card brainstorm-modal-card">
-    <div class="modal-back-row">
-      <button type="button" id="brainstorm-back" class="modal-back-btn" title="Back" aria-label="Back">←</button>
-      <h2>Brainstorm</h2>
-      <span class="modal-back-row-gap"></span>
-      <button type="button" id="brainstorm-clear-btn" class="modal-back-btn" title="Clear" aria-label="Clear">↺</button>
+  <div class="modal-card note-modal-card brainstorm-modal-card">
+    <div class="note-nav-row">
+      <span id="brainstorm-node-label" class="brainstorm-node-label"></span>
+      <span class="note-nav-gap"></span>
+      <button type="button" id="brainstorm-clear-btn" class="note-nav-btn note-nav-btn-danger" title="Clear this brainstorm">↺ Clear</button>
+      <button type="button" id="brainstorm-back" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
-    <p id="brainstorm-node-label" class="timer-node-label"></p>
-    <div id="brainstorm-textarea" class="brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line…"></div>
-    <p id="brainstorm-progress-label" class="brainstorm-progress-label">0 lines · 0 pts</p>
-    <p class="timer-hint">Every 2 lines you write earns 1 point toward this node's task score.</p>
+    <div id="brainstorm-textarea" class="note-textarea brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line… (every 2 lines = 1 pt)"></div>
+    <div id="brainstorm-resize-handle" class="note-resize-handle" title="Drag to resize"></div>
+    <span id="brainstorm-progress-label" class="note-line-count brainstorm-progress-label">0 lines · 0 pts</span>
   </div>
 </div>
 
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=103"></script>
+<script src="app.js?v=104"></script>
 </body>
 </html>
