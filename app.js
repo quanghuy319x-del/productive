@@ -14579,6 +14579,11 @@
     closeContextMenu();
     brainstormEditingId = { nodeId, r, c };
     renderBrainstormModal();
+    // Same width-reset-on-open behavior as the note editor (see
+    // openNoteModal/noteCard.style.width above) — a previous manual
+    // resize shouldn't leak its width into the next brainstorm session,
+    // though height is deliberately left alone, matching notes.
+    brainstormCard.style.width = "";
     zoomModalOpen(brainstormModal);
     requestAnimationFrame(() => brainstormTextarea.focus());
   }
