@@ -1925,6 +1925,36 @@
     });
   }
 
+  // When a photo was actually attached — keyed by the photo's own stable
+  // id, same pattern as photoTags/photoNotes/photoComments/photoFavorites
+  // above. Powers the "Photos" sidebar browser's Date sort (see
+  // collectAllPhotos). Photos attached before this field existed have no
+  // entry here; collectAllPhotos backfills one lazily (stamps it with
+  // "now" the first time that photo is listed) rather than leaving it
+  // permanently dateless — same lazy-backfill idea as a note's createdAt
+  // (see captureActiveNote).
+  function getPhotoTimestamp(node, photoId) {
+    return (node && node.photoTimestamps && photoId && node.photoTimestamps[photoId]) || 0;
+  }
+  function setPhotoTimestamp(node, photoId, ts) {
+    if (!node || !photoId) return;
+    if (!node.photoTimestamps) node.photoTimestamps = {};
+    if (ts) node.photoTimestamps[photoId] = ts;
+    else delete node.photoTimestamps[photoId];
+  }
+  // Same carry-along behavior as carryPhotoFavorites — a moved/copied/
+  // cropped photo keeps its "date added" rather than silently losing it
+  // (and, for a move, looking freshly backfilled on the target node).
+  function carryPhotoTimestamps(source, target, idPairs) {
+    if (!source || !target || !source.photoTimestamps) return;
+    (idPairs || []).forEach(([fromId, toId]) => {
+      const ts = source.photoTimestamps[fromId];
+      if (!ts) return;
+      if (!target.photoTimestamps) target.photoTimestamps = {};
+      target.photoTimestamps[toId] = ts;
+    });
+  }
+
   // On-canvas photo markers are tiny (9–18px), but a full photo is stored
   // at its original resolution (no downscaling) so the lightbox still
   // looks sharp — full quality, exactly as attached. Painting that
@@ -2192,6 +2222,34 @@
       if (!title) return;
       if (!target.linkTitles) target.linkTitles = {};
       if (!target.linkTitles[u]) target.linkTitles[u] = title;
+    });
+  }
+
+  // When a URL was actually added to a node — same { [url]: ts } map shape
+  // as linkTitles/linkFavorites above. Powers the "Videos" sidebar
+  // browser's Date sort (see collectAllVideos). Links added before this
+  // field existed have no entry here; collectAllVideos backfills one
+  // lazily the first time that link is listed, same idea as
+  // getPhotoTimestamp above / a note's createdAt (see captureActiveNote).
+  function getLinkTimestamp(node, url) {
+    return (node && node.linkTimestamps && url && node.linkTimestamps[url]) || 0;
+  }
+  function setLinkTimestamp(node, url, ts) {
+    if (!node || !url) return;
+    if (!node.linkTimestamps) node.linkTimestamps = {};
+    if (ts) node.linkTimestamps[url] = ts;
+    else delete node.linkTimestamps[url];
+  }
+  // Same carry-along behavior as carryLinkTitles — a moved/copied link
+  // keeps its "date added" instead of looking freshly backfilled on the
+  // target node.
+  function carryLinkTimestamps(source, target, urls) {
+    if (!source || !target || !source.linkTimestamps) return;
+    urls.forEach((u) => {
+      const ts = source.linkTimestamps[u];
+      if (!ts) return;
+      if (!target.linkTimestamps) target.linkTimestamps = {};
+      if (!target.linkTimestamps[u]) target.linkTimestamps[u] = ts;
     });
   }
   // Best-effort: tries to get the target page's actual title so the link
@@ -2689,6 +2747,7 @@
     urls.push(url);
     node.urls = urls;
     node.url = null; // fully migrated onto the array field
+    setLinkTimestamp(node, url, Date.now());
     if (name && name.trim()) setLinkTitle(node, url, name);
     renderAll();
     persist();
@@ -5226,6 +5285,7 @@
       carryPhotoNotes(source, target, pairs);
       carryPhotoComments(source, target, pairs);
       carryPhotoFavorites(source, target, pairs);
+      carryPhotoTimestamps(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
       if (!copy) {
         source.images = []; source.image = null;
@@ -5235,7 +5295,7 @@
         // leftover that showed up as a permanently broken, unclickable
         // entry in the tag browser once this node no longer actually held
         // that photo (see collectPhotoTagGroups).
-        srcIds.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); });
+        srcIds.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); setPhotoTimestamp(source, id, null); });
       }
     } else if (type === "photo") {
       // A single thumbnail, dragged by its index in the source's images.
@@ -5248,6 +5308,7 @@
       carryPhotoNotes(source, target, [[movedId, carriedId]]);
       carryPhotoComments(source, target, [[movedId, carriedId]]);
       carryPhotoFavorites(source, target, [[movedId, carriedId]]);
+      carryPhotoTimestamps(source, target, [[movedId, carriedId]]);
       target.images = getNodeImageIds(target).concat([carriedId]);
       if (!copy) {
         const remaining = srcIds.slice();
@@ -5258,6 +5319,7 @@
         setPhotoTags(source, movedId, null);
         setPhotoNotes(source, movedId, null);
         setPhotoComment(source, movedId, null);
+        setPhotoTimestamp(source, movedId, null);
       }
     } else if (type === "photos-overflow") {
       // The "+N" badge — everything past the thumbnails actually shown.
@@ -5271,12 +5333,13 @@
       carryPhotoNotes(source, target, pairs);
       carryPhotoComments(source, target, pairs);
       carryPhotoFavorites(source, target, pairs);
+      carryPhotoTimestamps(source, target, pairs);
       target.images = getNodeImageIds(target).concat(carriedIds);
       if (!copy) {
         source.images = srcIds.slice(0, overflowFrom || 0);
         source.image = null;
         // Same cleanup as the bulk "photos" case above.
-        carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); });
+        carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); setPhotoTimestamp(source, id, null); });
       }
     } else if (type === "notes") {
       // A cell's notes move as one unit, since a cell shows a single
@@ -5309,6 +5372,7 @@
       if (!srcUrls.length) return;
       pushUndo();
       carryLinkTitles(source, target, srcUrls);
+      carryLinkTimestamps(source, target, srcUrls);
       target.urls = getNodeUrls(target).concat(srcUrls);
       target.url = null;
       if (!copy) { source.urls = []; source.url = null; }
@@ -5321,6 +5385,7 @@
       pushUndo();
       const movedUrl = srcUrls[urlIndex];
       carryLinkTitles(source, target, [movedUrl]);
+      carryLinkTimestamps(source, target, [movedUrl]);
       target.urls = getNodeUrls(target).concat([movedUrl]);
       target.url = null;
       if (!copy) {
@@ -9787,7 +9852,9 @@
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
-        node.images.push(addPhotoRecord(reader.result));
+        const id = addPhotoRecord(reader.result);
+        node.images.push(id);
+        setPhotoTimestamp(node, id, Date.now());
         done();
       };
       reader.onerror = () => { hadError = true; done(); };
@@ -9885,6 +9952,7 @@
     urls.push(url);
     node.urls = urls;
     node.url = null; // fully migrated onto the array field
+    setLinkTimestamp(node, url, Date.now());
     renderAll();
     persist();
     fetchLinkTitle(node, url);
@@ -10479,6 +10547,7 @@
     setPhotoTags(node, deletedId, null);
     setPhotoNotes(node, deletedId, null);
     setPhotoComment(node, deletedId, null);
+    setPhotoTimestamp(node, deletedId, null);
     deletePhotoRecord(deletedId);
     // Keep the tag group's item list in sync so prev/next doesn't try to
     // step onto the photo we just deleted.
@@ -10798,9 +10867,11 @@
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
+        carryPhotoTimestamps(liveNode, liveNode, [[oldId, newId]]);
         setPhotoTags(liveNode, oldId, null);
         setPhotoNotes(liveNode, oldId, null);
         setPhotoComment(liveNode, oldId, null);
+        setPhotoTimestamp(liveNode, oldId, null);
         deletePhotoRecord(oldId);
         liveIds[photoModalState.index] = newId;
         liveNode.images = liveIds;
@@ -11189,9 +11260,11 @@
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
+        carryPhotoTimestamps(liveNode, liveNode, [[oldId, newId]]);
         setPhotoTags(liveNode, oldId, null);
         setPhotoNotes(liveNode, oldId, null);
         setPhotoComment(liveNode, oldId, null);
+        setPhotoTimestamp(liveNode, oldId, null);
         deletePhotoRecord(oldId);
         liveIds[photoModalState.index] = newId;
         liveNode.images = liveIds;
@@ -14880,6 +14953,26 @@
         items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n) });
       });
 
+      // A task's own notes (see getTaskNotes) are a separate list from
+      // the node's own `notes` array above — easy to miss here, which
+      // used to mean a note favorited from inside a task's note editor
+      // silently never showed up in this browser. Labelled with both the
+      // node and the task it lives on so it's clear which checklist item
+      // it came from.
+      getNodeTasks(node).forEach((t) => {
+        getTaskNotes(t).forEach((n) => {
+          if (!n.favorite) return;
+          items.push({
+            type: "note",
+            nodeId: node.id,
+            taskId: t.id,
+            noteId: n.id,
+            nodeLabel: `${nodeLabel} → ${t.text || "Untitled task"}`,
+            preview: notePreviewText(n),
+          });
+        });
+      });
+
       if (node.photoFavorites) {
         const liveIds = new Set(getNodeImageIds(node));
         Object.keys(node.photoFavorites).forEach((id) => {
@@ -14927,6 +15020,18 @@
     zoomModalClose(favoritesBrowserModal);
   }
 
+  // Resolves a favorited/browsed note item back to its live `notes` array
+  // — the node's own, or (when the item carries a taskId — see
+  // collectFavoriteItems/collectAllNotes) that task's own separate notes
+  // list instead.
+  function resolveNoteListForItem(node, item) {
+    if (item.taskId) {
+      const t = getNodeTasks(node).find(x => x.id === item.taskId);
+      return t ? getTaskNotes(t) : [];
+    }
+    return getNodeNotes(node);
+  }
+
   // Unstars one item directly from the list (the row's own ☆) without
   // opening it — same underlying toggle each item's own star button uses
   // (toggleNoteFavorite's field write / togglePhotoFavorite/
@@ -14936,7 +15041,7 @@
     if (!node) return;
     pushUndo();
     if (item.type === "note") {
-      const n = getNodeNotes(node).find(x => x.id === item.noteId);
+      const n = resolveNoteListForItem(node, item).find(x => x.id === item.noteId);
       if (n) n.favorite = false;
     } else if (item.type === "photo") {
       setPhotoFavorite(node, item.photoId, false);
@@ -14952,8 +15057,8 @@
     if (!node) return;
     closeFavoritesBrowserModal();
     if (item.type === "note") {
-      const idx = getNodeNotes(node).findIndex(n => n.id === item.noteId);
-      openNoteModal(item.nodeId, idx >= 0 ? idx : undefined);
+      const idx = resolveNoteListForItem(node, item).findIndex(n => n.id === item.noteId);
+      openNoteModal(item.nodeId, idx >= 0 ? idx : undefined, null, item.taskId || null);
     } else if (item.type === "photo") {
       const idx = getNodeImageIds(node).indexOf(item.photoId);
       if (idx < 0) return;
@@ -15095,6 +15200,24 @@
           ts: n.updatedAt || n.createdAt || 0,
         });
       });
+      // A task's own notes (see getTaskNotes) live in a separate list
+      // from the node's own `notes` array above — missing this meant a
+      // note written (and favorited) from inside a task's note editor
+      // never showed up here. Labelled with both the node and the task
+      // it lives on so it's clear which checklist item it came from.
+      getNodeTasks(node).forEach((t) => {
+        getTaskNotes(t).forEach((n) => {
+          items.push({
+            nodeId: node.id,
+            taskId: t.id,
+            noteId: n.id,
+            nodeLabel: `${nodeLabel} → ${t.text || "Untitled task"}`,
+            preview: notePreviewText(n),
+            favorite: !!n.favorite,
+            ts: n.updatedAt || n.createdAt || 0,
+          });
+        });
+      });
     });
     return items;
   }
@@ -15125,9 +15248,9 @@
   function jumpToNoteBrowserItem(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
-    const idx = getNodeNotes(node).findIndex(n => n.id === it.noteId);
+    const idx = resolveNoteListForItem(node, it).findIndex(n => n.id === it.noteId);
     closeNotesBrowserModal();
-    openNoteModal(it.nodeId, idx >= 0 ? idx : undefined);
+    openNoteModal(it.nodeId, idx >= 0 ? idx : undefined, null, it.taskId || null);
   }
 
   // Same direct toggle as unfavoriteItem in the Favorites browser above —
@@ -15135,7 +15258,7 @@
   function toggleNoteBrowserFavorite(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
-    const n = getNodeNotes(node).find(x => x.id === it.noteId);
+    const n = resolveNoteListForItem(node, it).find(x => x.id === it.noteId);
     if (!n) return;
     pushUndo();
     n.favorite = !n.favorite;
@@ -15216,6 +15339,354 @@
   document.addEventListener("keydown", (e) => {
     if (notesBrowserModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closeNotesBrowserModal();
+  });
+
+  /* ---------------- photos browser ---------------- */
+
+  // Lists every photo attached to any node across the whole map (not just
+  // starred ones — contrast the Favorites browser above) in one place,
+  // same idea as the Notes browser but for photos. Sortable by date
+  // added (see getPhotoTimestamp/collectAllPhotos below), favorite status
+  // (reusing the same photoFavorites star as the photo viewer and the
+  // Favorites browser), or alphabetically — by the photo's own first tag
+  // when it has one (a tag reads as more "the photo's name" than the node
+  // it happens to sit on), falling back to the node's name otherwise.
+  const photosBrowserModal = $("#photosbrowser-modal");
+  const photosBrowserList = $("#photosbrowser-list");
+  const photosBrowserSearch = $("#photosbrowser-search");
+  const photosBrowserSortBtns = [$("#photosbrowser-sort-date"), $("#photosbrowser-sort-favorite"), $("#photosbrowser-sort-alpha")];
+  let photosBrowserItems = [];
+  let photosBrowserSort = "date";
+
+  function collectAllPhotos() {
+    const items = [];
+    // Photos attached before photoTimestamps existed have no recorded
+    // date — backfilled with "now" the first time they're listed here
+    // (and persisted once, below), same lazy-backfill idea as a note's
+    // createdAt (see captureActiveNote) rather than leaving them
+    // permanently dateless.
+    let backfilled = false;
+    collectAllNodesFlat().forEach((node) => {
+      const nodeLabel = node.text || "Untitled node";
+      getNodeImageIds(node).forEach((id) => {
+        let ts = getPhotoTimestamp(node, id);
+        if (!ts) { ts = Date.now(); setPhotoTimestamp(node, id, ts); backfilled = true; }
+        const tag = getPhotoTags(node, id)[0] || "";
+        items.push({
+          nodeId: node.id,
+          photoId: id,
+          nodeLabel,
+          tag,
+          alphaKey: tag || nodeLabel,
+          favorite: getPhotoFavorite(node, id),
+          ts,
+        });
+      });
+    });
+    if (backfilled) persist();
+    return items;
+  }
+
+  function sortPhotosBrowserItems(items) {
+    const sorted = items.slice();
+    if (photosBrowserSort === "favorite") {
+      sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
+    } else if (photosBrowserSort === "alpha") {
+      sorted.sort((a, b) => a.alphaKey.localeCompare(b.alphaKey));
+    } else {
+      sorted.sort((a, b) => b.ts - a.ts);
+    }
+    return sorted;
+  }
+
+  function openPhotosBrowserModal() {
+    photosBrowserItems = collectAllPhotos();
+    photosBrowserSearch.value = "";
+    renderPhotosBrowserList();
+    zoomModalOpen(photosBrowserModal);
+    requestAnimationFrame(() => photosBrowserSearch.focus());
+  }
+  function closePhotosBrowserModal() {
+    zoomModalClose(photosBrowserModal);
+  }
+
+  function jumpToPhotoBrowserItem(it) {
+    const node = findNode(it.nodeId);
+    if (!node) return;
+    const idx = getNodeImageIds(node).indexOf(it.photoId);
+    if (idx < 0) return;
+    closePhotosBrowserModal();
+    // Every photo across the map (not just the filtered/visible ones), so
+    // prev/next inside the opened photo modal steps through the whole set
+    // the browser knows about — same idea as the Favorites browser's
+    // photo group.
+    const group = {
+      label: "Photos",
+      items: photosBrowserItems.map(x => ({ nodeId: x.nodeId, id: x.photoId })),
+    };
+    openPhotoModal(it.nodeId, idx, group);
+  }
+
+  // Same direct toggle as unfavoriteItem in the Favorites browser above —
+  // lets you star/unstar right from the list without opening the photo.
+  function togglePhotoBrowserFavorite(it) {
+    const node = findNode(it.nodeId);
+    if (!node) return;
+    pushUndo();
+    setPhotoFavorite(node, it.photoId, !getPhotoFavorite(node, it.photoId));
+    it.favorite = getPhotoFavorite(node, it.photoId);
+    persist();
+  }
+
+  function renderPhotosBrowserList() {
+    const q = photosBrowserSearch.value.trim().toLowerCase();
+    const filtered = !q ? photosBrowserItems : photosBrowserItems.filter(it =>
+      it.nodeLabel.toLowerCase().includes(q) || it.tag.toLowerCase().includes(q));
+    const sorted = sortPhotosBrowserItems(filtered);
+    photosBrowserList.innerHTML = "";
+    if (!sorted.length) {
+      const empty = document.createElement("li");
+      empty.className = "tagbrowser-empty";
+      empty.textContent = photosBrowserItems.length
+        ? "No photos match that search."
+        : "No photos yet — add one to any node to see it here.";
+      photosBrowserList.appendChild(empty);
+      return;
+    }
+    sorted.forEach((it) => {
+      const node = findNode(it.nodeId);
+      if (!node) return; // stale entry (shouldn't normally happen)
+      const li = document.createElement("li");
+      li.className = "favoritesbrowser-row";
+
+      const icon = document.createElement("span");
+      icon.className = "favoritesbrowser-row-icon";
+      const thumbUrl = photoUrl(it.photoId);
+      if (thumbUrl) {
+        const thumb = document.createElement("img");
+        thumb.className = "tagbrowser-tag-thumb";
+        thumb.alt = "";
+        thumb.src = thumbUrl;
+        thumb.addEventListener("error", () => { thumb.style.visibility = "hidden"; });
+        icon.appendChild(thumb);
+      } else {
+        icon.textContent = "🖼";
+      }
+
+      const text = document.createElement("span");
+      text.className = "favoritesbrowser-row-text";
+      const name = document.createElement("span");
+      name.className = "favoritesbrowser-row-name";
+      name.textContent = it.nodeLabel;
+      const preview = document.createElement("span");
+      preview.className = "favoritesbrowser-row-preview";
+      preview.textContent = it.tag ? `Tagged “${it.tag}”` : "Photo";
+      text.append(name, preview);
+
+      const meta = document.createElement("span");
+      meta.className = "notesbrowser-row-date";
+      meta.textContent = it.ts ? relTime(it.ts) : "—";
+      meta.title = it.ts ? new Date(it.ts).toLocaleString() : "No date recorded";
+
+      const star = document.createElement("span");
+      star.className = "item-star" + (it.favorite ? " favorited" : "");
+      star.textContent = it.favorite ? "★" : "☆";
+      star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+      star.addEventListener("click", (e) => {
+        e.stopPropagation();
+        togglePhotoBrowserFavorite(it);
+        star.textContent = it.favorite ? "★" : "☆";
+        star.classList.toggle("favorited", it.favorite);
+        star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+        if (photosBrowserSort === "favorite") renderPhotosBrowserList();
+      });
+
+      li.append(icon, text, meta, star);
+      li.addEventListener("click", () => jumpToPhotoBrowserItem(it));
+      photosBrowserList.appendChild(li);
+    });
+  }
+
+  $("#btn-photosbrowser").addEventListener("click", openPhotosBrowserModal);
+  $("#photosbrowser-close").addEventListener("click", closePhotosBrowserModal);
+  photosBrowserModal.addEventListener("click", (e) => { if (e.target === photosBrowserModal) closePhotosBrowserModal(); });
+  photosBrowserSearch.addEventListener("input", renderPhotosBrowserList);
+  photosBrowserSortBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      photosBrowserSort = btn.dataset.sort;
+      photosBrowserSortBtns.forEach(b => b.classList.toggle("active", b === btn));
+      renderPhotosBrowserList();
+    });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (photosBrowserModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closePhotosBrowserModal();
+  });
+
+  /* ---------------- videos browser ---------------- */
+
+  // Same idea as the Photos browser above, but for links that actually
+  // open in the in-app video player — a URL where youtubeVideoId(url) is
+  // truthy (see openLinkSmart). A plain (non-video) link is skipped
+  // entirely here; that's what the Links entries in the Favorites browser
+  // are for. Sortable by date added, favorite status (reusing the same
+  // linkFavorites star as the video modal and the Favorites browser), or
+  // alphabetically by the video's own title (falling back to its URL when
+  // it has no title — see getLinkTitle).
+  const videosBrowserModal = $("#videosbrowser-modal");
+  const videosBrowserList = $("#videosbrowser-list");
+  const videosBrowserSearch = $("#videosbrowser-search");
+  const videosBrowserSortBtns = [$("#videosbrowser-sort-date"), $("#videosbrowser-sort-favorite"), $("#videosbrowser-sort-alpha")];
+  let videosBrowserItems = [];
+  let videosBrowserSort = "date";
+
+  function collectAllVideos() {
+    const items = [];
+    // Same lazy-backfill idea as collectAllPhotos above — a link added
+    // before linkTimestamps existed gets stamped with "now" the first
+    // time it's listed here, rather than staying permanently dateless.
+    let backfilled = false;
+    collectAllNodesFlat().forEach((node) => {
+      const nodeLabel = node.text || "Untitled node";
+      getNodeUrls(node).forEach((url) => {
+        if (!youtubeVideoId(url)) return; // plain links aren't "videos"
+        let ts = getLinkTimestamp(node, url);
+        if (!ts) { ts = Date.now(); setLinkTimestamp(node, url, ts); backfilled = true; }
+        items.push({
+          nodeId: node.id,
+          url,
+          nodeLabel,
+          title: getLinkTitle(node, url) || url,
+          favorite: getLinkFavorite(node, url),
+          ts,
+        });
+      });
+    });
+    if (backfilled) persist();
+    return items;
+  }
+
+  function sortVideosBrowserItems(items) {
+    const sorted = items.slice();
+    if (videosBrowserSort === "favorite") {
+      sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
+    } else if (videosBrowserSort === "alpha") {
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+    } else {
+      sorted.sort((a, b) => b.ts - a.ts);
+    }
+    return sorted;
+  }
+
+  function openVideosBrowserModal() {
+    videosBrowserItems = collectAllVideos();
+    videosBrowserSearch.value = "";
+    renderVideosBrowserList();
+    zoomModalOpen(videosBrowserModal);
+    requestAnimationFrame(() => videosBrowserSearch.focus());
+  }
+  function closeVideosBrowserModal() {
+    zoomModalClose(videosBrowserModal);
+  }
+
+  // Opens the video the same way clicking its link icon on the canvas
+  // does — the in-app player, wired to the same comment/favorite fields
+  // (see openLinkSmart/openVideoModal) — rather than anything bespoke to
+  // this browser.
+  function jumpToVideoBrowserItem(it) {
+    const node = findNode(it.nodeId);
+    if (!node) return;
+    closeVideosBrowserModal();
+    openLinkSmart(it.url, {
+      get: () => getLinkComment(findNode(it.nodeId) || node, it.url),
+      set: (v) => setLinkComment(findNode(it.nodeId) || node, it.url, v),
+      getFavorite: () => getLinkFavorite(findNode(it.nodeId) || node, it.url),
+      setFavorite: (v) => setLinkFavorite(findNode(it.nodeId) || node, it.url, v),
+    });
+  }
+
+  function toggleVideoBrowserFavorite(it) {
+    const node = findNode(it.nodeId);
+    if (!node) return;
+    pushUndo();
+    setLinkFavorite(node, it.url, !getLinkFavorite(node, it.url));
+    it.favorite = getLinkFavorite(node, it.url);
+    persist();
+  }
+
+  function renderVideosBrowserList() {
+    const q = videosBrowserSearch.value.trim().toLowerCase();
+    const filtered = !q ? videosBrowserItems : videosBrowserItems.filter(it =>
+      it.title.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q));
+    const sorted = sortVideosBrowserItems(filtered);
+    videosBrowserList.innerHTML = "";
+    if (!sorted.length) {
+      const empty = document.createElement("li");
+      empty.className = "tagbrowser-empty";
+      empty.textContent = videosBrowserItems.length
+        ? "No videos match that search."
+        : "No videos yet — add a YouTube link to any node to see it here.";
+      videosBrowserList.appendChild(empty);
+      return;
+    }
+    sorted.forEach((it) => {
+      const node = findNode(it.nodeId);
+      if (!node) return; // stale entry (shouldn't normally happen)
+      const li = document.createElement("li");
+      li.className = "favoritesbrowser-row";
+
+      const icon = document.createElement("span");
+      icon.className = "favoritesbrowser-row-icon";
+      icon.textContent = "📺";
+
+      const text = document.createElement("span");
+      text.className = "favoritesbrowser-row-text";
+      const name = document.createElement("span");
+      name.className = "favoritesbrowser-row-name";
+      name.textContent = it.nodeLabel;
+      const preview = document.createElement("span");
+      preview.className = "favoritesbrowser-row-preview";
+      preview.textContent = it.title.length > 90 ? it.title.slice(0, 89) + "…" : it.title;
+      text.append(name, preview);
+
+      const meta = document.createElement("span");
+      meta.className = "notesbrowser-row-date";
+      meta.textContent = it.ts ? relTime(it.ts) : "—";
+      meta.title = it.ts ? new Date(it.ts).toLocaleString() : "No date recorded";
+
+      const star = document.createElement("span");
+      star.className = "item-star" + (it.favorite ? " favorited" : "");
+      star.textContent = it.favorite ? "★" : "☆";
+      star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+      star.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleVideoBrowserFavorite(it);
+        star.textContent = it.favorite ? "★" : "☆";
+        star.classList.toggle("favorited", it.favorite);
+        star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+        if (videosBrowserSort === "favorite") renderVideosBrowserList();
+      });
+
+      li.append(icon, text, meta, star);
+      li.addEventListener("click", () => jumpToVideoBrowserItem(it));
+      videosBrowserList.appendChild(li);
+    });
+  }
+
+  $("#btn-videosbrowser").addEventListener("click", openVideosBrowserModal);
+  $("#videosbrowser-close").addEventListener("click", closeVideosBrowserModal);
+  videosBrowserModal.addEventListener("click", (e) => { if (e.target === videosBrowserModal) closeVideosBrowserModal(); });
+  videosBrowserSearch.addEventListener("input", renderVideosBrowserList);
+  videosBrowserSortBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      videosBrowserSort = btn.dataset.sort;
+      videosBrowserSortBtns.forEach(b => b.classList.toggle("active", b === btn));
+      renderVideosBrowserList();
+    });
+  });
+  document.addEventListener("keydown", (e) => {
+    if (videosBrowserModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeVideosBrowserModal();
   });
 
   /* ---------------- boot ---------------- */

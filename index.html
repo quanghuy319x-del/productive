@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=46">
+<link rel="stylesheet" href="style.css?v=47">
 </head>
 <body>
 <div id="app">
@@ -64,6 +64,8 @@
       <button id="btn-commentbrowser" class="btn-ghost" title="Browse photo comments">💬 Comments</button>
       <button id="btn-favoritesbrowser" class="btn-ghost" title="Browse your favorites">⭐ Favorites</button>
       <button id="btn-notesbrowser" class="btn-ghost" title="Browse all your notes">🗒 Notes</button>
+      <button id="btn-photosbrowser" class="btn-ghost" title="Browse every photo on this map">🖼 Photos</button>
+      <button id="btn-videosbrowser" class="btn-ghost" title="Browse every video on this map">📺 Videos</button>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -355,6 +357,44 @@
   </div>
 </div>
 
+<div id="photosbrowser-modal" class="modal hidden">
+  <div class="modal-card tagbrowser-modal-card">
+    <div class="modal-back-row">
+      <h2>Photos</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="photosbrowser-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="tagbrowser-hint">Every photo across this whole map, in one list.</p>
+    <input type="text" id="photosbrowser-search" class="commentbrowser-search" placeholder="Search tags or node names…" spellcheck="false">
+    <div class="notesbrowser-sort-row">
+      <span class="notesbrowser-sort-label">Sort by</span>
+      <button type="button" id="photosbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date">Date</button>
+      <button type="button" id="photosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite">Favorite</button>
+      <button type="button" id="photosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha">A–Z</button>
+    </div>
+    <ul id="photosbrowser-list" class="favoritesbrowser-list"></ul>
+  </div>
+</div>
+
+<div id="videosbrowser-modal" class="modal hidden">
+  <div class="modal-card tagbrowser-modal-card">
+    <div class="modal-back-row">
+      <h2>Videos</h2>
+      <span class="modal-back-row-gap"></span>
+      <button type="button" id="videosbrowser-close" class="modal-back-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="tagbrowser-hint">Every YouTube video across this whole map, in one list.</p>
+    <input type="text" id="videosbrowser-search" class="commentbrowser-search" placeholder="Search titles or node names…" spellcheck="false">
+    <div class="notesbrowser-sort-row">
+      <span class="notesbrowser-sort-label">Sort by</span>
+      <button type="button" id="videosbrowser-sort-date" class="notesbrowser-sort-btn active" data-sort="date">Date</button>
+      <button type="button" id="videosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite">Favorite</button>
+      <button type="button" id="videosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha">A–Z</button>
+    </div>
+    <ul id="videosbrowser-list" class="favoritesbrowser-list"></ul>
+  </div>
+</div>
+
 <div id="signin-required-modal" class="modal hidden">
   <div class="modal-card signin-required-modal-card">
     <h2>Sign in to edit</h2>
@@ -611,6 +651,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=94"></script>
+<script src="app.js?v=96"></script>
 </body>
 </html>
