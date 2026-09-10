@@ -15200,6 +15200,7 @@
           preview: notePreviewText(n),
           favorite: !!n.favorite,
           ts: n.updatedAt || n.createdAt || 0,
+          isDRC: isDRCNote(n),
         });
       });
       // A task's own notes (see getTaskNotes) live in a separate list
@@ -15220,6 +15221,7 @@
             preview: notePreviewText(n),
             favorite: !!n.favorite,
             ts: n.updatedAt || n.createdAt || 0,
+            isDRC: isDRCNote(n),
           });
         });
       });
@@ -15231,8 +15233,12 @@
   // "node.text → task name → note title", dropping any segment that's
   // empty (a plain node note has no task, and plenty of notes have no
   // title at all) rather than leaving a dangling arrow or blank segment.
+  // A DRC note's title is always literally "DRC" (see isDRCNote) — that's
+  // already said by the group heading it sits under (see
+  // renderNotesBrowserList), so it's dropped here to avoid every DRC row
+  // ending in a redundant "→ DRC".
   function noteBrowserRowLabel(it) {
-    return [it.nodeLabel, it.taskLabel, it.title].filter(Boolean).join(" → ");
+    return [it.nodeLabel, it.taskLabel, it.isDRC ? "" : it.title].filter(Boolean).join(" → ");
   }
 
   function sortNotesBrowserItems(items) {
@@ -15279,6 +15285,57 @@
     persist();
   }
 
+  // Builds one row for the Notes browser list — shared by both the DRC
+  // and regular-notes groups below (see renderNotesBrowserList), so the
+  // only difference between the two groups is which heading they sit
+  // under, not how their rows look or behave.
+  function buildNoteBrowserRow(it) {
+    const li = document.createElement("li");
+    li.className = "favoritesbrowser-row";
+
+    const icon = document.createElement("span");
+    icon.className = "favoritesbrowser-row-icon";
+    icon.textContent = it.isDRC ? "📋" : "📝";
+
+    // A single combined line — "node → task → title", each segment
+    // skipped when empty (see noteBrowserRowLabel) — rather than the
+    // separate name/preview lines the Favorites browser's rows use.
+    const text = document.createElement("span");
+    text.className = "favoritesbrowser-row-text";
+    const name = document.createElement("span");
+    name.className = "favoritesbrowser-row-name";
+    const label = noteBrowserRowLabel(it);
+    name.textContent = label.length > 90 ? label.slice(0, 89) + "…" : label;
+    text.append(name);
+
+    const meta = document.createElement("span");
+    meta.className = "notesbrowser-row-date";
+    meta.textContent = it.ts ? relTime(it.ts) : "—";
+    meta.title = it.ts ? new Date(it.ts).toLocaleString() : "No date recorded";
+
+    const star = document.createElement("span");
+    star.className = "item-star" + (it.favorite ? " favorited" : "");
+    star.textContent = it.favorite ? "★" : "☆";
+    star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+    star.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleNoteBrowserFavorite(it);
+      star.textContent = it.favorite ? "★" : "☆";
+      star.classList.toggle("favorited", it.favorite);
+      star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
+      if (notesBrowserSort === "favorite") renderNotesBrowserList();
+    });
+
+    li.append(icon, text, meta, star);
+    li.addEventListener("click", () => jumpToNoteBrowserItem(it));
+    return li;
+  }
+
+  const NOTES_BROWSER_GROUPS = [
+    { key: "drc", label: "📋 DRC", match: (it) => it.isDRC },
+    { key: "notes", label: "📝 Notes", match: (it) => !it.isDRC },
+  ];
+
   function renderNotesBrowserList() {
     const q = notesBrowserSearch.value.trim().toLowerCase();
     const filtered = !q ? notesBrowserItems : notesBrowserItems.filter(it =>
@@ -15294,48 +15351,24 @@
       notesBrowserList.appendChild(empty);
       return;
     }
-    sorted.forEach((it) => {
-      const node = findNode(it.nodeId);
-      if (!node) return; // stale entry (shouldn't normally happen)
-      const li = document.createElement("li");
-      li.className = "favoritesbrowser-row";
-
-      const icon = document.createElement("span");
-      icon.className = "favoritesbrowser-row-icon";
-      icon.textContent = "📝";
-
-      // A single combined line — "node → task → title", each segment
-      // skipped when empty (see noteBrowserRowLabel) — rather than the
-      // separate name/preview lines the Favorites browser's rows use.
-      const text = document.createElement("span");
-      text.className = "favoritesbrowser-row-text";
-      const name = document.createElement("span");
-      name.className = "favoritesbrowser-row-name";
-      const label = noteBrowserRowLabel(it);
-      name.textContent = label.length > 90 ? label.slice(0, 89) + "…" : label;
-      text.append(name);
-
-      const meta = document.createElement("span");
-      meta.className = "notesbrowser-row-date";
-      meta.textContent = it.ts ? relTime(it.ts) : "—";
-      meta.title = it.ts ? new Date(it.ts).toLocaleString() : "No date recorded";
-
-      const star = document.createElement("span");
-      star.className = "item-star" + (it.favorite ? " favorited" : "");
-      star.textContent = it.favorite ? "★" : "☆";
-      star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-      star.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleNoteBrowserFavorite(it);
-        star.textContent = it.favorite ? "★" : "☆";
-        star.classList.toggle("favorited", it.favorite);
-        star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-        if (notesBrowserSort === "favorite") renderNotesBrowserList();
+    // DRC entries (see isDRCNote) get their own section, ahead of every
+    // other note — they're the daily-checklist kind of note rather than
+    // freeform ones, so lumping them in with everything else buried the
+    // "did I fill in today's DRC yet?" check among unrelated notes. Only
+    // a group that actually has a match gets a heading, same convention
+    // as the Favorites browser's type sections above.
+    NOTES_BROWSER_GROUPS.forEach((group) => {
+      const items = sorted.filter(group.match);
+      if (!items.length) return;
+      const heading = document.createElement("li");
+      heading.className = "favoritesbrowser-heading";
+      heading.textContent = `${group.label} (${items.length})`;
+      notesBrowserList.appendChild(heading);
+      items.forEach((it) => {
+        const node = findNode(it.nodeId);
+        if (!node) return; // stale entry (shouldn't normally happen)
+        notesBrowserList.appendChild(buildNoteBrowserRow(it));
       });
-
-      li.append(icon, text, meta, star);
-      li.addEventListener("click", () => jumpToNoteBrowserItem(it));
-      notesBrowserList.appendChild(li);
     });
   }
 
