@@ -15195,6 +15195,8 @@
           nodeId: node.id,
           noteId: n.id,
           nodeLabel,
+          taskLabel: "",
+          title: (n.title || "").trim(),
           preview: notePreviewText(n),
           favorite: !!n.favorite,
           ts: n.updatedAt || n.createdAt || 0,
@@ -15203,15 +15205,18 @@
       // A task's own notes (see getTaskNotes) live in a separate list
       // from the node's own `notes` array above — missing this meant a
       // note written (and favorited) from inside a task's note editor
-      // never showed up here. Labelled with both the node and the task
-      // it lives on so it's clear which checklist item it came from.
+      // never showed up here. taskLabel is kept as its own field (rather
+      // than folded into nodeLabel) so noteBrowserRowLabel below can
+      // build "node → task → title", skipping any segment that's empty.
       getNodeTasks(node).forEach((t) => {
         getTaskNotes(t).forEach((n) => {
           items.push({
             nodeId: node.id,
             taskId: t.id,
             noteId: n.id,
-            nodeLabel: `${nodeLabel} → ${t.text || "Untitled task"}`,
+            nodeLabel,
+            taskLabel: t.text || "Untitled task",
+            title: (n.title || "").trim(),
             preview: notePreviewText(n),
             favorite: !!n.favorite,
             ts: n.updatedAt || n.createdAt || 0,
@@ -15222,12 +15227,20 @@
     return items;
   }
 
+  // Builds the single display/sort/search line for a Notes browser row —
+  // "node.text → task name → note title", dropping any segment that's
+  // empty (a plain node note has no task, and plenty of notes have no
+  // title at all) rather than leaving a dangling arrow or blank segment.
+  function noteBrowserRowLabel(it) {
+    return [it.nodeLabel, it.taskLabel, it.title].filter(Boolean).join(" → ");
+  }
+
   function sortNotesBrowserItems(items) {
     const sorted = items.slice();
     if (notesBrowserSort === "favorite") {
       sorted.sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || b.ts - a.ts);
     } else if (notesBrowserSort === "alpha") {
-      sorted.sort((a, b) => a.preview.localeCompare(b.preview));
+      sorted.sort((a, b) => noteBrowserRowLabel(a).localeCompare(noteBrowserRowLabel(b)));
     } else {
       sorted.sort((a, b) => b.ts - a.ts);
     }
@@ -15269,7 +15282,7 @@
   function renderNotesBrowserList() {
     const q = notesBrowserSearch.value.trim().toLowerCase();
     const filtered = !q ? notesBrowserItems : notesBrowserItems.filter(it =>
-      it.preview.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q));
+      it.preview.toLowerCase().includes(q) || noteBrowserRowLabel(it).toLowerCase().includes(q));
     const sorted = sortNotesBrowserItems(filtered);
     notesBrowserList.innerHTML = "";
     if (!sorted.length) {
@@ -15291,15 +15304,16 @@
       icon.className = "favoritesbrowser-row-icon";
       icon.textContent = "📝";
 
+      // A single combined line — "node → task → title", each segment
+      // skipped when empty (see noteBrowserRowLabel) — rather than the
+      // separate name/preview lines the Favorites browser's rows use.
       const text = document.createElement("span");
       text.className = "favoritesbrowser-row-text";
       const name = document.createElement("span");
       name.className = "favoritesbrowser-row-name";
-      name.textContent = it.nodeLabel;
-      const preview = document.createElement("span");
-      preview.className = "favoritesbrowser-row-preview";
-      preview.textContent = it.preview.length > 90 ? it.preview.slice(0, 89) + "…" : it.preview;
-      text.append(name, preview);
+      const label = noteBrowserRowLabel(it);
+      name.textContent = label.length > 90 ? label.slice(0, 89) + "…" : label;
+      text.append(name);
 
       const meta = document.createElement("span");
       meta.className = "notesbrowser-row-date";
