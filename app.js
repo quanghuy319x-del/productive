@@ -10334,8 +10334,8 @@
   // more than one. Tags/comments/crop/delete don't apply (see the
   // notePhoto branch in renderPhotoModal above) since there's no
   // per-node attach record backing an inline note image.
-  function openNotePhotoViewer(imgEl) {
-    const imgs = Array.from(noteTextarea.querySelectorAll("img"));
+  function openNotePhotoViewer(imgEl, container = noteTextarea) {
+    const imgs = Array.from(container.querySelectorAll("img"));
     const index = imgs.indexOf(imgEl);
     if (index < 0) return;
     photoModalState = {
@@ -14587,17 +14587,56 @@
     });
   })();
 
-  // Gives every line its own color, cycling through the same palette as
-  // the note editor's numbered-list lines (see noteAutoColorParagraphs) —
-  // only touches lines that don't have a color yet, so existing lines
-  // keep the color they were given rather than shifting as new ones are
-  // added below them.
+  // Gives every plain line its own color, cycling through the same
+  // palette as the note editor's numbered-list lines (see
+  // noteAutoColorParagraphs, which this mirrors exactly) — only touches
+  // lines that don't have a color yet, so existing lines keep the color
+  // they were given rather than shifting as new ones are added below
+  // them. Numbered/checklist lines keep their own ordinal-based color
+  // (see brainstormSetOrderedLineColor) and image lines have no text to
+  // color, so both are skipped here instead of getting a paragraph color
+  // too.
   function brainstormAutoColorLines(container = brainstormTextarea) {
     let idx = 0;
     Array.from(container.children).forEach(el => {
+      const text = el.textContent || "";
+      if (/^(\d+\.\s|[☐☑])\s?/.test(text)) return;
+      if (el.querySelector && el.querySelector("img")) return;
       if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
       idx++;
     });
+  }
+
+  // Colors a line based on the number in its own "N. " prefix, or clears
+  // the color if the line isn't numbered — same idea as the note
+  // editor's noteSetOrderedLineColor.
+  function brainstormSetOrderedLineColor(el) {
+    if (!el) return;
+    const match = (el.textContent || "").match(/^(\d+)\.\s/);
+    el.style.color = match ? noteColorForOrdinal(parseInt(match[1], 10)) : "";
+  }
+
+  // Re-applies auto ordinal colors across every line, for a brainstorm
+  // loaded from storage that has numbered prefixes but no inline color
+  // saved yet.
+  function brainstormSyncAllOrderedColors(container = brainstormTextarea) {
+    Array.from(container.children).forEach(el => {
+      if (/^\d+\.\s/.test(el.textContent || "") && !el.style.color) {
+        brainstormSetOrderedLineColor(el);
+      }
+    });
+  }
+
+  // Keeps a line's strikethrough in sync with its checklist glyph — same
+  // idea as the note editor's noteSyncLineChecked.
+  function brainstormSyncLineChecked(el) {
+    if (!el) return;
+    el.classList.toggle("note-line-checked", /^☑(\s|$)/.test(el.textContent || ""));
+  }
+
+  function brainstormSyncAllCheckedLines(container = brainstormTextarea) {
+    brainstormSyncLineChecked(container);
+    Array.from(container.children).forEach(brainstormSyncLineChecked);
   }
 
   // Renders host.brainstorm.html if it's already been colored, or builds
@@ -14642,7 +14681,10 @@
     const cellText = (t.r != null && node && node.table && node.table.cells[t.r]) ? node.table.cells[t.r][t.c] : null;
     brainstormNodeLabel.textContent = t.r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${t.r + 1}, col ${t.c + 1})`);
     brainstormTextarea.innerHTML = getBrainstormHtml(host);
+    brainstormSyncAllCheckedLines();
+    brainstormSyncAllOrderedColors();
     brainstormAutoColorLines();
+    brainstormResetUndoHistory();
     renderBrainstormProgress(host);
   }
 
@@ -14701,10 +14743,610 @@
     }
   }
 
-  brainstormTextarea.addEventListener("input", scheduleBrainstormAutosave);
+  // ---- Rich-text toolbar (undo/redo, bold, AA, numbered list, checklist,
+  // strikethrough, image, color, symbol) — same exact behavior as the
+  // node/task note editor's toolbar above, just bound to
+  // brainstormTextarea instead of noteTextarea. Kept as its own copy
+  // (rather than sharing the note editor's functions directly) since the
+  // two editors' DOM elements differ and the note editor's own toolbar
+  // listeners are attached via a couple of `document.querySelectorAll`
+  // calls that would otherwise also pick up these buttons.
+  const BRAINSTORM_UNDO_LIMIT = 100;
+  let brainstormUndoStack = [];
+  let brainstormRedoStack = [];
+  let brainstormLastPushAt = 0;
+  const brainstormUndoBtn = $("#brainstorm-tool-undo");
+  const brainstormRedoBtn = $("#brainstorm-tool-redo");
+
+  function updateBrainstormUndoButtons() {
+    if (brainstormUndoBtn) brainstormUndoBtn.disabled = !brainstormUndoStack.length;
+    if (brainstormRedoBtn) brainstormRedoBtn.disabled = !brainstormRedoStack.length;
+  }
+
+  // Records the editor's current state onto the undo stack. Call this
+  // immediately BEFORE a mutation, not after — same contract as the note
+  // editor's notePushUndo.
+  function brainstormPushUndo() {
+    brainstormUndoStack.push(brainstormTextarea.innerHTML);
+    if (brainstormUndoStack.length > BRAINSTORM_UNDO_LIMIT) brainstormUndoStack.shift();
+    brainstormRedoStack = [];
+    brainstormLastPushAt = Date.now();
+    updateBrainstormUndoButtons();
+  }
+
+  // Clears the local undo history — called whenever a different
+  // node/cell's brainstorm is loaded into the shared editor (see
+  // renderBrainstormModal), so undo never reaches back into a scratchpad
+  // that's no longer open.
+  function brainstormResetUndoHistory() {
+    brainstormUndoStack = [];
+    brainstormRedoStack = [];
+    brainstormLastPushAt = 0;
+    updateBrainstormUndoButtons();
+    brainstormUppercasePending = false;
+    updateBrainstormToolActiveStates();
+  }
+
+  // --- Bold / AA "pressed while it applies to what you type next" state,
+  // same idea as the note editor's noteUppercasePending above. ---
+  let brainstormUppercasePending = false;
+  let brainstormUppercaseInserting = false; // re-entrancy guard for the hook below
+
+  function updateBrainstormToolActiveStates() {
+    let boldOn = false;
+    try { boldOn = document.queryCommandState("bold"); } catch (_) { /* ignore */ }
+    $("#brainstorm-tool-bold").classList.toggle("active", !!boldOn);
+    $("#brainstorm-tool-upper").classList.toggle("active", brainstormUppercasePending);
+  }
+
+  function brainstormRestoreSnapshot(html) {
+    brainstormTextarea.innerHTML = html;
+    brainstormSyncAllCheckedLines();
+    brainstormSyncAllOrderedColors();
+    brainstormAutoColorLines();
+    placeCaretAtEnd(brainstormTextarea);
+    scheduleBrainstormAutosave();
+    updateBrainstormUndoButtons();
+  }
+
+  function brainstormUndo() {
+    if (!brainstormUndoStack.length) return;
+    brainstormRedoStack.push(brainstormTextarea.innerHTML);
+    brainstormRestoreSnapshot(brainstormUndoStack.pop());
+  }
+
+  function brainstormRedo() {
+    if (!brainstormRedoStack.length) return;
+    brainstormUndoStack.push(brainstormTextarea.innerHTML);
+    brainstormRestoreSnapshot(brainstormRedoStack.pop());
+  }
+
+  function brainstormCurrentLine(container = brainstormTextarea) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    let node = range.startContainer;
+    if (node.nodeType === 3) {
+      node = node.parentNode;
+    } else if (node.childNodes.length) {
+      const idx = Math.min(Math.max(range.startOffset - 1, 0), node.childNodes.length - 1);
+      node = node.childNodes[idx];
+    }
+    while (node && node !== container && node.parentNode !== container) {
+      node = node.parentNode;
+    }
+    return node === container ? null : node;
+  }
+
+  function brainstormCaretIsAtLineStart(lineDiv) {
+    if (!lineDiv) return false;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return false;
+    const range = sel.getRangeAt(0);
+    if (!range.collapsed) return false;
+    const preRange = document.createRange();
+    preRange.selectNodeContents(lineDiv);
+    try {
+      preRange.setEnd(range.startContainer, range.startOffset);
+    } catch (err) {
+      return false;
+    }
+    return preRange.toString().length === 0;
+  }
+
+  function brainstormSelectLine(lineDiv) {
+    const target = lineDiv || brainstormTextarea;
+    const r = document.createRange();
+    r.selectNodeContents(target);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  function brainstormToggleLinePrefix(prefixRegex, makePrefix) {
+    brainstormTextarea.focus();
+    brainstormPushUndo();
+    const lineDiv = brainstormCurrentLine();
+    const el = lineDiv || brainstormTextarea;
+    const text = el.textContent;
+    const match = text.match(prefixRegex);
+    el.textContent = match ? text.slice(match[0].length) : makePrefix() + text;
+    brainstormSyncLineChecked(el);
+    placeCaretAtEnd(el);
+    scheduleBrainstormAutosave();
+  }
+
+  function brainstormToggleOrderedList() {
+    brainstormTextarea.focus();
+    brainstormPushUndo();
+    const lineDiv = brainstormCurrentLine();
+    const el = lineDiv || brainstormTextarea;
+    const text = el.textContent;
+    const match = text.match(/^\d+\.\s+/);
+    if (match) {
+      el.textContent = text.slice(match[0].length);
+      el.style.color = "";
+    } else {
+      el.textContent = "1. " + text;
+      brainstormSetOrderedLineColor(el);
+    }
+    brainstormSyncLineChecked(el);
+    placeCaretAtEnd(el);
+    scheduleBrainstormAutosave();
+  }
+
+  function brainstormApplyForeColor(color) {
+    brainstormTextarea.focus();
+    brainstormPushUndo();
+    const sel = window.getSelection();
+    if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
+      brainstormSelectLine(brainstormCurrentLine());
+    }
+    document.execCommand("foreColor", false, color);
+    scheduleBrainstormAutosave();
+  }
+
+  function brainstormApplyStrikethrough() {
+    brainstormTextarea.focus();
+    brainstormPushUndo();
+    const sel = window.getSelection();
+    if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
+      brainstormSelectLine(brainstormCurrentLine());
+    }
+    document.execCommand("strikeThrough");
+    scheduleBrainstormAutosave();
+  }
+
+  function brainstormApplyBold() {
+    brainstormTextarea.focus();
+    const sel = window.getSelection();
+    const collapsed = !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    if (collapsed) {
+      document.execCommand("bold");
+    } else {
+      brainstormPushUndo();
+      document.execCommand("bold");
+      scheduleBrainstormAutosave();
+    }
+    updateBrainstormToolActiveStates();
+  }
+
+  function brainstormApplyUppercase() {
+    brainstormTextarea.focus();
+    const sel = window.getSelection();
+    const collapsed = !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    if (collapsed) {
+      brainstormUppercasePending = !brainstormUppercasePending;
+      updateBrainstormToolActiveStates();
+      return;
+    }
+    brainstormPushUndo();
+    const text = sel.toString();
+    if (!text) return;
+    document.execCommand("insertText", false, text.toUpperCase());
+    scheduleBrainstormAutosave();
+    updateBrainstormToolActiveStates();
+  }
+
+  function brainstormInsertSymbol(symbol) {
+    brainstormTextarea.focus();
+    brainstormPushUndo();
+    document.execCommand("insertText", false, symbol);
+    scheduleBrainstormAutosave();
+  }
+
+  // Enter key on a numbered or checklist line continues the pattern,
+  // same as the note editor's noteHandleEnter.
+  function brainstormHandleEnter() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
+    const lineDiv = brainstormCurrentLine();
+    const el = lineDiv || brainstormTextarea;
+    const lineText = el.textContent;
+    const numMatch = lineText.match(/^(\d+)\.\s+/);
+    const checkMatch = lineText.match(/^([☐☑])\s+/);
+    if (!numMatch && !checkMatch) return false;
+    const prefix = (numMatch || checkMatch)[0];
+    const rest = lineText.slice(prefix.length);
+    if (rest.trim() === "") {
+      brainstormPushUndo();
+      el.textContent = "";
+      placeCaretAtEnd(el);
+      scrollCaretIntoView(el);
+      scheduleBrainstormAutosave();
+      return true;
+    }
+
+    const range = sel.getRangeAt(0);
+    let beforeCaretLen = lineText.length;
+    try {
+      const preRange = document.createRange();
+      preRange.selectNodeContents(el);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      beforeCaretLen = preRange.toString().length;
+    } catch (err) { /* keep fallback */ }
+
+    const caretInRest = Math.max(0, Math.min(rest.length, beforeCaretLen - prefix.length));
+    const before = rest.slice(0, caretInRest);
+    const after = rest.slice(caretInRest);
+
+    brainstormPushUndo();
+    const nextPrefix = numMatch ? `${parseInt(numMatch[1], 10) + 1}. ` : "☐ ";
+    el.textContent = prefix + before;
+    if (numMatch) brainstormSetOrderedLineColor(el);
+    brainstormSyncLineChecked(el);
+
+    const newDiv = document.createElement("div");
+    newDiv.textContent = nextPrefix + after;
+    if (numMatch) brainstormSetOrderedLineColor(newDiv);
+    brainstormSyncLineChecked(newDiv);
+    if (lineDiv && lineDiv.parentNode) {
+      lineDiv.parentNode.insertBefore(newDiv, lineDiv.nextSibling);
+    } else {
+      brainstormTextarea.appendChild(newDiv);
+    }
+
+    const textNode = newDiv.firstChild;
+    const caretRange = document.createRange();
+    if (textNode && textNode.nodeType === 3) {
+      caretRange.setStart(textNode, Math.min(nextPrefix.length, textNode.length));
+    } else {
+      caretRange.selectNodeContents(newDiv);
+    }
+    caretRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(caretRange);
+    scrollCaretIntoView(newDiv);
+    scheduleBrainstormAutosave();
+    return true;
+  }
+
+  // Images are embedded directly as data-URI <img> tags, same as the
+  // note editor (see noteInsertImages).
+  const brainstormImageInput = $("#brainstorm-image-input");
+  let brainstormImageInsertLine = null;
+  let brainstormImageInsertAtStart = false;
+
+  function brainstormInsertImages(dataUrls, targetLine, atStart) {
+    brainstormTextarea.focus();
+    brainstormPushUndo();
+    const lineDiv = targetLine !== undefined ? targetLine : brainstormCurrentLine();
+    const validLine = lineDiv && lineDiv.parentNode === brainstormTextarea;
+    const parent = validLine ? lineDiv.parentNode : brainstormTextarea;
+
+    if (atStart && validLine) {
+      dataUrls.forEach((dataUrl) => {
+        const imgLine = document.createElement("div");
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        imgLine.appendChild(img);
+        parent.insertBefore(imgLine, lineDiv);
+      });
+      const range = document.createRange();
+      range.setStart(lineDiv, 0);
+      range.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      let cursor = validLine ? lineDiv : parent.lastChild;
+      let lastImgLine = null;
+      dataUrls.forEach((dataUrl) => {
+        const imgLine = document.createElement("div");
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        imgLine.appendChild(img);
+        parent.insertBefore(imgLine, cursor ? cursor.nextSibling : null);
+        cursor = imgLine;
+        lastImgLine = imgLine;
+      });
+      const afterLine = document.createElement("div");
+      afterLine.appendChild(document.createElement("br"));
+      parent.insertBefore(afterLine, lastImgLine ? lastImgLine.nextSibling : null);
+      placeCaretAtEnd(afterLine);
+    }
+    scheduleBrainstormAutosave();
+  }
+
+  function brainstormInsertImage(dataUrl, targetLine, atStart) {
+    brainstormInsertImages([dataUrl], targetLine, atStart);
+  }
+
+  function brainstormHandleImageFiles(fileList, targetLine, atStart) {
+    const files = Array.from(fileList || []).filter(f => f && f.type && f.type.startsWith("image/"));
+    if (!files.length) return;
+    let hadError = false;
+    Promise.all(files.map((file) => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => { hadError = true; resolve(null); };
+      reader.readAsDataURL(file);
+    }))).then((dataUrls) => {
+      const loaded = dataUrls.filter(Boolean);
+      if (loaded.length) brainstormInsertImages(loaded, targetLine, atStart);
+      if (hadError) alert("Some images couldn't be read.");
+    });
+  }
+
+  function brainstormHandleImageFile(file, targetLine, atStart) {
+    if (!file) return;
+    brainstormHandleImageFiles([file], targetLine, atStart);
+  }
+
+  $("#brainstorm-tool-image").addEventListener("mousedown", (e) => e.preventDefault());
+  $("#brainstorm-tool-image").addEventListener("click", () => {
+    brainstormImageInsertLine = brainstormCurrentLine();
+    brainstormImageInsertAtStart = brainstormCaretIsAtLineStart(brainstormImageInsertLine);
+    brainstormImageInput.click();
+  });
+  brainstormImageInput.addEventListener("change", () => {
+    if (brainstormImageInput.files && brainstormImageInput.files.length) {
+      brainstormHandleImageFiles(brainstormImageInput.files, brainstormImageInsertLine, brainstormImageInsertAtStart);
+    }
+    brainstormImageInput.value = "";
+  });
+
+  brainstormTextarea.addEventListener("paste", (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type && item.type.startsWith("image/")) {
+        e.preventDefault();
+        const pasteLine = brainstormCurrentLine();
+        const pasteAtStart = brainstormCaretIsAtLineStart(pasteLine);
+        brainstormHandleImageFile(item.getAsFile(), pasteLine, pasteAtStart);
+        return;
+      }
+    }
+  });
+
+  function brainstormDraggedImageFile(e) {
+    const dt = e.dataTransfer;
+    if (!dt) return null;
+    const fromFiles = dt.files && Array.from(dt.files).find(f => f.type && f.type.startsWith("image/"));
+    if (fromFiles) return fromFiles;
+    const hasImageItem = dt.items && Array.from(dt.items).some(i => i.type && i.type.startsWith("image/"));
+    return hasImageItem ? true : null;
+  }
+
+  brainstormTextarea.addEventListener("dragover", (e) => {
+    if (brainstormDraggedImageFile(e)) {
+      e.preventDefault();
+      brainstormTextarea.classList.add("drag-over");
+    }
+  });
+  brainstormTextarea.addEventListener("dragleave", () => brainstormTextarea.classList.remove("drag-over"));
+  brainstormTextarea.addEventListener("drop", (e) => {
+    const file = brainstormDraggedImageFile(e);
+    if (file && file !== true) {
+      e.preventDefault();
+      brainstormTextarea.classList.remove("drag-over");
+      brainstormHandleImageFile(file);
+    } else {
+      brainstormTextarea.classList.remove("drag-over");
+    }
+  });
+
+  // Clicking directly on a checklist glyph toggles it, or on an image
+  // opens the photo viewer — same as the note editor.
+  brainstormTextarea.addEventListener("click", (e) => {
+    if (e.target && e.target.tagName === "IMG") {
+      openNotePhotoViewer(e.target, brainstormTextarea);
+      return;
+    }
+    const lineDiv = brainstormCurrentLine();
+    const text = (lineDiv || brainstormTextarea).textContent;
+    if (!/^[☐☑]\s/.test(text)) return;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    if (!sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const preRange = range.cloneRange();
+    preRange.selectNodeContents(lineDiv || brainstormTextarea);
+    preRange.setEnd(range.startContainer, range.startOffset);
+    if (preRange.toString().length > 1) return;
+    brainstormPushUndo();
+    const el = lineDiv || brainstormTextarea;
+    el.textContent = text.replace(/^[☐☑]/, m => (m === "☐" ? "☑" : "☐"));
+    brainstormSyncLineChecked(el);
+    scheduleBrainstormAutosave();
+  });
+
+  brainstormUndoBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  brainstormUndoBtn.addEventListener("click", () => brainstormUndo());
+  brainstormRedoBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  brainstormRedoBtn.addEventListener("click", () => brainstormRedo());
+
+  $("#brainstorm-tool-ol").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormToggleOrderedList();
+  });
+  $("#brainstorm-tool-check").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormToggleLinePrefix(/^[☐☑]\s+/, () => "☐ ");
+  });
+  $("#brainstorm-tool-strike").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormApplyStrikethrough();
+  });
+  $("#brainstorm-tool-bold").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormApplyBold();
+  });
+  $("#brainstorm-tool-upper").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormApplyUppercase();
+  });
+  document.querySelectorAll(".brainstorm-color-swatch").forEach(btn => {
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      brainstormApplyForeColor(btn.dataset.color);
+      setBrainstormColorTrigger(btn.dataset.color);
+    });
+    btn.addEventListener("click", () => { closeBrainstormColorPopover(); });
+  });
+  $("#brainstorm-color-custom").addEventListener("input", (e) => {
+    brainstormApplyForeColor(e.target.value);
+    setBrainstormColorTrigger(e.target.value);
+  });
+  $("#brainstorm-color-custom").addEventListener("mousedown", (e) => e.stopPropagation());
+
+  const brainstormColorTriggerBtn = $("#brainstorm-tool-color");
+  const brainstormColorPopover = $("#brainstorm-color-popover");
+  brainstormColorTriggerBtn.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (brainstormColorPopover.classList.contains("hidden")) {
+      openBrainstormColorPopover();
+    } else {
+      closeBrainstormColorPopover();
+    }
+  });
+  brainstormColorPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!brainstormColorPopover.classList.contains("hidden") &&
+        !brainstormColorPopover.contains(e.target) && e.target !== brainstormColorTriggerBtn) {
+      closeBrainstormColorPopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!brainstormColorPopover.classList.contains("hidden")) positionBrainstormColorPopover();
+  });
+  function openBrainstormColorPopover(){
+    brainstormColorPopover.classList.remove("hidden");
+    positionBrainstormColorPopover();
+  }
+  function closeBrainstormColorPopover(){ brainstormColorPopover.classList.add("hidden"); }
+  function positionBrainstormColorPopover(){
+    const margin = 8;
+    const btnRect = brainstormColorTriggerBtn.getBoundingClientRect();
+    const popRect = brainstormColorPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6;
+    }
+    brainstormColorPopover.style.left = `${left}px`;
+    brainstormColorPopover.style.top = `${top}px`;
+  }
+  function setBrainstormColorTrigger(color){ $("#brainstorm-color-trigger-swatch").style.background = color; }
+
+  const brainstormSymbolTriggerBtn = $("#brainstorm-tool-symbol");
+  const brainstormSymbolPopover = $("#brainstorm-symbol-popover");
+  document.querySelectorAll(".brainstorm-symbol-swatch").forEach(btn => {
+    btn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      brainstormInsertSymbol(btn.dataset.symbol);
+    });
+    btn.addEventListener("click", () => { closeBrainstormSymbolPopover(); });
+  });
+  brainstormSymbolTriggerBtn.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (brainstormSymbolPopover.classList.contains("hidden")) {
+      openBrainstormSymbolPopover();
+    } else {
+      closeBrainstormSymbolPopover();
+    }
+  });
+  brainstormSymbolPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!brainstormSymbolPopover.classList.contains("hidden") &&
+        !brainstormSymbolPopover.contains(e.target) && e.target !== brainstormSymbolTriggerBtn) {
+      closeBrainstormSymbolPopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!brainstormSymbolPopover.classList.contains("hidden")) positionBrainstormSymbolPopover();
+  });
+  function openBrainstormSymbolPopover(){
+    brainstormSymbolPopover.classList.remove("hidden");
+    positionBrainstormSymbolPopover();
+  }
+  function closeBrainstormSymbolPopover(){ brainstormSymbolPopover.classList.add("hidden"); }
+  function positionBrainstormSymbolPopover(){
+    const margin = 8;
+    const btnRect = brainstormSymbolTriggerBtn.getBoundingClientRect();
+    const popRect = brainstormSymbolPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6;
+    }
+    brainstormSymbolPopover.style.left = `${left}px`;
+    brainstormSymbolPopover.style.top = `${top}px`;
+  }
+
+  // Groups plain typing into undo-sized bursts, same 600ms pattern as
+  // the note editor.
+  const BRAINSTORM_TYPING_BURST_MS = 600;
+  brainstormTextarea.addEventListener("beforeinput", () => {
+    const now = Date.now();
+    if (now - brainstormLastPushAt > BRAINSTORM_TYPING_BURST_MS || !brainstormUndoStack.length) {
+      brainstormUndoStack.push(brainstormTextarea.innerHTML);
+      if (brainstormUndoStack.length > BRAINSTORM_UNDO_LIMIT) brainstormUndoStack.shift();
+    }
+    brainstormRedoStack = [];
+    brainstormLastPushAt = now;
+    updateBrainstormUndoButtons();
+  });
+  // While "type in caps" mode is armed (AA button pressed), transform
+  // each character as it's typed, same as the note editor.
+  brainstormTextarea.addEventListener("beforeinput", (e) => {
+    if (!brainstormUppercasePending || brainstormUppercaseInserting) return;
+    if (e.inputType === "insertText" && e.data) {
+      e.preventDefault();
+      brainstormUppercaseInserting = true;
+      document.execCommand("insertText", false, e.data.toUpperCase());
+      brainstormUppercaseInserting = false;
+    }
+  });
+  brainstormTextarea.addEventListener("mousedown", () => {
+    if (brainstormUppercasePending) {
+      brainstormUppercasePending = false;
+      updateBrainstormToolActiveStates();
+    }
+  });
+  document.addEventListener("selectionchange", () => {
+    if (!brainstormModal.classList.contains("hidden") && document.activeElement === brainstormTextarea) {
+      updateBrainstormToolActiveStates();
+    }
+  });
+
+  brainstormTextarea.addEventListener("input", () => { brainstormAutoColorLines(); scheduleBrainstormAutosave(); });
   brainstormTextarea.addEventListener("keydown", (e) => {
-    e.stopPropagation(); // don't let Enter/Delete/etc trigger canvas shortcuts while typing
-    if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); }
+    e.stopPropagation(); // don't let Tab/Enter/Delete/etc trigger canvas shortcuts while typing
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) brainstormRedo(); else brainstormUndo();
+      return;
+    }
+    if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); return; }
+    if (e.key === "Enter" && !e.shiftKey) {
+      if (brainstormHandleEnter()) e.preventDefault();
+    }
   });
 
   brainstormClearBtn.addEventListener("click", () => {
@@ -14715,6 +15357,7 @@
     pushUndo();
     host.brainstorm = { text: "", html: "" };
     brainstormTextarea.innerHTML = "";
+    brainstormResetUndoHistory();
     renderBrainstormProgress(host);
     persist();
     updateBrainstormLiveUI(t);

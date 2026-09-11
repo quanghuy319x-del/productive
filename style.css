@@ -2047,6 +2047,18 @@ kbd{
 
 .note-symbol-swatch{ font-size: 15px; }
 
+/* Brainstorm modal's own color/symbol swatches — same look as the note
+   editor's (.note-color-swatch / .note-symbol-swatch above) but kept as
+   separate classes so app.js's global note-swatch listeners don't also
+   bind to (and hijack focus from) these. */
+.brainstorm-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
+.brainstorm-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
+.brainstorm-color-swatch[data-color="#b5504a"]{ color:#b5504a; }
+.brainstorm-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
+.brainstorm-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
+.brainstorm-color-swatch[data-color="#4a72b5"]{ color:#4a72b5; }
+.brainstorm-symbol-swatch{ font-size: 15px; }
+
 .note-textarea{
   width:100%;
   flex: 1 1 auto;

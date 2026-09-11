@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=55">
+<link rel="stylesheet" href="style.css?v=56">
 </head>
 <body>
 <div id="app">
@@ -656,14 +656,55 @@
       <button type="button" id="brainstorm-back" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="brainstorm-textarea" class="note-textarea brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line… (every 2 lines = 1 pt)"></div>
+    <div class="note-toolbar">
+      <button type="button" id="brainstorm-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
+      <button type="button" id="brainstorm-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
+      <span class="note-tool-sep"></span>
+      <button type="button" id="brainstorm-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
+      <button type="button" id="brainstorm-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
+      <button type="button" id="brainstorm-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
+      <button type="button" id="brainstorm-tool-check" class="note-tool-btn" title="Checklist">☑</button>
+      <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
+      <span class="note-tool-sep"></span>
+      <button type="button" id="brainstorm-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
+      <input type="file" id="brainstorm-image-input" accept="image/*" multiple hidden>
+      <span class="note-tool-sep"></span>
+      <div class="note-color-picker">
+        <button type="button" id="brainstorm-tool-color" class="note-tool-btn note-color-trigger" title="Text color">
+          <span class="note-color-trigger-glyph">A</span>
+          <span id="brainstorm-color-trigger-swatch" class="note-color-trigger-swatch"></span>
+        </button>
+      </div>
+      <span class="note-tool-sep"></span>
+      <div class="note-color-picker">
+        <button type="button" id="brainstorm-tool-symbol" class="note-tool-btn" title="Insert a symbol">👉</button>
+      </div>
+    </div>
     <div id="brainstorm-resize-handle" class="note-resize-handle" title="Drag to resize"></div>
     <span id="brainstorm-progress-label" class="note-line-count brainstorm-progress-label">0 lines · 0 pts</span>
+  </div>
+  <div id="brainstorm-color-popover" class="note-color-popover hidden">
+    <button type="button" class="note-tool-btn brainstorm-color-swatch" data-color="#2b2a25" title="Default text">A</button>
+    <button type="button" class="note-tool-btn brainstorm-color-swatch" data-color="#b5504a" title="Red">A</button>
+    <button type="button" class="note-tool-btn brainstorm-color-swatch" data-color="#c98a3a" title="Orange">A</button>
+    <button type="button" class="note-tool-btn brainstorm-color-swatch" data-color="#5a8f5a" title="Green">A</button>
+    <button type="button" class="note-tool-btn brainstorm-color-swatch" data-color="#4a72b5" title="Blue">A</button>
+    <label class="note-tool-btn note-color-custom-wrap" title="Custom color">
+      <span>+</span>
+      <input type="color" id="brainstorm-color-custom" value="#2b2a25">
+    </label>
+  </div>
+  <div id="brainstorm-symbol-popover" class="note-color-popover hidden">
+    <button type="button" class="note-tool-btn brainstorm-symbol-swatch" data-symbol="👉" title="Pointing hand">👉</button>
+    <button type="button" class="note-tool-btn brainstorm-symbol-swatch" data-symbol="➡️" title="Arrow">➡️</button>
+    <button type="button" class="note-tool-btn brainstorm-symbol-swatch" data-symbol="💪" title="Flexed biceps">💪</button>
+    <button type="button" class="note-tool-btn brainstorm-symbol-swatch" data-symbol="🔥" title="Fire">🔥</button>
   </div>
 </div>
 
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=108"></script>
+<script src="app.js?v=109"></script>
 </body>
 </html>
