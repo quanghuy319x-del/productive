@@ -12116,6 +12116,48 @@
   // prefix) would leave the line's text untouched and just add a new,
   // empty list item below it — moving the cursor without moving the text
   // the user meant to push down.
+  // Splits a plain (non-numbered, non-checklist) line into two SIBLING
+  // <div>s ourselves on Enter, instead of letting the browser's native
+  // "insertParagraph" handle it. Left to the browser, pressing Enter a
+  // second (or later) time inside an existing line <div> can nest the
+  // new line INSIDE that div rather than placing it next to it as a
+  // sibling — invisible while just reading the note, but it breaks
+  // every bit of per-line logic that walks the editor's direct children
+  // (notably noteAutoColorParagraphs' cycling palette), since a nested
+  // line is never seen as a line of its own and just inherits its
+  // parent's color instead of getting the next one in rotation — which
+  // is why every line after the first can end up stuck on one color.
+  // Splitting via Range.extractContents (rather than textContent, which
+  // would flatten any bold/colored spans already in the line) keeps
+  // existing inline formatting intact on both halves of the split.
+  function noteHandlePlainLineEnter(el, sel) {
+    if (el === noteTextarea) return false; // no wrapping div yet — let the browser create the very first one
+    notePushUndo();
+    const range = sel.getRangeAt(0);
+    const afterRange = document.createRange();
+    afterRange.setStart(range.startContainer, range.startOffset);
+    // An empty line (no children yet) has nothing after the caret to
+    // move — end the range right where it started rather than calling
+    // setEndAfter(el), which would straddle el's own boundary and throw.
+    if (el.lastChild) afterRange.setEndAfter(el.lastChild);
+    else afterRange.setEnd(range.startContainer, range.startOffset);
+    const frag = afterRange.extractContents();
+    const newDiv = document.createElement("div");
+    if (frag.hasChildNodes()) newDiv.appendChild(frag);
+    else newDiv.appendChild(document.createElement("br"));
+    if (!el.hasChildNodes()) el.appendChild(document.createElement("br"));
+    el.parentNode.insertBefore(newDiv, el.nextSibling);
+    noteAutoColorParagraphs();
+    const caretRange = document.createRange();
+    caretRange.selectNodeContents(newDiv);
+    caretRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(caretRange);
+    scrollCaretIntoView(newDiv);
+    scheduleNoteAutosave();
+    return true;
+  }
+
   function noteHandleEnter() {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
@@ -12124,7 +12166,7 @@
     const lineText = el.textContent;
     const numMatch = lineText.match(/^(\d+)\.\s+/);
     const checkMatch = lineText.match(/^([☐☑])\s+/);
-    if (!numMatch && !checkMatch) return false;
+    if (!numMatch && !checkMatch) return noteHandlePlainLineEnter(el, sel);
     const prefix = (numMatch || checkMatch)[0];
     const rest = lineText.slice(prefix.length);
     if (rest.trim() === "") {
@@ -12577,6 +12619,22 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) noteRedo(); else noteUndo();
+      return;
+    }
+    // Ctrl/Cmd+B mirrors the toolbar Bold button — intercepted (rather
+    // than left to the browser's own native Ctrl+B handling) so it goes
+    // through noteApplyBold and picks up undo tracking and the toolbar's
+    // pressed-state highlight the same way a click on the button would.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      noteApplyBold();
+      return;
+    }
+    // Caps Lock mirrors the toolbar "AA" (force-uppercase) toggle — each
+    // physical press fires its own keydown, so this just flips the same
+    // toggle the button does rather than tracking the key as held down.
+    if (e.key === "CapsLock") {
+      noteApplyUppercase();
       return;
     }
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
@@ -14974,6 +15032,38 @@
 
   // Enter key on a numbered or checklist line continues the pattern,
   // same as the note editor's noteHandleEnter.
+  // Mirrors noteHandlePlainLineEnter above — see its comment for why the
+  // split is done by hand instead of relying on the browser's native
+  // Enter handling (which can nest a new plain line inside the previous
+  // one, breaking brainstormAutoColorLines' per-line color cycling).
+  function brainstormHandlePlainLineEnter(el, sel) {
+    if (el === brainstormTextarea) return false; // no wrapping div yet — let the browser create the very first one
+    brainstormPushUndo();
+    const range = sel.getRangeAt(0);
+    const afterRange = document.createRange();
+    afterRange.setStart(range.startContainer, range.startOffset);
+    // An empty line (no children yet) has nothing after the caret to
+    // move — end the range right where it started rather than calling
+    // setEndAfter(el), which would straddle el's own boundary and throw.
+    if (el.lastChild) afterRange.setEndAfter(el.lastChild);
+    else afterRange.setEnd(range.startContainer, range.startOffset);
+    const frag = afterRange.extractContents();
+    const newDiv = document.createElement("div");
+    if (frag.hasChildNodes()) newDiv.appendChild(frag);
+    else newDiv.appendChild(document.createElement("br"));
+    if (!el.hasChildNodes()) el.appendChild(document.createElement("br"));
+    el.parentNode.insertBefore(newDiv, el.nextSibling);
+    brainstormAutoColorLines();
+    const caretRange = document.createRange();
+    caretRange.selectNodeContents(newDiv);
+    caretRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(caretRange);
+    scrollCaretIntoView(newDiv);
+    scheduleBrainstormAutosave();
+    return true;
+  }
+
   function brainstormHandleEnter() {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
@@ -14982,7 +15072,7 @@
     const lineText = el.textContent;
     const numMatch = lineText.match(/^(\d+)\.\s+/);
     const checkMatch = lineText.match(/^([☐☑])\s+/);
-    if (!numMatch && !checkMatch) return false;
+    if (!numMatch && !checkMatch) return brainstormHandlePlainLineEnter(el, sel);
     const prefix = (numMatch || checkMatch)[0];
     const rest = lineText.slice(prefix.length);
     if (rest.trim() === "") {
@@ -15358,6 +15448,17 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) brainstormRedo(); else brainstormUndo();
+      return;
+    }
+    // Same Ctrl/Cmd+B and Caps Lock shortcuts as the note editor — see
+    // noteHandleEnter's keydown handler for why these are intercepted.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      brainstormApplyBold();
+      return;
+    }
+    if (e.key === "CapsLock") {
+      brainstormApplyUppercase();
       return;
     }
     if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); return; }
