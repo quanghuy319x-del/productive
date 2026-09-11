@@ -623,6 +623,8 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
   padding: 0 24px;
 }
 #signed-out-state.hidden{ display:none; }
+#btn-signed-out-signin.hidden{ display:none; }
+#btn-google-signin.hidden{ display:none; }
 
 .sidebar-signed-out-note{
   color: var(--text-faint);

@@ -1399,23 +1399,40 @@
     }
     if (!status || !btn) return;
     applySignedOutGate();
-    if (overrideStatus) { status.textContent = overrideStatus; return; }
+    // The button's own visibility/label always reflects the real
+    // signedIn/needsReauth/dataSynced state, whether or not this call
+    // is just passing an override status string (e.g. "Syncing…") —
+    // otherwise a mid-sync call here would leave the button showing
+    // "Sign in with Google" even though we're already signed in and
+    // just waiting on the initial Drive sync to finish.
+    const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
+    if (DriveDB.needsReauth) {
+      btn.textContent = "Reconnect Google";
+      btn.classList.remove("hidden");
+    } else if (stillSyncing) {
+      // Signed in, sync in flight: no action to take yet, so don't
+      // show a "Sign in with Google" (or even "Sign out") button at all.
+      btn.classList.add("hidden");
+    } else if (DriveDB.signedIn) {
+      btn.textContent = "Sign out";
+      btn.classList.remove("hidden");
+    } else {
+      btn.textContent = "Sign in with Google";
+      btn.classList.remove("hidden");
+    }
+    if (overrideStatus) { status.textContent = overrideStatus; refreshEditLockUI(); return; }
     if (!isOnline) {
       // Offline trumps everything else here — even a fully signed-in,
       // fully synced device can't edit right now, so say so plainly
       // rather than showing a stale "Synced …" line that implies
       // editing still works.
       status.textContent = "Offline — editing paused";
-      btn.textContent = DriveDB.signedIn ? "Sign out" : "Sign in with Google";
     } else if (DriveDB.needsReauth) {
       status.textContent = "Google session expired";
-      btn.textContent = "Reconnect Google";
     } else if (DriveDB.signedIn) {
       status.textContent = driveSyncStatusText();
-      btn.textContent = "Sign out";
     } else {
       status.textContent = "Not synced to Google Drive";
-      btn.textContent = "Sign in with Google";
     }
     refreshEditLockUI();
   }
