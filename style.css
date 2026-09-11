@@ -338,6 +338,24 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
   position:relative;
 }
 
+/* Shown whenever this device is signed in to Drive but the very first
+   sync hasn't finished yet (DriveDB.signedIn && !DriveDB.dataSynced) —
+   the map underneath is still the pre-sync local copy, which used to
+   render with no visible sign that it might be stale. Flat, impossible
+   to miss without being a modal, and disappears the instant dataSynced
+   flips true (see updateStaleSyncBanner in app.js). */
+#stale-sync-banner{
+  flex: none;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: #5c3d00;
+  background: #ffd479;
+  border-bottom: 1px solid #e0a83a;
+}
+#stale-sync-banner.hidden{ display:none; }
+
 #toolbar{
   height: 52px;
   flex:none;

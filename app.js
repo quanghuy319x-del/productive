@@ -940,6 +940,14 @@
           this.dataSynced = true;
           for (const m of state.maps) if (!this.fileIndex[m.id]) await this.save(m);
           renderSidebar();
+          // Repaint the already-open map's canvas with whatever this sync
+          // just pulled in — without this, the currently-open map (and any
+          // node badges/score bars on it, e.g. task/affirmation/timer
+          // points) stays showing the pre-sync local copy until the first
+          // 1s poll tick (pollDriveUpdates) happens to call renderAll() for
+          // us. Same guard as pollDriveUpdates: don't tear down an active
+          // edit box mid-keystroke or clobber a change still mid-save.
+          if (!state.editingId && !unsavedEdits) renderAll();
           updateDriveUI();
           startDriveSyncPolling();
           this.scheduleRefresh();
@@ -1178,6 +1186,10 @@
         if (!silent) alert("Signed in, but syncing with Drive failed: " + (e.message || e) + "\n\nYour maps are still safe locally — try signing in again, or check the browser console for details.");
       }
       renderSidebar();
+      // See the matching comment in restore() above — repaint the open
+      // map immediately so a fresher score/badge from this sync doesn't
+      // sit stale on screen until the next poll tick.
+      if (!state.editingId && !unsavedEdits) renderAll();
       updateDriveUI();
       startDriveSyncPolling();
       this.scheduleRefresh();
@@ -1389,10 +1401,24 @@
     return "Synced " + (label === "now" ? "just now" : label + " ago");
   }
 
+  // The sidebar's "Syncing…" text is easy to miss (small, tucked away,
+  // not even visible if the sidebar is collapsed on mobile), and before
+  // this the canvas gave zero indication that what it was showing might
+  // still be the pre-sync local copy. This banner is loud on purpose —
+  // anyone looking at the map itself, not just the sidebar, should know
+  // not to treat it as final while a sync is still in flight.
+  function updateStaleSyncBanner() {
+    const banner = $("#stale-sync-banner");
+    if (!banner) return;
+    const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
+    banner.classList.toggle("hidden", !stillSyncing);
+  }
+
   function updateDriveUI(overrideStatus) {
     const status = $("#drive-status");
     const btn = $("#btn-google-signin");
     const onlineDot = $("#online-indicator");
+    updateStaleSyncBanner();
     if (onlineDot) {
       onlineDot.classList.toggle("offline", !isOnline);
       onlineDot.title = isOnline ? "Online" : "Offline — editing paused";
