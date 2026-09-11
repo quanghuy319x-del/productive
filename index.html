@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=54">
+<link rel="stylesheet" href="style.css?v=55">
 </head>
 <body>
 <div id="app">
@@ -220,6 +220,27 @@
   <div class="modal-card photo-modal-card">
     <button id="photo-modal-prev" class="photo-modal-nav photo-modal-prev hidden" title="Previous photo" aria-label="Previous photo">‹</button>
     <img id="photo-modal-img" alt="Node photo">
+    <button id="photo-modal-next" class="photo-modal-nav photo-modal-next hidden" title="Next photo" aria-label="Next photo">›</button>
+
+    <!-- All per-photo edit/status actions live in one fixed top-right
+         toolbar instead of being scattered around the viewport corners.
+         🔢/Aa/⛶(crop)/☆(favorite) are inserted here by app.js, in that
+         order, right before the comment toggle — see the insertBefore
+         chain near photoModalToolbarTop in app.js. -->
+    <div id="photo-modal-toolbar-top" class="photo-modal-toolbar photo-modal-toolbar-top">
+      <button id="photo-modal-comment-toggle" class="photo-modal-toolbar-btn" title="Add/view comment" aria-label="Add or view comment">💬</button>
+      <button id="photo-modal-delete" class="photo-modal-toolbar-btn" title="Delete this photo" aria-label="Delete this photo">🗑</button>
+      <button id="photo-modal-close" class="photo-modal-toolbar-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+
+    <!-- Navigation/zoom actions live in one fixed bottom-center toolbar. -->
+    <div id="photo-modal-toolbar-bottom" class="photo-modal-toolbar photo-modal-toolbar-bottom">
+      <button id="photo-modal-goto" class="photo-modal-goto hidden" title="Go to this node on the map" aria-label="Go to this node on the map">Go to node →</button>
+      <button id="photo-modal-zoom-out" class="photo-modal-toolbar-btn" title="Zoom out" aria-label="Zoom out">−</button>
+      <span id="photo-modal-count" class="photo-modal-count hidden"></span>
+      <button id="photo-modal-zoom-in" class="photo-modal-toolbar-btn" title="Zoom in" aria-label="Zoom in">+</button>
+    </div>
+
     <div id="photo-modal-tags" class="photo-modal-tags">
       <div id="photo-modal-tag-chips" class="photo-modal-tag-chips"></div>
       <div class="photo-modal-tag-input-wrap">
@@ -227,14 +248,6 @@
         <ul id="photo-modal-tag-suggest" class="photo-modal-tag-suggest hidden"></ul>
       </div>
     </div>
-    <button id="photo-modal-next" class="photo-modal-nav photo-modal-next hidden" title="Next photo" aria-label="Next photo">›</button>
-    <span id="photo-modal-count" class="photo-modal-count hidden"></span>
-    <button id="photo-modal-goto" class="photo-modal-goto hidden" title="Go to this node on the map" aria-label="Go to this node on the map">Go to node →</button>
-    <button id="photo-modal-zoom-in" class="photo-modal-zoom photo-modal-zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-    <button id="photo-modal-zoom-out" class="photo-modal-zoom photo-modal-zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
-    <button id="photo-modal-delete" class="photo-modal-delete" title="Delete this photo" aria-label="Delete this photo">🗑</button>
-    <button id="photo-modal-comment-toggle" class="photo-modal-comment-toggle" title="Add/view comment" aria-label="Add or view comment">💬</button>
-    <button id="photo-modal-close" class="photo-modal-close" title="Close" aria-label="Close">✕</button>
     <div id="photo-modal-comment-row" class="photo-modal-comment-row hidden">
       <textarea id="photo-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this photo… Press Enter for a new paragraph."></textarea>
     </div>
@@ -651,6 +664,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=107"></script>
+<script src="app.js?v=108"></script>
 </body>
 </html>

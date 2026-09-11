@@ -10034,29 +10034,34 @@
   const photoModalZoomIn = $("#photo-modal-zoom-in");
   const photoModalZoomOut = $("#photo-modal-zoom-out");
 
+  // All per-photo action buttons now live in one fixed top-right toolbar
+  // (see #photo-modal-toolbar-top in index.html) instead of each being
+  // pinned to its own viewport corner or recomputed off the rendered
+  // <img> box — so there's nothing here to reposition on load/resize
+  // anymore, just a fixed order to insert into.
+  const photoModalToolbarTop = $("#photo-modal-toolbar-top");
+  const photoModalToolbarBottom = $("#photo-modal-toolbar-bottom");
+
   // Crop button — built here rather than in index.html so the whole
-  // feature lives in this one file. Sits in the same centered row above
-  // the photo as close/delete/Aa/🔢 — see positionPhotoTopCenterButtons
-  // below for why and how that position is computed.
+  // feature lives in this one file. Sits in the shared top-right toolbar
+  // alongside close/delete/Aa/🔢/☆.
   const photoModalCrop = document.createElement("button");
   photoModalCrop.id = "photo-modal-crop";
-  photoModalCrop.className = "photo-modal-delete";
+  photoModalCrop.className = "photo-modal-toolbar-btn";
   photoModalCrop.title = "Crop this photo";
   photoModalCrop.setAttribute("aria-label", "Crop this photo");
   photoModalCrop.textContent = "⛶";
-  photoModal.querySelector(".photo-modal-card").appendChild(photoModalCrop);
 
   // Text button — Lets the user drop editable labels onto the photo and
   // bake them in.
   const photoModalText = document.createElement("button");
   photoModalText.id = "photo-modal-text";
-  photoModalText.className = "photo-modal-delete";
+  photoModalText.className = "photo-modal-toolbar-btn";
   photoModalText.title = "Add text to this photo";
   photoModalText.setAttribute("aria-label", "Add text to this photo");
   photoModalText.textContent = "Aa";
   photoModalText.style.fontSize = "12px";
   photoModalText.style.fontWeight = "700";
-  photoModal.querySelector(".photo-modal-card").appendChild(photoModalText);
 
   // Symbol button — sits right next to the text button, same styling.
   // Opens a small popover of number-in-circle emoji (1️⃣–9️⃣) that get
@@ -10064,63 +10069,29 @@
   // dropSymbol below), for numbering points directly on the photo.
   const photoModalSymbol = document.createElement("button");
   photoModalSymbol.id = "photo-modal-symbol";
-  photoModalSymbol.className = "photo-modal-delete";
+  photoModalSymbol.className = "photo-modal-toolbar-btn";
   photoModalSymbol.title = "Insert a number symbol into the photo";
   photoModalSymbol.setAttribute("aria-label", "Insert a number symbol into the photo");
   photoModalSymbol.textContent = "🔢";
-  photoModal.querySelector(".photo-modal-card").appendChild(photoModalSymbol);
 
   // Favorite star — same ☆/★ toggle as the note editor and link/video
   // modals (see toggleNoteFavorite/getPhotoFavorite), sat in the same
-  // centered top row as crop/text/symbol. Hidden for an inline note photo
+  // top-right toolbar as crop/text/symbol. Hidden for an inline note photo
   // (see notePhoto branch in renderPhotoModal below) since there's no
   // per-node attach record backing one of those to star.
   const photoModalFavorite = document.createElement("button");
   photoModalFavorite.id = "photo-modal-favorite";
-  photoModalFavorite.className = "photo-modal-delete item-star-btn";
+  photoModalFavorite.className = "photo-modal-toolbar-btn item-star-btn";
   photoModalFavorite.title = "Add to favorites";
   photoModalFavorite.setAttribute("aria-label", "Add to favorites");
   photoModalFavorite.textContent = "☆";
-  photoModal.querySelector(".photo-modal-card").appendChild(photoModalFavorite);
 
-  // Close/delete/crop/Aa/🔢/☆ all sit together in one row centered
-  // directly above the photo, outside its frame, instead of hugging a
-  // fixed viewport corner. Since photos render at all sorts of sizes
-  // (capped at 92vw/88vh but often much smaller), that position has to
-  // be computed from the actual rendered <img> box rather than
-  // hardcoded, and recomputed whenever the photo or the viewport
-  // changes.
-  const PHOTO_TOP_CENTER_BUTTONS = [photoModalSymbol, photoModalText, photoModalCrop, photoModalFavorite, photoModalDelete, photoModalClose];
-  function positionPhotoTopCenterButtons() {
-    const rect = photoModalImg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const size = 30, gapBetween = 8, gapAbove = 10;
-    const totalWidth = PHOTO_TOP_CENTER_BUTTONS.length * size + (PHOTO_TOP_CENTER_BUTTONS.length - 1) * gapBetween;
-    const top = Math.max(8, rect.top - size - gapAbove);
-    let x = rect.left + rect.width / 2 - totalWidth / 2;
-    PHOTO_TOP_CENTER_BUTTONS.forEach(btn => {
-      btn.style.top = `${top}px`;
-      btn.style.left = `${x}px`;
-      btn.style.right = "auto";
-      x += size + gapBetween;
-    });
-  }
-  photoModalImg.addEventListener("load", positionPhotoTopCenterButtons);
-  window.addEventListener("resize", positionPhotoTopCenterButtons);
-  // A plain requestAnimationFrame after setting a new photo isn't
-  // enough when the *modal itself* is also mid-open: zoomModalOpen's
-  // grow-in animation (see MODAL_ZOOM_MS) is still shrinking/scaling the
-  // card via CSS transition at that point, so measuring the photo's box
-  // one frame later still catches it mid-transition — landing this row
-  // wherever the photo happened to be at that instant rather than its
-  // final resting spot. Re-measuring again once that transition has had
-  // time to finish (in addition to the immediate rAF, which is what
-  // actually matters when just stepping prev/next in an already-open
-  // modal) covers both cases.
-  function schedulePositionPhotoTopCenterButtons() {
-    requestAnimationFrame(positionPhotoTopCenterButtons);
-    setTimeout(positionPhotoTopCenterButtons, MODAL_ZOOM_MS + 30);
-  }
+  // Inserted right before the comment toggle (which, along with
+  // delete/close, is already in the toolbar in index.html), giving a
+  // final left-to-right order of: 🔢, Aa, ⛶, ☆, 💬, 🗑, ✕.
+  [photoModalSymbol, photoModalText, photoModalCrop, photoModalFavorite].forEach(btn => {
+    photoModalToolbarTop.insertBefore(btn, photoModalCommentToggle);
+  });
 
   const PHOTO_SYMBOL_CHARS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
   const photoModalSymbolPopover = document.createElement("div");
@@ -10301,11 +10272,6 @@
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
     photoModalImg.src = images[photoModalState.index];
-    // Defer so layout has actually updated for the new image before
-    // centering the close/delete/crop/Aa/🔢 row above it — see
-    // schedulePositionPhotoTopCenterButtons for why this needs more
-    // than a single rAF.
-    schedulePositionPhotoTopCenterButtons();
     const group = photoModalState.tagGroup;
     photoModalGoto.classList.toggle("hidden", !group);
     if (group) {
@@ -10773,8 +10739,11 @@
     const img = photoModalImg;
     const iw = img.offsetWidth, ih = img.offsetHeight;
 
-    // Hide everything except the image and the crop controls while cropping.
-    const hiddenWhileCropping = [photoModalPrev, photoModalNext, photoModalCount, photoModalDelete, photoModalCrop, photoModalText, photoModalClose];
+    // Hide everything except the image and the crop controls while
+    // cropping — the whole top/bottom toolbars (not just a few individual
+    // buttons), so nothing from either one is left dangling on screen
+    // mid-crop.
+    const hiddenWhileCropping = [photoModalPrev, photoModalNext, photoModalToolbarTop, photoModalToolbarBottom];
     hiddenWhileCropping.forEach(el => { el.dataset.prevDisplay = el.style.display; el.style.display = "none"; });
 
     const overlay = document.createElement("div");
@@ -10948,7 +10917,10 @@
     const img = photoModalImg;
     const iw = img.offsetWidth, ih = img.offsetHeight;
 
-    const hiddenWhileAddingText = [photoModalPrev, photoModalNext, photoModalCount, photoModalDelete, photoModalCrop, photoModalClose];
+    // Same full-toolbar hide as startCrop above, so the add-text overlay
+    // doesn't leave the favorite/comment/zoom/goto buttons floating on
+    // top of it either.
+    const hiddenWhileAddingText = [photoModalPrev, photoModalNext, photoModalToolbarTop, photoModalToolbarBottom];
     hiddenWhileAddingText.forEach(el => { el.dataset.prevDisplay = el.style.display; el.style.display = "none"; });
 
     const overlay = document.createElement("div");
