@@ -3680,7 +3680,16 @@ kbd{
 .photo-modal-card img{
   display:block;
   max-width: 92vw;
-  max-height: 88vh;
+  /* Was 88vh with the toolbars floated at ~6vh from each edge — for a
+     photo that's naturally tall/portrait (e.g. a tall screenshot with
+     text near the top, baked into the pixels), hitting that cap put the
+     image's own top edge right where the fixed top-right toolbar sits,
+     so the toolbar's buttons landed on top of — and hid — real content
+     in the photo instead of framing it. Capping shorter here guarantees
+     a clear margin above and below for the toolbars (now pinned near
+     the viewport edges below) on every screen, regardless of the
+     photo's aspect ratio. */
+  max-height: 80vh;
   border-radius: 10px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.55);
   transform-origin: 50% 50%;
@@ -3721,11 +3730,11 @@ kbd{
   z-index: 101;
 }
 .photo-modal-toolbar-top{
-  top: calc(6vh - 16px);
+  top: 12px;
   right: calc(4vw - 16px);
 }
 .photo-modal-toolbar-bottom{
-  bottom: calc(6vh - 16px);
+  bottom: 12px;
   left:50%;
   transform: translateX(-50%);
 }
