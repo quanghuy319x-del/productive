@@ -4040,15 +4040,32 @@
     const trashed = trashedMapsList();
     if (!trashed.length) return;
     if (!confirm(`Permanently delete all ${trashed.length} map${trashed.length === 1 ? "" : "s"} in the trash? This cannot be undone.`)) return;
+    // Each step below can fail independently (a blocked IndexedDB
+    // transaction, a Drive API hiccup, etc.). Previously an error from
+    // any single one aborted this whole loop — since state.maps/the UI
+    // only updated *after* the loop finished, one bad map meant nothing
+    // visibly happened at all, even for maps that deleted fine before
+    // it. Isolating each map's cleanup, and updating state/UI as each
+    // one actually succeeds, means one failure no longer silently blocks
+    // every other deletion.
+    const failed = [];
     for (const m of trashed) {
-      await DB.delete(m.id);
-      await PhotoDB.deleteAllForMap(m.id);
-      await FolderDB.remove(m);
-      await DriveDB.remove(m);
+      try {
+        await DB.delete(m.id);
+        await PhotoDB.deleteAllForMap(m.id);
+        await FolderDB.remove(m);
+        await DriveDB.remove(m);
+        state.maps = state.maps.filter(x => x.id !== m.id);
+      } catch (e) {
+        console.error("Failed to permanently delete map from trash", m.id, e);
+        failed.push(m);
+      }
     }
-    state.maps = state.maps.filter(x => !x.trashedAt);
     renderTrashModal();
     renderSidebar();
+    if (failed.length) {
+      alert(`${failed.length} of ${trashed.length} map${trashed.length === 1 ? "" : "s"} couldn't be deleted (still in the trash) — check the console for details, or try again.`);
+    }
   }
 
   function updateTrashBadge() {
