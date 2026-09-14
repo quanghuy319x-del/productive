@@ -11660,38 +11660,42 @@
   // plain text) rather than plain text, so the section labels can be
   // bold + uppercase; looksLikeHtml sees the <div> tags and passes this
   // straight through unchanged instead of re-escaping it as plain text.
+  // Every line uses the same plain black (the editor's own default text
+  // color) instead of a per-section accent — see noteApplyForeColor/
+  // loadNoteIntoEditor below, which also disable the color-picker tool
+  // itself while a DRC note is open, so this stays black no matter what.
+  const DRC_RULE = "━━━━━━━━━━━━━━━━━━━━━";
   const DRC_NOTE_TEMPLATE =
-    '<div style="font-family:monospace;color:#4fc1ff;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#4fc1ff;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;OVERVIEW&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
-    '<div style="font-family:monospace;color:#4fc1ff;">╚══════════════════════════════╝</div><div><br></div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
+    '<div style="font-family:monospace;color:#000000;">📊 OVERVIEW</div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
 
-    '<div style="font-family:monospace;color:#4ec9b0;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#4ec9b0;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GOOD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
-    '<div style="font-family:monospace;color:#4ec9b0;">╚══════════════════════════════╝</div><div><br></div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
+    '<div style="font-family:monospace;color:#000000;">✅ GOOD</div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
 
-    '<div style="font-family:monospace;color:#f14c4c;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#f14c4c;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;BAD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
-    '<div style="font-family:monospace;color:#f14c4c;">╚══════════════════════════════╝</div><div><br></div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
+    '<div style="font-family:monospace;color:#000000;">❌ BAD</div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
 
-    '<div style="font-family:monospace;color:#dcdcaa;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#dcdcaa;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CHANGE FROM TOMORROW&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
-    '<div style="font-family:monospace;color:#dcdcaa;">╚══════════════════════════════╝</div><div><br></div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
+    '<div style="font-family:monospace;color:#000000;">🔄 CHANGE FROM TOMORROW</div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
 
-    '<div style="font-family:monospace;color:#c586c0;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#c586c0;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TRADES IN DETAILS&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
-    '<div style="font-family:monospace;color:#c586c0;">╚══════════════════════════════╝</div><div><br></div><div><br></div>';
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
+    '<div style="font-family:monospace;color:#000000;">📈 TRADES IN DETAILS</div>' +
+    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div><div><br></div>`;
   // The template's own fixed section labels — excluded when checking how
   // much the person has actually typed into a DRC note (see
   // drcNoteIsFilled below), so an untouched template doesn't itself count
   // as "filled".
   const DRC_TEMPLATE_LABELS = [
-    "╔══════════════════════════════╗",
-    "║           OVERVIEW           ║",
-    "║             GOOD             ║",
-    "║             BAD              ║",
-    "║     CHANGE FROM TOMORROW     ║",
-    "║      TRADES IN DETAILS       ║",
-    "╚══════════════════════════════╝"
+    DRC_RULE,
+    "📊 OVERVIEW",
+    "✅ GOOD",
+    "❌ BAD",
+    "🔄 CHANGE FROM TOMORROW",
+    "📈 TRADES IN DETAILS"
   ];
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
@@ -11821,6 +11825,7 @@
     updateNoteNavUI();
     updateNoteLineCount();
     updateNoteFavoriteUI();
+    updateNoteColorToolAvailability();
     noteDownscaleOversizedImagesInEditor();
   }
 
@@ -12187,6 +12192,10 @@
   }
 
   function noteApplyForeColor(color) {
+    // DRC notes are always plain black — the color tool is disabled (see
+    // updateNoteColorToolAvailability) but this guards the underlying
+    // command too, in case it's ever invoked another way.
+    if (isDRCNote(noteWorkingList[noteActiveIndex])) return;
     noteTextarea.focus();
     notePushUndo();
     const sel = window.getSelection();
@@ -12195,6 +12204,18 @@
     }
     document.execCommand("foreColor", false, color);
     scheduleNoteAutosave();
+  }
+
+  // Greys out and disables the color-picker trigger (and closes its
+  // popover if open) while a DRC note is loaded, so text color can't be
+  // changed on it at all — DRC notes always stay plain black. Called from
+  // loadNoteIntoEditor whenever the visible note changes.
+  function updateNoteColorToolAvailability() {
+    const isDRC = isDRCNote(noteWorkingList[noteActiveIndex]);
+    noteColorTriggerBtn.disabled = isDRC;
+    noteColorTriggerBtn.classList.toggle("disabled", isDRC);
+    noteColorTriggerBtn.title = isDRC ? "DRC notes are always plain black text" : "Text color";
+    if (isDRC) closeNoteColorPopover();
   }
 
   function noteApplyStrikethrough() {
