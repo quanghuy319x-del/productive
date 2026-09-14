@@ -2592,7 +2592,7 @@
     return Math.floor(brainstormLineCount(host) / 2);
   }
 
-  // A "DRC" note (see DRC_NOTE_TEMPLATE / the drc flag set on it above) is
+  // A "DRC" note (see buildDRCNoteTemplateHtml / the drc flag set on it above) is
   // considered "filled in" — and worth points below — once the person has
   // typed more than one line into it, or at least 10 letters total,
   // beyond the template's own fixed section labels. Splits the note's
@@ -2619,8 +2619,9 @@
     return !!(note && (note.title || "").trim().toUpperCase() === "DRC");
   }
   function drcNoteIsFilled(note) {
+    const labels = buildDRCTemplateLabels(getDRCTemplateSections());
     const lines = noteLinesFromHtml(note && note.html)
-      .filter(l => !DRC_TEMPLATE_LABELS.some(lbl => lbl.toLowerCase() === l.toLowerCase()));
+      .filter(l => !labels.some(lbl => lbl.toLowerCase() === l.toLowerCase()));
     const typedLines = lines.filter(l => l.length > 0);
     const typedChars = typedLines.join("").length;
     return typedLines.length > 1 || typedChars >= 10;
@@ -8070,7 +8071,7 @@
       }
       {
         // Shortcut: opens this node's DRC note, pre-filled with the
-        // standing template (see DRC_NOTE_TEMPLATE / the forceDRCTemplate
+        // standing template (see buildDRCNoteTemplateHtml / the forceDRCTemplate
         // branch in openNoteModal) the first time, or just reopens the
         // existing one on every click after that — only one DRC note is
         // allowed per node. Unlike the automatic prefill, this isn't tied
@@ -8080,6 +8081,13 @@
         const drcPts = drcPoints(node);
         const label = drcPts > 0 ? `📋 DRC (${drcPts} pt${drcPts === 1 ? "" : "s"})…` : "📋 DRC…";
         addGroupRow(label, () => openNoteModal(node.id, undefined, null, null, null, true));
+      }
+      {
+        // Edits the standing DRC template itself (its section labels), not
+        // any one note — see openDRCTemplateModal below. Lives right next
+        // to the "📋 DRC…" shortcut above since that's the only other place
+        // the template is ever seen.
+        addGroupRow("✏️ Edit DRC template…", () => openDRCTemplateModal());
       }
       {
         // Only *commented* links score points (see nodeTaskProgress), so
@@ -9337,6 +9345,114 @@
     $("#quote-banner-random").addEventListener("click", randomizeQuoteBanner);
     $("#quote-banner-close").addEventListener("click", () => zoomModalClose(quoteBannerModal));
     quoteBannerModal.addEventListener("click", (e) => { if (e.target === quoteBannerModal) zoomModalClose(quoteBannerModal); });
+  }
+
+  /* ---------------- DRC template editor ---------------- */
+  // Lets the person edit the standing DRC (Daily Report Card) template's
+  // section labels — reordering isn't supported, but add/rename/delete are
+  // — reusing the same modal/list markup and interaction pattern as the
+  // affirmations editor above (getDRCTemplateSections/
+  // saveDRCTemplateSections/buildDRCNoteTemplateHtml/buildDRCTemplateLabels
+  // are defined further below, near the rest of the DRC logic, but that's
+  // fine: none of this runs until the person actually opens the modal,
+  // long after the whole script has loaded).
+  const drcTemplateModal = $("#drc-template-modal");
+  const drcTemplateListEl = $("#drc-template-list");
+  const drcTemplateAddInput = $("#drc-template-add-input");
+  let editingDRCTemplateIndex = null; // which row (if any) is mid-inline-edit
+
+  function renderDRCTemplateList() {
+    const sections = getDRCTemplateSections();
+    drcTemplateListEl.innerHTML = "";
+    sections.forEach((text, index) => {
+      const row = document.createElement("div");
+      row.className = "quote-banner-item";
+
+      if (index === editingDRCTemplateIndex) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "quote-banner-item-edit-input";
+        input.maxLength = 60;
+        input.value = text;
+        const commit = () => {
+          const val = input.value.trim();
+          editingDRCTemplateIndex = null;
+          if (val && val !== text) {
+            sections[index] = val;
+            saveDRCTemplateSections(sections);
+          }
+          renderDRCTemplateList();
+        };
+        input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { e.preventDefault(); editingDRCTemplateIndex = null; renderDRCTemplateList(); }
+        });
+        input.addEventListener("blur", commit);
+        row.appendChild(input);
+        drcTemplateListEl.appendChild(row);
+        requestAnimationFrame(() => { input.focus(); input.select(); });
+        return;
+      }
+
+      const label = document.createElement("span");
+      label.textContent = text;
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "quote-banner-item-btn";
+      editBtn.title = "Edit this section";
+      editBtn.setAttribute("aria-label", "Edit this section");
+      editBtn.textContent = "✏️";
+      editBtn.addEventListener("click", (e) => { e.stopPropagation(); editingDRCTemplateIndex = index; renderDRCTemplateList(); });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "quote-banner-item-btn quote-banner-item-delete";
+      deleteBtn.title = "Delete this section";
+      deleteBtn.setAttribute("aria-label", "Delete this section");
+      deleteBtn.textContent = "🗑";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        sections.splice(index, 1);
+        saveDRCTemplateSections(sections);
+        renderDRCTemplateList();
+      });
+
+      row.append(label, editBtn, deleteBtn);
+      drcTemplateListEl.appendChild(row);
+    });
+  }
+
+  function addDRCTemplateSection() {
+    const val = drcTemplateAddInput.value.trim();
+    if (!val) return;
+    const sections = getDRCTemplateSections();
+    sections.push(val);
+    saveDRCTemplateSections(sections);
+    drcTemplateAddInput.value = "";
+    renderDRCTemplateList();
+  }
+
+  function openDRCTemplateModal() {
+    editingDRCTemplateIndex = null;
+    drcTemplateAddInput.value = "";
+    renderDRCTemplateList();
+    zoomModalOpen(drcTemplateModal);
+  }
+
+  if (drcTemplateModal) {
+    $("#drc-template-add-btn").addEventListener("click", addDRCTemplateSection);
+    drcTemplateAddInput.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); addDRCTemplateSection(); }
+    });
+    $("#drc-template-reset").addEventListener("click", () => {
+      saveDRCTemplateSections(DEFAULT_DRC_TEMPLATE_SECTIONS.slice());
+      renderDRCTemplateList();
+    });
+    $("#drc-template-close").addEventListener("click", () => zoomModalClose(drcTemplateModal));
+    drcTemplateModal.addEventListener("click", (e) => { if (e.target === drcTemplateModal) zoomModalClose(drcTemplateModal); });
   }
 
   /* ---------------- node photo attachments ---------------- */
@@ -11655,48 +11771,72 @@
 
   // Standing template for a task named "DRC" (Daily Report Card) — see
   // openNoteModal below, which drops this into that task's first note
-  // instead of a blank editor. Already-built HTML (one <div> per line,
-  // matching what noteHtmlFromRaw would otherwise generate itself from
-  // plain text) rather than plain text, so the section labels can be
-  // bold + uppercase; looksLikeHtml sees the <div> tags and passes this
-  // straight through unchanged instead of re-escaping it as plain text.
-  // Every line uses the same plain black (the editor's own default text
-  // color) instead of a per-section accent — see noteApplyForeColor/
-  // loadNoteIntoEditor below, which also disable the color-picker tool
-  // itself while a DRC note is open, so this stays black no matter what.
+  // instead of a blank editor. Built as HTML (one <div> per line, matching
+  // what noteHtmlFromRaw would otherwise generate itself from plain text)
+  // rather than plain text, so the section labels can be bold + uppercase;
+  // looksLikeHtml sees the <div> tags and passes this straight through
+  // unchanged instead of re-escaping it as plain text. Every line uses the
+  // same plain black (the editor's own default text color) instead of a
+  // per-section accent — see noteApplyForeColor/loadNoteIntoEditor below,
+  // which also disable the color-picker tool itself while a DRC note is
+  // open, so this stays black no matter what.
+  //
+  // The section labels themselves are now user-editable (see the "✏️ Edit
+  // DRC template…" context-menu row and openDRCTemplateModal below) and
+  // persist in localStorage under DRC_TEMPLATE_KEY, seeded from
+  // DEFAULT_DRC_TEMPLATE_SECTIONS the first time. Everything that used to
+  // read the old fixed DRC_NOTE_TEMPLATE / DRC_TEMPLATE_LABELS constants now
+  // calls buildDRCNoteTemplateHtml/buildDRCTemplateLabels on the
+  // currently-saved sections instead, so an edit takes effect on the very
+  // next DRC note without needing a reload.
   const DRC_RULE = "━━━━━━━━━━━━━━━━━━━━━";
-  const DRC_NOTE_TEMPLATE =
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
-    '<div style="font-family:monospace;color:#000000;">📊 OVERVIEW</div>' +
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
-
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
-    '<div style="font-family:monospace;color:#000000;">✅ GOOD</div>' +
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
-
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
-    '<div style="font-family:monospace;color:#000000;">❌ BAD</div>' +
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
-
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
-    '<div style="font-family:monospace;color:#000000;">🔄 CHANGE FROM TOMORROW</div>' +
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div>` +
-
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>` +
-    '<div style="font-family:monospace;color:#000000;">📈 TRADES IN DETAILS</div>' +
-    `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div><div><br></div><div><br></div>`;
-  // The template's own fixed section labels — excluded when checking how
-  // much the person has actually typed into a DRC note (see
-  // drcNoteIsFilled below), so an untouched template doesn't itself count
-  // as "filled".
-  const DRC_TEMPLATE_LABELS = [
-    DRC_RULE,
+  const DRC_TEMPLATE_KEY = "branchlineDRCTemplateSections_v1";
+  const DEFAULT_DRC_TEMPLATE_SECTIONS = [
     "📊 OVERVIEW",
     "✅ GOOD",
     "❌ BAD",
     "🔄 CHANGE FROM TOMORROW",
     "📈 TRADES IN DETAILS"
   ];
+
+  // One persisted list, seeded from the defaults exactly once — same
+  // pattern as getQuoteBannerLines above. After that, this key is the sole
+  // source of truth for what sections a fresh DRC note gets.
+  function getDRCTemplateSections() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DRC_TEMPLATE_KEY));
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch (e) {}
+    const seeded = DEFAULT_DRC_TEMPLATE_SECTIONS.slice();
+    saveDRCTemplateSections(seeded);
+    return seeded;
+  }
+
+  function saveDRCTemplateSections(sections) {
+    localStorage.setItem(DRC_TEMPLATE_KEY, JSON.stringify(sections));
+  }
+
+  // Builds the same per-line HTML shape the old hardcoded DRC_NOTE_TEMPLATE
+  // used: a rule, the label, another rule, then a blank line — for every
+  // section in order, with one extra trailing blank line at the very end.
+  function buildDRCNoteTemplateHtml(sections) {
+    const ruleDiv = `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>`;
+    let html = "";
+    (sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS).forEach((label) => {
+      html += ruleDiv +
+        `<div style="font-family:monospace;color:#000000;">${escapeHtml(label)}</div>` +
+        ruleDiv + "<div><br></div>";
+    });
+    return html + "<div><br></div>";
+  }
+
+  // The template's own fixed section labels — excluded when checking how
+  // much the person has actually typed into a DRC note (see
+  // drcNoteIsFilled below), so an untouched template doesn't itself count
+  // as "filled".
+  function buildDRCTemplateLabels(sections) {
+    return [DRC_RULE, ...(sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS)];
+  }
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
   // on that node, or (with `taskId`) for one task on that node, or (with
@@ -11760,7 +11900,7 @@
       if (existingDRCIndex >= 0) {
         noteActiveIndex = existingDRCIndex;
       } else {
-        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(DRC_NOTE_TEMPLATE), createdAt: Date.now(), updatedAt: Date.now() });
+        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(buildDRCNoteTemplateHtml(getDRCTemplateSections())), createdAt: Date.now(), updatedAt: Date.now() });
         noteActiveIndex = noteWorkingList.length - 1;
       }
     } else {
