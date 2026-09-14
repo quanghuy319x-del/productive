@@ -6211,10 +6211,15 @@
   // long as the anchor belongs to this same table, extends the
   // selection into a rectangle between the anchor and the clicked cell
   // (see state.cellRange) — that rectangle is what "Merge cells" (in
-  // openCellAddMenu) acts on. Always a full renderAll() (rather than the
-  // lighter updateSelectedClasses path selectNode can take) since a
-  // range highlight needs the whole grid redrawn either way, whether one
-  // is being drawn or an old one is being cleared.
+  // openCellAddMenu) acts on.
+  //
+  // A plain click on a cell that's already the selected one (no range to
+  // draw or clear) is just caret placement inside the contentEditable text
+  // box that's already on screen — skip the renderAll() in that case, since
+  // rebuilding the grid would swap in a fresh <div> and throw away the caret
+  // position the browser just set from this very click. Every other case
+  // (selecting a different cell, or drawing/clearing a range highlight)
+  // still needs the full redraw.
   function handleTableCellClick(node, r, c, shiftKey) {
     if (shiftKey && state.cellRangeAnchor && state.cellRangeAnchor.nodeId === node.id) {
       const anchor = state.cellRangeAnchor;
@@ -6228,11 +6233,15 @@
       renderAll();
       return;
     }
+    const alreadySelected = !state.cellRange && state.selectedCell &&
+      state.selectedCell.nodeId === node.id && state.selectedCell.r === r && state.selectedCell.c === c;
     state.cellRangeAnchor = { nodeId: node.id, r, c };
     state.cellRange = null;
     selectNode(node.id, { nodeId: node.id, r, c });
+    if (alreadySelected) return;
     renderAll();
   }
+
 
   function renderNode(node, ox, oy) {
     const depth = node._depth;
@@ -8080,14 +8089,19 @@
         // same pattern as Brainstorm/Timer.
         const drcPts = drcPoints(node);
         const label = drcPts > 0 ? `📋 DRC (${drcPts} pt${drcPts === 1 ? "" : "s"})…` : "📋 DRC…";
-        addGroupRow(label, () => openNoteModal(node.id, undefined, null, null, null, true));
-      }
-      {
+        const drcItem = addGroupRow(label, () => openNoteModal(node.id, undefined, null, null, null, true));
         // Edits the standing DRC template itself (its section labels), not
-        // any one note — see openDRCTemplateModal below. Lives right next
-        // to the "📋 DRC…" shortcut above since that's the only other place
-        // the template is ever seen.
-        addGroupRow("✏️ Edit DRC template…", () => openDRCTemplateModal());
+        // any one note — see openDRCTemplateModal below. Same pencil-button
+        // pattern as the affirmation game's "edit affirmation lines" button.
+        const drcEditBtn = document.createElement("span");
+        drcEditBtn.className = "ctx-item-remove ctx-item-edit-affirmation";
+        drcEditBtn.textContent = "✎";
+        drcEditBtn.title = "Edit DRC template";
+        // Stop the click from also bubbling into the row's own handler
+        // above (which would open a DRC note right after opening the
+        // template editor).
+        drcEditBtn.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); openDRCTemplateModal(); });
+        drcItem.appendChild(drcEditBtn);
       }
       {
         // Only *commented* links score points (see nodeTaskProgress), so
@@ -11734,7 +11748,6 @@
   // calls buildDRCNoteTemplateHtml/buildDRCTemplateLabels on the
   // currently-saved sections instead, so an edit takes effect on the very
   // next DRC note without needing a reload.
-  const DRC_RULE = "━━━━━━━━━━━━━━━━━━━━━";
   const DRC_TEMPLATE_KEY = "branchlineDRCTemplateSections_v1";
   const DEFAULT_DRC_TEMPLATE_SECTIONS = [
     "📊 OVERVIEW",
@@ -11765,12 +11778,10 @@
   // used: a rule, the label, another rule, then a blank line — for every
   // section in order, with one extra trailing blank line at the very end.
   function buildDRCNoteTemplateHtml(sections) {
-    const ruleDiv = `<div style="font-family:monospace;color:#000000;">${DRC_RULE}</div>`;
     let html = "";
     (sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS).forEach((label) => {
-      html += ruleDiv +
-        `<div style="font-family:monospace;color:#000000;">${escapeHtml(label)}</div>` +
-        ruleDiv + "<div><br></div>";
+      html += `<div style="font-family:monospace;color:#000000;">${escapeHtml(label)}</div>` +
+        "<div><br></div>";
     });
     return html + "<div><br></div>";
   }
@@ -11780,7 +11791,7 @@
   // drcNoteIsFilled below), so an untouched template doesn't itself count
   // as "filled".
   function buildDRCTemplateLabels(sections) {
-    return [DRC_RULE, ...(sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS)];
+    return [...(sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS)];
   }
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
