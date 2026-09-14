@@ -11662,23 +11662,23 @@
   // straight through unchanged instead of re-escaping it as plain text.
   const DRC_NOTE_TEMPLATE =
     '<div style="font-family:monospace;color:#4fc1ff;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#4fc1ff;">║           OVERVIEW           ║</div>' +
+    '<div style="font-family:monospace;color:#4fc1ff;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;OVERVIEW&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
     '<div style="font-family:monospace;color:#4fc1ff;">╚══════════════════════════════╝</div><div><br></div>' +
 
     '<div style="font-family:monospace;color:#4ec9b0;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#4ec9b0;">║             GOOD              ║</div>' +
+    '<div style="font-family:monospace;color:#4ec9b0;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GOOD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
     '<div style="font-family:monospace;color:#4ec9b0;">╚══════════════════════════════╝</div><div><br></div>' +
 
     '<div style="font-family:monospace;color:#f14c4c;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#f14c4c;">║             BAD               ║</div>' +
+    '<div style="font-family:monospace;color:#f14c4c;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;BAD&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
     '<div style="font-family:monospace;color:#f14c4c;">╚══════════════════════════════╝</div><div><br></div>' +
 
     '<div style="font-family:monospace;color:#dcdcaa;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#dcdcaa;">║     CHANGE FROM TOMORROW      ║</div>' +
+    '<div style="font-family:monospace;color:#dcdcaa;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CHANGE FROM TOMORROW&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
     '<div style="font-family:monospace;color:#dcdcaa;">╚══════════════════════════════╝</div><div><br></div>' +
 
     '<div style="font-family:monospace;color:#c586c0;">╔══════════════════════════════╗</div>' +
-    '<div style="font-family:monospace;color:#c586c0;">║       TRADES IN DETAILS       ║</div>' +
+    '<div style="font-family:monospace;color:#c586c0;">║&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TRADES IN DETAILS&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;║</div>' +
     '<div style="font-family:monospace;color:#c586c0;">╚══════════════════════════════╝</div><div><br></div><div><br></div>';
   // The template's own fixed section labels — excluded when checking how
   // much the person has actually typed into a DRC note (see
@@ -11687,10 +11687,10 @@
   const DRC_TEMPLATE_LABELS = [
     "╔══════════════════════════════╗",
     "║           OVERVIEW           ║",
-    "║             GOOD              ║",
-    "║             BAD               ║",
-    "║     CHANGE FROM TOMORROW      ║",
-    "║       TRADES IN DETAILS       ║",
+    "║             GOOD             ║",
+    "║             BAD              ║",
+    "║     CHANGE FROM TOMORROW     ║",
+    "║      TRADES IN DETAILS       ║",
     "╚══════════════════════════════╝"
   ];
 
