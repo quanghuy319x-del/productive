@@ -11661,16 +11661,38 @@
   // bold + uppercase; looksLikeHtml sees the <div> tags and passes this
   // straight through unchanged instead of re-escaping it as plain text.
   const DRC_NOTE_TEMPLATE =
-    "<div><b>OVERVIEW:</b></div><div><br></div>" +
-    "<div><b>GOOD:</b></div><div><br></div>" +
-    "<div><b>BAD:</b></div><div><br></div>" +
-    "<div><b>CHANGE FROM TOMORROW:</b></div><div><br></div>" +
-    "<div><b>TRADES IN DETAILS:</b></div><div><br></div><div><br></div>";
+    '<div style="font-family:monospace;color:#4fc1ff;">╔══════════════════════════════╗</div>' +
+    '<div style="font-family:monospace;color:#4fc1ff;">║           OVERVIEW           ║</div>' +
+    '<div style="font-family:monospace;color:#4fc1ff;">╚══════════════════════════════╝</div><div><br></div>' +
+
+    '<div style="font-family:monospace;color:#4ec9b0;">╔══════════════════════════════╗</div>' +
+    '<div style="font-family:monospace;color:#4ec9b0;">║             GOOD              ║</div>' +
+    '<div style="font-family:monospace;color:#4ec9b0;">╚══════════════════════════════╝</div><div><br></div>' +
+
+    '<div style="font-family:monospace;color:#f14c4c;">╔══════════════════════════════╗</div>' +
+    '<div style="font-family:monospace;color:#f14c4c;">║             BAD               ║</div>' +
+    '<div style="font-family:monospace;color:#f14c4c;">╚══════════════════════════════╝</div><div><br></div>' +
+
+    '<div style="font-family:monospace;color:#dcdcaa;">╔══════════════════════════════╗</div>' +
+    '<div style="font-family:monospace;color:#dcdcaa;">║     CHANGE FROM TOMORROW      ║</div>' +
+    '<div style="font-family:monospace;color:#dcdcaa;">╚══════════════════════════════╝</div><div><br></div>' +
+
+    '<div style="font-family:monospace;color:#c586c0;">╔══════════════════════════════╗</div>' +
+    '<div style="font-family:monospace;color:#c586c0;">║       TRADES IN DETAILS       ║</div>' +
+    '<div style="font-family:monospace;color:#c586c0;">╚══════════════════════════════╝</div><div><br></div><div><br></div>';
   // The template's own fixed section labels — excluded when checking how
   // much the person has actually typed into a DRC note (see
   // drcNoteIsFilled below), so an untouched template doesn't itself count
   // as "filled".
-  const DRC_TEMPLATE_LABELS = ["OVERVIEW:", "GOOD:", "BAD:", "CHANGE FROM TOMORROW:", "TRADES IN DETAILS:"];
+  const DRC_TEMPLATE_LABELS = [
+    "╔══════════════════════════════╗",
+    "║           OVERVIEW           ║",
+    "║             GOOD              ║",
+    "║             BAD               ║",
+    "║     CHANGE FROM TOMORROW      ║",
+    "║       TRADES IN DETAILS       ║",
+    "╚══════════════════════════════╝"
+  ];
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
   // on that node, or (with `taskId`) for one task on that node, or (with
