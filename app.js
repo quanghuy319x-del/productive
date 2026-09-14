@@ -3194,13 +3194,6 @@
   const nodeFabs = $("#node-fabs");
   const ctxMenu = $("#ctx-menu");
 
-  // Fixed reference point for the root node's title-marquee animation
-  // delay (see renderNode) — set once, here, when the script first
-  // loads, rather than per-render, so the "how far into its cycle is
-  // this animation" calculation stays anchored to the same moment in
-  // time across every rebuild for as long as the page stays open.
-  const rootTitleMarqueeEpoch = Date.now();
-
   // Every open*ContextMenu function below starts by wiping and rebuilding
   // the menu's contents (it's one reused element for every kind of
   // right-click/long-press menu in the app).
@@ -3730,9 +3723,9 @@
   // once the stack's total size passes a fixed budget, so memory use
   // stays bounded regardless of how many photos a map carries.
   const UNDO_STACK_MAX_BYTES = 25 * 1024 * 1024; // ~25MB per stack
-  function pushBoundedSnapshot(stack, json) {
+  function pushBoundedSnapshot(stack, json, maxCount) {
     stack.push(json);
-    if (stack.length > 60) stack.shift();
+    if (stack.length > (maxCount || 60)) stack.shift();
     let total = 0;
     for (const s of stack) total += s.length;
     while (total > UNDO_STACK_MAX_BYTES && stack.length > 1) {
@@ -6264,33 +6257,13 @@
       : (theme.fontMode === "custom" ? theme.fontColor : caretColorFor(effectiveBg));
     div.style.caretColor = caretColorFor(effectiveBg);
 
-    // The root node's title scrolls the same way the toolbar's quote
-    // banner does in spirit (see "toolbar quote banner" above) rather
-    // than just wrapping/clipping — it tends to run long above the live
-    // clock block below it, and centering + wrapping ate into that
-    // space. Built as a CSS animation (see .node-title-marquee-track)
-    // rather than a native <marquee> — see that CSS comment for why —
-    // with the animation-delay set below so a freshly recreated track
-    // (any renderAll() rebuilds every node from scratch) resumes
-    // mid-cycle instead of visibly snapping back to its starting
-    // position. Only while NOT actively editing: mid-edit, div stays a
-    // plain contentEditable text node exactly like every other node, so
-    // typing, caret placement, and autosizeEditingBox keep working
-    // unchanged.
+    // The root node's title used to scroll like a marquee when it ran
+    // long, rather than wrapping/clipping — removed at the user's
+    // request in favor of plain text, same as every other node.
     if (nodeIsTable(node)) {
       renderTableGrid(div, node);
     } else {
-    if (depth === 0 && node.id !== state.editingId) {
-      const titleMarquee = document.createElement("span");
-      titleMarquee.className = "node-title-marquee";
-      const titleTrack = document.createElement("span");
-      titleTrack.className = "node-title-marquee-track";
-      titleTrack.textContent = node.text || "(untitled)";
-      titleMarquee.appendChild(titleTrack);
-      div.appendChild(titleMarquee);
-    } else {
-      div.textContent = node.text || (node.id === state.editingId ? "" : "(untitled)");
-    }
+    div.textContent = node.text || (node.id === state.editingId ? "" : "(untitled)");
 
     if (node.id === state.editingId) {
       div.contentEditable = "true";
@@ -6874,31 +6847,6 @@
 
     nodesLayer.appendChild(div);
 
-    // Now that the title track is actually in the document, measure how
-    // far it needs to travel (its own rendered width already includes
-    // the container-width padding-left from .node-title-marquee-track —
-    // see that CSS — so scrollWidth is exactly the container+text
-    // distance the animation's translateX(-100%) covers) and pick a
-    // duration proportional to that distance so longer titles scroll at
-    // roughly the same reading speed as short ones instead of all
-    // taking the same fixed time. The negative animation-delay, set
-    // from elapsed real time against the fixed rootTitleMarqueeEpoch, is
-    // what makes a freshly recreated track (every renderAll() rebuilds
-    // this from scratch) pick up mid-cycle instead of visibly resetting
-    // to the start on every re-render (selecting a node, dragging,
-    // editing elsewhere, etc.).
-    if (depth === 0 && node.id !== state.editingId) {
-      const track = div.querySelector(".node-title-marquee-track");
-      if (track) {
-        const distancePx = track.scrollWidth;
-        const PX_PER_SECOND = 55;
-        const durationSec = Math.max(4, distancePx / PX_PER_SECOND);
-        track.style.animationDuration = durationSec + "s";
-        const elapsedSec = ((Date.now() - rootTitleMarqueeEpoch) / 1000) % durationSec;
-        track.style.animationDelay = (-elapsedSec) + "s";
-      }
-    }
-
     if (node.id === state.editingId) {
       // Focus synchronously, not via requestAnimationFrame — the div is
       // already attached to the DOM (appendChild just above), and on
@@ -7389,8 +7337,7 @@
   // elements — used instead of a full renderAll() when a click only
   // changes which node is selected (see selectNode below). A full
   // renderAll() tears down and rebuilds every node's DOM from scratch,
-  // which would restart the root title's scrolling marquee (and any
-  // other per-node DOM state) from the beginning on every single click.
+  // which would reset other per-node DOM state on every single click.
   function updateSelectedClasses(prevId, id) {
     if (prevId) {
       const prevDiv = nodesLayer.querySelector(`.node[data-id="${prevId}"]`);
@@ -11495,9 +11442,20 @@
   // Records the editor's current state onto the undo stack. Call this
   // immediately BEFORE a mutation (toolbar click, image insert, paste,
   // Enter-to-continue-list), not after.
+  //
+  // Images pasted/dropped into a note are embedded as full-resolution,
+  // un-downscaled base64 <img> tags directly in this same innerHTML (see
+  // noteHandleImageFiles) — so once a note has even one screenshot in
+  // it, EVERY subsequent edit anywhere in that note (not just to the
+  // image) re-clones that image's full bytes into a new snapshot here.
+  // At a 100-entry cap with no size limit, a note with a couple of
+  // pasted screenshots could balloon into hundreds of MB of undo history
+  // from perfectly ordinary typing — the same class of bug already fixed
+  // for the map-level undo/redo stacks (see pushBoundedSnapshot), just
+  // reused here since notes are the other place large embedded images
+  // live.
   function notePushUndo() {
-    noteUndoStack.push(noteTextarea.innerHTML);
-    if (noteUndoStack.length > NOTE_UNDO_LIMIT) noteUndoStack.shift();
+    pushBoundedSnapshot(noteUndoStack, noteTextarea.innerHTML, NOTE_UNDO_LIMIT);
     noteRedoStack = [];
     noteLastPushAt = Date.now();
     updateNoteUndoButtons();
@@ -11551,13 +11509,13 @@
 
   function noteUndo() {
     if (!noteUndoStack.length) return;
-    noteRedoStack.push(noteTextarea.innerHTML);
+    pushBoundedSnapshot(noteRedoStack, noteTextarea.innerHTML, NOTE_UNDO_LIMIT);
     noteRestoreSnapshot(noteUndoStack.pop());
   }
 
   function noteRedo() {
     if (!noteRedoStack.length) return;
-    noteUndoStack.push(noteTextarea.innerHTML);
+    pushBoundedSnapshot(noteUndoStack, noteTextarea.innerHTML, NOTE_UNDO_LIMIT);
     noteRestoreSnapshot(noteRedoStack.pop());
   }
 
@@ -12675,8 +12633,7 @@
   noteTextarea.addEventListener("beforeinput", () => {
     const now = Date.now();
     if (now - noteLastPushAt > NOTE_TYPING_BURST_MS || !noteUndoStack.length) {
-      noteUndoStack.push(noteTextarea.innerHTML);
-      if (noteUndoStack.length > NOTE_UNDO_LIMIT) noteUndoStack.shift();
+      pushBoundedSnapshot(noteUndoStack, noteTextarea.innerHTML, NOTE_UNDO_LIMIT);
     }
     noteRedoStack = [];
     noteLastPushAt = now;
@@ -14937,10 +14894,11 @@
 
   // Records the editor's current state onto the undo stack. Call this
   // immediately BEFORE a mutation, not after — same contract as the note
-  // editor's notePushUndo.
+  // editor's notePushUndo. Same fix applied here as notePushUndo/pushUndo
+  // above: brainstorm pads can embed pasted images too, so this reuses
+  // pushBoundedSnapshot instead of a bare count-capped push.
   function brainstormPushUndo() {
-    brainstormUndoStack.push(brainstormTextarea.innerHTML);
-    if (brainstormUndoStack.length > BRAINSTORM_UNDO_LIMIT) brainstormUndoStack.shift();
+    pushBoundedSnapshot(brainstormUndoStack, brainstormTextarea.innerHTML, BRAINSTORM_UNDO_LIMIT);
     brainstormRedoStack = [];
     brainstormLastPushAt = Date.now();
     updateBrainstormUndoButtons();
@@ -14983,13 +14941,13 @@
 
   function brainstormUndo() {
     if (!brainstormUndoStack.length) return;
-    brainstormRedoStack.push(brainstormTextarea.innerHTML);
+    pushBoundedSnapshot(brainstormRedoStack, brainstormTextarea.innerHTML, BRAINSTORM_UNDO_LIMIT);
     brainstormRestoreSnapshot(brainstormUndoStack.pop());
   }
 
   function brainstormRedo() {
     if (!brainstormRedoStack.length) return;
-    brainstormUndoStack.push(brainstormTextarea.innerHTML);
+    pushBoundedSnapshot(brainstormUndoStack, brainstormTextarea.innerHTML, BRAINSTORM_UNDO_LIMIT);
     brainstormRestoreSnapshot(brainstormRedoStack.pop());
   }
 
@@ -15509,8 +15467,7 @@
   brainstormTextarea.addEventListener("beforeinput", () => {
     const now = Date.now();
     if (now - brainstormLastPushAt > BRAINSTORM_TYPING_BURST_MS || !brainstormUndoStack.length) {
-      brainstormUndoStack.push(brainstormTextarea.innerHTML);
-      if (brainstormUndoStack.length > BRAINSTORM_UNDO_LIMIT) brainstormUndoStack.shift();
+      pushBoundedSnapshot(brainstormUndoStack, brainstormTextarea.innerHTML, BRAINSTORM_UNDO_LIMIT);
     }
     brainstormRedoStack = [];
     brainstormLastPushAt = now;
