@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=58">
+<link rel="stylesheet" href="style.css?v=59">
 </head>
 <body>
 <div id="app">
@@ -462,13 +462,16 @@
 <div id="quote-banner-modal" class="modal hidden">
   <div class="modal-card quote-banner-modal-card">
     <h2>Affirmations</h2>
-    <div id="quote-banner-list" class="quote-banner-list"></div>
-    <textarea id="quote-banner-editor" class="quote-banner-editor" spellcheck="false" placeholder="Type a new affirmation, or pick one above to edit it…"></textarea>
-    <div class="quote-banner-actions">
-      <button id="quote-banner-save" class="btn-ghost">Save / Add</button>
-      <button id="quote-banner-random" class="btn-ghost">🔀 Random</button>
+    <p class="quote-banner-hint">Tap a line to use it. Use ✏️ to fix one, 🗑 to remove it.</p>
+    <div class="quote-banner-add-row">
+      <input id="quote-banner-add-input" type="text" class="quote-banner-add-input" maxlength="200" spellcheck="false" placeholder="Add a new affirmation…">
+      <button id="quote-banner-add-btn" class="btn-ghost" title="Add">+ Add</button>
     </div>
-    <button id="quote-banner-close" class="btn-primary">Done</button>
+    <div id="quote-banner-list" class="quote-banner-list"></div>
+    <div class="quote-banner-actions">
+      <button id="quote-banner-random" class="btn-ghost">🔀 Random</button>
+      <button id="quote-banner-close" class="btn-primary">Done</button>
+    </div>
   </div>
 </div>
 
@@ -708,6 +711,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=111"></script>
+<script src="app.js?v=112"></script>
 </body>
 </html>

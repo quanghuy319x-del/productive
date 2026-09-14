@@ -9092,7 +9092,14 @@
   /* ---------------- global shortcuts (map list / new) ---------------- */
 
   document.addEventListener("keydown", (e) => {
-    const activeIsEditable = document.activeElement && (document.activeElement.isContentEditable || document.activeElement.tagName === "INPUT");
+    // Was missing TEXTAREA here — only INPUT and contenteditable were
+    // excluded, so typing a plain "n" while focused in any <textarea>
+    // (the affirmation editor, a photo/video/link comment box, the
+    // brainstorm pad, etc.) fell straight through to createMap() below
+    // and silently spawned a brand-new blank mindmap mid-sentence. This
+    // is what was happening while editing an affirmation, since almost
+    // any English or Vietnamese line contains the letter "n" somewhere.
+    const activeIsEditable = document.activeElement && (document.activeElement.isContentEditable || document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA");
     if (activeIsEditable) return;
     if (e.key.toLowerCase() === "n" && !e.ctrlKey && !e.metaKey) createMap();
   });
@@ -9146,10 +9153,21 @@
      The banner itself is desktop/mouse-only — see
      .toolbar-quote-banner's media query in style.css — so all of this
      simply has nothing to drive on a touch device; the "click" here
-     means a real mouse/pen click, never a touch tap. */
+     means a real mouse/pen click, never a touch tap.
+
+     Redesigned to one interaction per action instead of a list-plus-a-
+     separate-editor-textarea-plus-a-dual-purpose-Save/Add-button: tap a
+     line to use it, ✏️ to fix it in place, 🗑 to remove it, one input at
+     the top to add a new one. Also collapses storage down to a single
+     persisted list (seeded from the defaults once) plus the current
+     line's own text — the old scheme re-merged a separate saved list
+     against the hardcoded defaults on every read, so editing the text
+     of a default line didn't replace it, it silently left the original
+     behind and appended the edited text as a second, near-duplicate
+     entry every time. */
 
   const QUOTE_BANNER_LIST_KEY = "branchlineQuoteBannerList_v1";
-  const QUOTE_BANNER_SELECTED_KEY = "branchlineQuoteBannerSelected_v1";
+  const QUOTE_BANNER_CURRENT_KEY = "branchlineQuoteBannerCurrent_v1";
 
   const DEFAULT_QUOTE_BANNER_LINES = [
     "a successful life start with a successful day",
@@ -9177,110 +9195,135 @@
   const quoteBannerMarquee = $("#quote-banner-marquee");
   const quoteBannerModal = $("#quote-banner-modal");
   const quoteBannerListEl = $("#quote-banner-list");
-  const quoteBannerEditor = $("#quote-banner-editor");
-  let selectedQuoteBannerIndex = null;
+  const quoteBannerAddInput = $("#quote-banner-add-input");
+  let editingQuoteBannerIndex = null; // which row (if any) is mid-inline-edit
 
+  // One persisted list, seeded from the defaults exactly once. After
+  // that, this key is the sole source of truth — add/edit/delete all
+  // just mutate and re-save this same array, so there's no separate
+  // "defaults" copy anywhere else for a saved edit to fall out of sync
+  // with.
   function getQuoteBannerLines() {
     try {
       const saved = JSON.parse(localStorage.getItem(QUOTE_BANNER_LIST_KEY));
-      if (Array.isArray(saved) && saved.length) {
-        const merged = [...DEFAULT_QUOTE_BANNER_LINES];
-        saved.forEach((item) => { if (item && !merged.includes(item)) merged.push(item); });
-        return merged;
-      }
+      if (Array.isArray(saved) && saved.length) return saved;
     } catch (e) {}
-    return DEFAULT_QUOTE_BANNER_LINES;
+    const seeded = DEFAULT_QUOTE_BANNER_LINES.slice();
+    saveQuoteBannerLines(seeded);
+    return seeded;
   }
 
   function saveQuoteBannerLines(list) {
     localStorage.setItem(QUOTE_BANNER_LIST_KEY, JSON.stringify(list));
   }
 
-  function applyQuoteBanner(text, index) {
+  function applyQuoteBanner(text) {
     const clean = (text || "").trim();
     if (!clean || !quoteBannerMarquee) return;
     quoteBannerMarquee.textContent = clean;
-    selectedQuoteBannerIndex = index;
-    if (index === null) localStorage.removeItem(QUOTE_BANNER_SELECTED_KEY);
-    else localStorage.setItem(QUOTE_BANNER_SELECTED_KEY, String(index));
+    localStorage.setItem(QUOTE_BANNER_CURRENT_KEY, clean);
   }
 
   function initQuoteBanner() {
     if (!quoteBannerEl) return;
     const list = getQuoteBannerLines();
-    const savedIndex = Number(localStorage.getItem(QUOTE_BANNER_SELECTED_KEY));
-    if (Number.isInteger(savedIndex) && list[savedIndex]) {
-      applyQuoteBanner(list[savedIndex], savedIndex);
-    } else {
-      applyQuoteBanner(list[Math.floor(Math.random() * list.length)], null);
-    }
+    const saved = localStorage.getItem(QUOTE_BANNER_CURRENT_KEY);
+    applyQuoteBanner(saved && list.includes(saved) ? saved : list[Math.floor(Math.random() * list.length)]);
   }
 
   function renderQuoteBannerList() {
     const list = getQuoteBannerLines();
+    const current = quoteBannerMarquee ? quoteBannerMarquee.textContent : null;
     quoteBannerListEl.innerHTML = "";
     list.forEach((text, index) => {
       const row = document.createElement("div");
-      row.className = "quote-banner-item" + (selectedQuoteBannerIndex === index ? " selected" : "");
+      row.className = "quote-banner-item" + (text === current ? " selected" : "");
+
+      if (index === editingQuoteBannerIndex) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "quote-banner-item-edit-input";
+        input.maxLength = 200;
+        input.value = text;
+        const commit = () => {
+          const val = input.value.trim();
+          editingQuoteBannerIndex = null;
+          if (val && val !== text) {
+            const wasCurrent = text === current;
+            list[index] = val;
+            saveQuoteBannerLines(list);
+            if (wasCurrent) applyQuoteBanner(val);
+          }
+          renderQuoteBannerList();
+        };
+        input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          else if (e.key === "Escape") { e.preventDefault(); editingQuoteBannerIndex = null; renderQuoteBannerList(); }
+        });
+        input.addEventListener("blur", commit);
+        row.appendChild(input);
+        quoteBannerListEl.appendChild(row);
+        requestAnimationFrame(() => { input.focus(); input.select(); });
+        return;
+      }
 
       const label = document.createElement("span");
       label.textContent = text;
-      label.title = text;
-
-      const chooseBtn = document.createElement("button");
-      chooseBtn.type = "button";
-      chooseBtn.className = "btn-ghost small";
-      chooseBtn.textContent = selectedQuoteBannerIndex === index ? "Using" : "Use";
-      chooseBtn.addEventListener("click", () => {
-        applyQuoteBanner(text, index);
-        quoteBannerEditor.value = text;
-        renderQuoteBannerList();
-      });
+      label.title = "Tap to use this line";
+      label.addEventListener("click", () => { applyQuoteBanner(text); renderQuoteBannerList(); });
 
       const editBtn = document.createElement("button");
       editBtn.type = "button";
-      editBtn.className = "btn-ghost small";
-      editBtn.textContent = "Edit";
-      editBtn.addEventListener("click", () => {
-        selectedQuoteBannerIndex = index;
-        quoteBannerEditor.value = text;
-        quoteBannerEditor.focus();
-        quoteBannerEditor.select();
+      editBtn.className = "quote-banner-item-btn";
+      editBtn.title = "Edit this line";
+      editBtn.setAttribute("aria-label", "Edit this line");
+      editBtn.textContent = "✏️";
+      editBtn.addEventListener("click", (e) => { e.stopPropagation(); editingQuoteBannerIndex = index; renderQuoteBannerList(); });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "quote-banner-item-btn quote-banner-item-delete";
+      deleteBtn.title = "Delete this line";
+      deleteBtn.setAttribute("aria-label", "Delete this line");
+      deleteBtn.textContent = "🗑";
+      deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const wasCurrent = text === current;
+        list.splice(index, 1);
+        saveQuoteBannerLines(list);
+        if (wasCurrent && list.length) applyQuoteBanner(list[Math.floor(Math.random() * list.length)]);
         renderQuoteBannerList();
       });
 
-      row.append(label, chooseBtn, editBtn);
+      row.append(label, editBtn, deleteBtn);
       quoteBannerListEl.appendChild(row);
     });
   }
 
+  function addQuoteBannerLine() {
+    const val = quoteBannerAddInput.value.trim();
+    if (!val) return;
+    const list = getQuoteBannerLines();
+    list.push(val);
+    saveQuoteBannerLines(list);
+    quoteBannerAddInput.value = "";
+    applyQuoteBanner(val);
+    renderQuoteBannerList();
+  }
+
   function openQuoteBannerModal() {
-    quoteBannerEditor.value = selectedQuoteBannerIndex === null ? "" : (getQuoteBannerLines()[selectedQuoteBannerIndex] || "");
+    editingQuoteBannerIndex = null;
+    quoteBannerAddInput.value = "";
     renderQuoteBannerList();
     zoomModalOpen(quoteBannerModal);
   }
 
-  function saveQuoteBannerFromEditor() {
-    const text = quoteBannerEditor.value.trim();
-    if (!text) return;
-    const list = getQuoteBannerLines();
-    if (selectedQuoteBannerIndex !== null && list[selectedQuoteBannerIndex]) {
-      list[selectedQuoteBannerIndex] = text;
-    } else {
-      list.push(text);
-      selectedQuoteBannerIndex = list.length - 1;
-    }
-    saveQuoteBannerLines(list);
-    applyQuoteBanner(text, selectedQuoteBannerIndex);
-    renderQuoteBannerList();
-  }
-
   function randomizeQuoteBanner() {
     const list = getQuoteBannerLines();
-    const others = list.filter((_, i) => i !== selectedQuoteBannerIndex);
-    const pick = others.length ? others[Math.floor(Math.random() * others.length)] : list[0];
-    applyQuoteBanner(pick, list.indexOf(pick));
-    quoteBannerEditor.value = pick;
+    const current = quoteBannerMarquee ? quoteBannerMarquee.textContent : null;
+    const others = list.filter((t) => t !== current);
+    applyQuoteBanner(others.length ? others[Math.floor(Math.random() * others.length)] : list[0]);
     renderQuoteBannerList();
   }
 
@@ -9290,7 +9333,11 @@
     quoteBannerEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openQuoteBannerModal(); }
     });
-    $("#quote-banner-save").addEventListener("click", saveQuoteBannerFromEditor);
+    $("#quote-banner-add-btn").addEventListener("click", addQuoteBannerLine);
+    quoteBannerAddInput.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); addQuoteBannerLine(); }
+    });
     $("#quote-banner-random").addEventListener("click", randomizeQuoteBanner);
     $("#quote-banner-close").addEventListener("click", () => zoomModalClose(quoteBannerModal));
     quoteBannerModal.addEventListener("click", (e) => { if (e.target === quoteBannerModal) zoomModalClose(quoteBannerModal); });
