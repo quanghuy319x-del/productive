@@ -2592,7 +2592,7 @@
     return Math.floor(brainstormLineCount(host) / 2);
   }
 
-  // A "DRC" note (see buildDRCNoteTemplateHtml / the drc flag set on it above) is
+  // A "DRC" note (see getDRCTemplateText / the drc flag set on it above) is
   // considered "filled in" — and worth points below — once the person has
   // typed more than one line into it, or at least 10 letters total,
   // beyond the template's own fixed section labels. Splits the note's
@@ -2619,7 +2619,7 @@
     return !!(note && (note.title || "").trim().toUpperCase() === "DRC");
   }
   function drcNoteIsFilled(note) {
-    const labels = buildDRCTemplateLabels(getDRCTemplateSections());
+    const labels = drcTemplateLines();
     const lines = noteLinesFromHtml(note && note.html)
       .filter(l => !labels.some(lbl => lbl.toLowerCase() === l.toLowerCase()));
     const typedLines = lines.filter(l => l.length > 0);
@@ -8080,7 +8080,7 @@
       }
       {
         // Shortcut: opens this node's DRC note, pre-filled with the
-        // standing template (see buildDRCNoteTemplateHtml / the forceDRCTemplate
+        // standing template (see getDRCTemplateText / the forceDRCTemplate
         // branch in openNoteModal) the first time, or just reopens the
         // existing one on every click after that — only one DRC note is
         // allowed per node. Unlike the automatic prefill, this isn't tied
@@ -9141,7 +9141,6 @@
     connectorColorInput.disabled = t.connectorMode !== "custom";
     fontModeSel.value = t.fontMode;
     fontColorInput.value = t.fontColor;
-    fontColorInput.disabled = t.fontMode !== "custom";
     zoomModalOpen(themeModal);
   }
 
@@ -9363,43 +9362,34 @@
 
   /* ---------------- DRC template editor ---------------- */
   // Lets the person edit the standing DRC (Daily Report Card) template as
-  // one whole block of text in a single textarea — one section per line —
-  // rather than through individual add/edit/delete rows. Saved on Done (and
-  // on Reset), read fresh from the textarea each time. getDRCTemplateSections/
-  // saveDRCTemplateSections/buildDRCNoteTemplateHtml/buildDRCTemplateLabels
-  // are defined further below, near the rest of the DRC logic, but that's
-  // fine: none of this runs until the person actually opens the modal, long
-  // after the whole script has loaded).
+  // one whole block of text in a single textarea. WYSIWYG: whatever's
+  // typed here is exactly what a fresh DRC note starts with, verbatim —
+  // no sections, no auto-added rules or blank lines. Saved on Done (and
+  // on Reset), read fresh from the textarea each time. getDRCTemplateText/
+  // saveDRCTemplateText are defined further below, near the rest of the
+  // DRC logic, but that's fine: none of this runs until the person
+  // actually opens the modal, long after the whole script has loaded).
   const drcTemplateModal = $("#drc-template-modal");
   const drcTemplateTextarea = $("#drc-template-textarea");
 
-  // Turns the saved sections array into the flat, one-line-per-section text
-  // the textarea shows, and back again on save — blank lines are dropped so
-  // stray Enter presses don't create empty sections.
-  function drcTemplateSectionsToText(sections) {
-    return (sections || []).join("\n");
-  }
-  function drcTemplateTextToSections(text) {
-    return (text || "").split("\n").map(l => l.trim()).filter(Boolean);
-  }
-
   function openDRCTemplateModal() {
-    drcTemplateTextarea.value = drcTemplateSectionsToText(getDRCTemplateSections());
+    drcTemplateTextarea.value = getDRCTemplateText();
     zoomModalOpen(drcTemplateModal);
     requestAnimationFrame(() => drcTemplateTextarea.focus());
   }
 
-  // Persists whatever's currently in the textarea. Falls back to the
-  // existing saved sections (rather than wiping the template) if every line
-  // was blanked out, since that's almost certainly not what was intended.
+  // Persists whatever's currently in the textarea, verbatim — no parsing,
+  // no reformatting. Falls back to the existing saved template (rather
+  // than wiping it) if the textarea was fully blanked out, since that's
+  // almost certainly not what was intended.
   function saveDRCTemplateFromTextarea() {
-    const sections = drcTemplateTextToSections(drcTemplateTextarea.value);
-    saveDRCTemplateSections(sections.length ? sections : getDRCTemplateSections());
+    const text = drcTemplateTextarea.value;
+    saveDRCTemplateText(text.trim() ? text : getDRCTemplateText());
   }
 
   if (drcTemplateModal) {
     $("#drc-template-reset").addEventListener("click", () => {
-      drcTemplateTextarea.value = drcTemplateSectionsToText(DEFAULT_DRC_TEMPLATE_SECTIONS);
+      drcTemplateTextarea.value = DEFAULT_DRC_TEMPLATE_TEXT;
     });
     $("#drc-template-close").addEventListener("click", () => {
       saveDRCTemplateFromTextarea();
@@ -11730,68 +11720,56 @@
 
   // Standing template for a task named "DRC" (Daily Report Card) — see
   // openNoteModal below, which drops this into that task's first note
-  // instead of a blank editor. Built as HTML (one <div> per line, matching
-  // what noteHtmlFromRaw would otherwise generate itself from plain text)
-  // rather than plain text, so the section labels can be bold + uppercase;
-  // looksLikeHtml sees the <div> tags and passes this straight through
-  // unchanged instead of re-escaping it as plain text. Every line uses the
-  // same plain black (the editor's own default text color) instead of a
-  // per-section accent — see noteApplyForeColor/loadNoteIntoEditor below,
-  // which also disable the color-picker tool itself while a DRC note is
-  // open, so this stays black no matter what.
+  // instead of a blank editor.
   //
-  // The section labels themselves are now user-editable (see the "✏️ Edit
-  // DRC template…" context-menu row and openDRCTemplateModal below) and
-  // persist in localStorage under DRC_TEMPLATE_KEY, seeded from
-  // DEFAULT_DRC_TEMPLATE_SECTIONS the first time. Everything that used to
-  // read the old fixed DRC_NOTE_TEMPLATE / DRC_TEMPLATE_LABELS constants now
-  // calls buildDRCNoteTemplateHtml/buildDRCTemplateLabels on the
-  // currently-saved sections instead, so an edit takes effect on the very
-  // next DRC note without needing a reload.
+  // The template is a single block of plain text, user-editable (see the
+  // pencil "Edit DRC template" button next to "📋 DRC…" in the node
+  // context menu and openDRCTemplateModal below) and persisted in
+  // localStorage under DRC_TEMPLATE_KEY, seeded from
+  // DEFAULT_DRC_TEMPLATE_TEXT the first time. Deliberately WYSIWYG: the
+  // textarea in that editor IS the template, line for line — no sections,
+  // no auto-inserted rules or blank lines, no separate "labels" model.
+  // Whatever's typed there is exactly what a fresh DRC note starts with
+  // (via noteHtmlFromRaw, same as any other note's plain-text starting
+  // content), so an edit takes effect on the very next DRC note without
+  // needing a reload.
   const DRC_TEMPLATE_KEY = "branchlineDRCTemplateSections_v1";
-  const DEFAULT_DRC_TEMPLATE_SECTIONS = [
-    "📊 OVERVIEW",
-    "✅ GOOD",
-    "❌ BAD",
-    "🔄 CHANGE FROM TOMORROW",
-    "📈 TRADES IN DETAILS"
-  ];
+  const DEFAULT_DRC_TEMPLATE_TEXT =
+    "📊 OVERVIEW\n\n✅ GOOD\n\n❌ BAD\n\n🔄 CHANGE FROM TOMORROW\n\n📈 TRADES IN DETAILS\n";
 
-  // One persisted list, seeded from the defaults exactly once — same
+  // One persisted string, seeded from the default exactly once — same
   // pattern as getQuoteBannerLines above. After that, this key is the sole
-  // source of truth for what sections a fresh DRC note gets.
-  function getDRCTemplateSections() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(DRC_TEMPLATE_KEY));
-      if (Array.isArray(saved) && saved.length) return saved;
-    } catch (e) {}
-    const seeded = DEFAULT_DRC_TEMPLATE_SECTIONS.slice();
-    saveDRCTemplateSections(seeded);
-    return seeded;
+  // source of truth for what a fresh DRC note gets. Older saves from
+  // before this template became free-form text stored a JSON array of
+  // section labels instead; if that's what's there, fold it into the
+  // equivalent plain-text form (one label per paragraph) so existing
+  // templates keep working.
+  function getDRCTemplateText() {
+    const raw = localStorage.getItem(DRC_TEMPLATE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) {
+          const migrated = parsed.join("\n\n") + "\n";
+          saveDRCTemplateText(migrated);
+          return migrated;
+        }
+      } catch (e) {}
+      return raw;
+    }
+    saveDRCTemplateText(DEFAULT_DRC_TEMPLATE_TEXT);
+    return DEFAULT_DRC_TEMPLATE_TEXT;
   }
 
-  function saveDRCTemplateSections(sections) {
-    localStorage.setItem(DRC_TEMPLATE_KEY, JSON.stringify(sections));
+  function saveDRCTemplateText(text) {
+    localStorage.setItem(DRC_TEMPLATE_KEY, text);
   }
 
-  // Builds the same per-line HTML shape the old hardcoded DRC_NOTE_TEMPLATE
-  // used: a rule, the label, another rule, then a blank line — for every
-  // section in order, with one extra trailing blank line at the very end.
-  function buildDRCNoteTemplateHtml(sections) {
-    let html = "";
-    (sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS).forEach((label) => {
-      html += `<div style="font-family:monospace;color:#000000;">${escapeHtml(label)}</div>` +
-        "<div><br></div>";
-    });
-    return html + "<div><br></div>";
-  }
-
-  // The template's own fixed section labels — excluded when checking how
-  // much the person has actually typed into a DRC note (see
-  // drcNoteIsFilled below), so an untouched template doesn't itself count
-  // as "filled".
-  function buildDRCTemplateLabels(sections) {
-    return [...(sections && sections.length ? sections : DEFAULT_DRC_TEMPLATE_SECTIONS)];
+  // The template's own lines — excluded when checking how much the person
+  // has actually typed into a DRC note (see drcNoteIsFilled below), so an
+  // untouched template doesn't itself count as "filled".
+  function drcTemplateLines() {
+    return getDRCTemplateText().split("\n").map(l => l.trim()).filter(Boolean);
   }
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
@@ -11856,7 +11834,7 @@
       if (existingDRCIndex >= 0) {
         noteActiveIndex = existingDRCIndex;
       } else {
-        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(buildDRCNoteTemplateHtml(getDRCTemplateSections())), createdAt: Date.now(), updatedAt: Date.now() });
+        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(getDRCTemplateText()), createdAt: Date.now(), updatedAt: Date.now() });
         noteActiveIndex = noteWorkingList.length - 1;
       }
     } else {
@@ -12288,10 +12266,6 @@
   }
 
   function noteApplyForeColor(color) {
-    // DRC notes are always plain black — the color tool is disabled (see
-    // updateNoteColorToolAvailability) but this guards the underlying
-    // command too, in case it's ever invoked another way.
-    if (isDRCNote(noteWorkingList[noteActiveIndex])) return;
     noteTextarea.focus();
     notePushUndo();
     const sel = window.getSelection();
@@ -12302,16 +12276,13 @@
     scheduleNoteAutosave();
   }
 
-  // Greys out and disables the color-picker trigger (and closes its
-  // popover if open) while a DRC note is loaded, so text color can't be
-  // changed on it at all — DRC notes always stay plain black. Called from
-  // loadNoteIntoEditor whenever the visible note changes.
+  // Previously greyed out and disabled the color-picker trigger while a
+  // DRC note was loaded, forcing DRC notes to stay plain black text. Now
+  // a no-op so the text-color tool stays available for DRC notes too.
   function updateNoteColorToolAvailability() {
-    const isDRC = isDRCNote(noteWorkingList[noteActiveIndex]);
-    noteColorTriggerBtn.disabled = isDRC;
-    noteColorTriggerBtn.classList.toggle("disabled", isDRC);
-    noteColorTriggerBtn.title = isDRC ? "DRC notes are always plain black text" : "Text color";
-    if (isDRC) closeNoteColorPopover();
+    noteColorTriggerBtn.disabled = false;
+    noteColorTriggerBtn.classList.remove("disabled");
+    noteColorTriggerBtn.title = "Text color";
   }
 
   function noteApplyStrikethrough() {
@@ -12972,7 +12943,6 @@
   connectorColorInput.addEventListener("input", () => updateTheme({ connectorColor: connectorColorInput.value }));
 
   fontModeSel.addEventListener("change", () => {
-    fontColorInput.disabled = fontModeSel.value !== "custom";
     updateTheme({ fontMode: fontModeSel.value });
   });
   fontColorInput.addEventListener("input", () => updateTheme({ fontColor: fontColorInput.value }));
