@@ -3715,18 +3715,42 @@
     await DB.put(state.current);
   }, 500);
 
+  // Every snapshot here is a full JSON.stringify of the map's whole node
+  // tree — and that tree carries each node's attached photos inline as
+  // base64 data URLs. Capping the stacks at 60 *entries* (below) bounds
+  // how many edits back you can go, but says nothing about how much
+  // memory those 60 entries actually take: a photo-heavy map re-clones
+  // every one of its embedded images into a brand-new string on every
+  // single edit (even a one-character text change), so 60 of those
+  // snapshots can add up to hundreds of MB sitting in the JS heap for
+  // one open map — the actual cause of the "Out of Memory" crashes some
+  // photo-heavy maps were hitting after a while. This keeps the same
+  // 60-entry depth for ordinary (photo-light) maps, where it costs
+  // nothing, but for anything bigger it also evicts the oldest entries
+  // once the stack's total size passes a fixed budget, so memory use
+  // stays bounded regardless of how many photos a map carries.
+  const UNDO_STACK_MAX_BYTES = 25 * 1024 * 1024; // ~25MB per stack
+  function pushBoundedSnapshot(stack, json) {
+    stack.push(json);
+    if (stack.length > 60) stack.shift();
+    let total = 0;
+    for (const s of stack) total += s.length;
+    while (total > UNDO_STACK_MAX_BYTES && stack.length > 1) {
+      total -= stack.shift().length;
+    }
+  }
+
   function pushUndo() {
     if (!state.current) return;
     if (!requireSignIn()) throw new EditBlockedError();
-    state.undoStack.push(JSON.stringify({ root: state.current.root, links: state.current.links || [] }));
-    if (state.undoStack.length > 60) state.undoStack.shift();
+    pushBoundedSnapshot(state.undoStack, JSON.stringify({ root: state.current.root, links: state.current.links || [] }));
     state.redoStack = [];
   }
 
   function undo() {
     if (!requireSignIn()) return;
     if (!state.current || state.undoStack.length === 0) return;
-    state.redoStack.push(JSON.stringify({ root: state.current.root, links: state.current.links || [] }));
+    pushBoundedSnapshot(state.redoStack, JSON.stringify({ root: state.current.root, links: state.current.links || [] }));
     const snap = JSON.parse(state.undoStack.pop());
     state.current.root = snap.root;
     state.current.links = snap.links || [];
@@ -3741,7 +3765,7 @@
   function redo() {
     if (!requireSignIn()) return;
     if (!state.current || state.redoStack.length === 0) return;
-    state.undoStack.push(JSON.stringify({ root: state.current.root, links: state.current.links || [] }));
+    pushBoundedSnapshot(state.undoStack, JSON.stringify({ root: state.current.root, links: state.current.links || [] }));
     const snap = JSON.parse(state.redoStack.pop());
     state.current.root = snap.root;
     state.current.links = snap.links || [];
