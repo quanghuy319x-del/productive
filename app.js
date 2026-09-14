@@ -9348,111 +9348,56 @@
   }
 
   /* ---------------- DRC template editor ---------------- */
-  // Lets the person edit the standing DRC (Daily Report Card) template's
-  // section labels — reordering isn't supported, but add/rename/delete are
-  // — reusing the same modal/list markup and interaction pattern as the
-  // affirmations editor above (getDRCTemplateSections/
+  // Lets the person edit the standing DRC (Daily Report Card) template as
+  // one whole block of text in a single textarea — one section per line —
+  // rather than through individual add/edit/delete rows. Saved on Done (and
+  // on Reset), read fresh from the textarea each time. getDRCTemplateSections/
   // saveDRCTemplateSections/buildDRCNoteTemplateHtml/buildDRCTemplateLabels
   // are defined further below, near the rest of the DRC logic, but that's
-  // fine: none of this runs until the person actually opens the modal,
-  // long after the whole script has loaded).
+  // fine: none of this runs until the person actually opens the modal, long
+  // after the whole script has loaded).
   const drcTemplateModal = $("#drc-template-modal");
-  const drcTemplateListEl = $("#drc-template-list");
-  const drcTemplateAddInput = $("#drc-template-add-input");
-  let editingDRCTemplateIndex = null; // which row (if any) is mid-inline-edit
+  const drcTemplateTextarea = $("#drc-template-textarea");
 
-  function renderDRCTemplateList() {
-    const sections = getDRCTemplateSections();
-    drcTemplateListEl.innerHTML = "";
-    sections.forEach((text, index) => {
-      const row = document.createElement("div");
-      row.className = "quote-banner-item";
-
-      if (index === editingDRCTemplateIndex) {
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "quote-banner-item-edit-input";
-        input.maxLength = 60;
-        input.value = text;
-        const commit = () => {
-          const val = input.value.trim();
-          editingDRCTemplateIndex = null;
-          if (val && val !== text) {
-            sections[index] = val;
-            saveDRCTemplateSections(sections);
-          }
-          renderDRCTemplateList();
-        };
-        input.addEventListener("keydown", (e) => {
-          e.stopPropagation();
-          if (e.key === "Enter") { e.preventDefault(); commit(); }
-          else if (e.key === "Escape") { e.preventDefault(); editingDRCTemplateIndex = null; renderDRCTemplateList(); }
-        });
-        input.addEventListener("blur", commit);
-        row.appendChild(input);
-        drcTemplateListEl.appendChild(row);
-        requestAnimationFrame(() => { input.focus(); input.select(); });
-        return;
-      }
-
-      const label = document.createElement("span");
-      label.textContent = text;
-
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "quote-banner-item-btn";
-      editBtn.title = "Edit this section";
-      editBtn.setAttribute("aria-label", "Edit this section");
-      editBtn.textContent = "✏️";
-      editBtn.addEventListener("click", (e) => { e.stopPropagation(); editingDRCTemplateIndex = index; renderDRCTemplateList(); });
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "quote-banner-item-btn quote-banner-item-delete";
-      deleteBtn.title = "Delete this section";
-      deleteBtn.setAttribute("aria-label", "Delete this section");
-      deleteBtn.textContent = "🗑";
-      deleteBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        sections.splice(index, 1);
-        saveDRCTemplateSections(sections);
-        renderDRCTemplateList();
-      });
-
-      row.append(label, editBtn, deleteBtn);
-      drcTemplateListEl.appendChild(row);
-    });
+  // Turns the saved sections array into the flat, one-line-per-section text
+  // the textarea shows, and back again on save — blank lines are dropped so
+  // stray Enter presses don't create empty sections.
+  function drcTemplateSectionsToText(sections) {
+    return (sections || []).join("\n");
   }
-
-  function addDRCTemplateSection() {
-    const val = drcTemplateAddInput.value.trim();
-    if (!val) return;
-    const sections = getDRCTemplateSections();
-    sections.push(val);
-    saveDRCTemplateSections(sections);
-    drcTemplateAddInput.value = "";
-    renderDRCTemplateList();
+  function drcTemplateTextToSections(text) {
+    return (text || "").split("\n").map(l => l.trim()).filter(Boolean);
   }
 
   function openDRCTemplateModal() {
-    editingDRCTemplateIndex = null;
-    drcTemplateAddInput.value = "";
-    renderDRCTemplateList();
+    drcTemplateTextarea.value = drcTemplateSectionsToText(getDRCTemplateSections());
     zoomModalOpen(drcTemplateModal);
+    requestAnimationFrame(() => drcTemplateTextarea.focus());
+  }
+
+  // Persists whatever's currently in the textarea. Falls back to the
+  // existing saved sections (rather than wiping the template) if every line
+  // was blanked out, since that's almost certainly not what was intended.
+  function saveDRCTemplateFromTextarea() {
+    const sections = drcTemplateTextToSections(drcTemplateTextarea.value);
+    saveDRCTemplateSections(sections.length ? sections : getDRCTemplateSections());
   }
 
   if (drcTemplateModal) {
-    $("#drc-template-add-btn").addEventListener("click", addDRCTemplateSection);
-    drcTemplateAddInput.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Enter") { e.preventDefault(); addDRCTemplateSection(); }
-    });
     $("#drc-template-reset").addEventListener("click", () => {
-      saveDRCTemplateSections(DEFAULT_DRC_TEMPLATE_SECTIONS.slice());
-      renderDRCTemplateList();
+      drcTemplateTextarea.value = drcTemplateSectionsToText(DEFAULT_DRC_TEMPLATE_SECTIONS);
     });
-    $("#drc-template-close").addEventListener("click", () => zoomModalClose(drcTemplateModal));
-    drcTemplateModal.addEventListener("click", (e) => { if (e.target === drcTemplateModal) zoomModalClose(drcTemplateModal); });
+    $("#drc-template-close").addEventListener("click", () => {
+      saveDRCTemplateFromTextarea();
+      zoomModalClose(drcTemplateModal);
+    });
+    drcTemplateModal.addEventListener("click", (e) => {
+      if (e.target === drcTemplateModal) {
+        saveDRCTemplateFromTextarea();
+        zoomModalClose(drcTemplateModal);
+      }
+    });
+    drcTemplateTextarea.addEventListener("keydown", (e) => e.stopPropagation());
   }
 
   /* ---------------- node photo attachments ---------------- */
