@@ -2023,7 +2023,55 @@
   // evicted once the cache fills up instead of accumulating forever.
   const NODE_THUMB_CACHE_MAX = 300;
   const nodeThumbCache = new Map(); // full data URL -> small data URL
-  const nodeThumbPending = new Set(); // full data URLs currently being downscaled
+  const nodeThumbPending = new Set(); // full data URLs queued or in flight
+  // A cold render of a photo-heavy map (thumbnail cache empty) used to call
+  // getMarkerThumb for every node's photos in one synchronous pass, which
+  // fired off a full-resolution decode for each one at the same time —
+  // dozens/hundreds of concurrent decodes, each holding tens of MB of raw
+  // pixel data, was a real "Out of memory" tab-crash path even though the
+  // *cached* thumbnails themselves are tiny. Capped here so only a handful
+  // of photos are ever being decoded at once; the rest wait in line and
+  // pick up the (still-correct) full-res fallback image until their turn.
+  const NODE_THUMB_MAX_CONCURRENT = 4;
+  let nodeThumbActive = 0;
+  const nodeThumbQueue = [];
+  function runNextThumbJob() {
+    if (nodeThumbActive >= NODE_THUMB_MAX_CONCURRENT) return;
+    const job = nodeThumbQueue.shift();
+    if (!job) return;
+    nodeThumbActive++;
+    const { fullDataUrl, onReady } = job;
+    const finish = () => {
+      nodeThumbActive--;
+      nodeThumbPending.delete(fullDataUrl);
+      runNextThumbJob();
+    };
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const side = Math.min(img.width, img.height) || 1;
+        const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = THUMB_DISPLAY_PX;
+        canvas.height = THUMB_DISPLAY_PX;
+        canvas.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, THUMB_DISPLAY_PX, THUMB_DISPLAY_PX);
+        if (nodeThumbCache.size >= NODE_THUMB_CACHE_MAX) {
+          const oldestKey = nodeThumbCache.keys().next().value;
+          nodeThumbCache.delete(oldestKey);
+        }
+        nodeThumbCache.set(fullDataUrl, canvas.toDataURL("image/jpeg", 0.7));
+        onReady();
+      } finally {
+        // Drop the full-res <img> reference immediately so it (and its
+        // decoded bitmap) is eligible for GC right away rather than
+        // lingering until this closure itself is collected.
+        img.onload = img.onerror = null;
+        finish();
+      }
+    };
+    img.onerror = () => { finish(); };
+    img.src = fullDataUrl;
+  }
   function getMarkerThumb(fullDataUrl, onReady) {
     const cached = nodeThumbCache.get(fullDataUrl);
     if (cached) {
@@ -2036,24 +2084,8 @@
     }
     if (!nodeThumbPending.has(fullDataUrl)) {
       nodeThumbPending.add(fullDataUrl);
-      const img = new Image();
-      img.onload = () => {
-        const side = Math.min(img.width, img.height) || 1;
-        const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
-        const canvas = document.createElement("canvas");
-        canvas.width = THUMB_DISPLAY_PX;
-        canvas.height = THUMB_DISPLAY_PX;
-        canvas.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, THUMB_DISPLAY_PX, THUMB_DISPLAY_PX);
-        if (nodeThumbCache.size >= NODE_THUMB_CACHE_MAX) {
-          const oldestKey = nodeThumbCache.keys().next().value;
-          nodeThumbCache.delete(oldestKey);
-        }
-        nodeThumbCache.set(fullDataUrl, canvas.toDataURL("image/jpeg", 0.7));
-        nodeThumbPending.delete(fullDataUrl);
-        onReady();
-      };
-      img.onerror = () => { nodeThumbPending.delete(fullDataUrl); };
-      img.src = fullDataUrl;
+      nodeThumbQueue.push({ fullDataUrl, onReady });
+      runNextThumbJob();
     }
     return null;
   }
