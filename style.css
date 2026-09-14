@@ -1982,6 +1982,7 @@ kbd{
 .note-tool-btn.active:hover{ border-color:#3b6ef0; background:#dfe9ff; }
 .note-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
 .note-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
+.note-color-swatch[data-color="#000000"]{ color:#000000; }
 .note-color-swatch[data-color="#b5504a"]{ color:#b5504a; }
 .note-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
 .note-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
@@ -2031,6 +2032,7 @@ kbd{
    bind to (and hijack focus from) these. */
 .brainstorm-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
 .brainstorm-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
+.brainstorm-color-swatch[data-color="#000000"]{ color:#000000; }
 .brainstorm-color-swatch[data-color="#b5504a"]{ color:#b5504a; }
 .brainstorm-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
 .brainstorm-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
