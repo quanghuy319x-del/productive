@@ -11782,6 +11782,29 @@
     updateNoteNavUI();
     updateNoteLineCount();
     updateNoteFavoriteUI();
+    noteDownscaleOversizedImagesInEditor();
+  }
+
+  // One-time self-heal for notes that already had an oversized image
+  // embedded before downscaleNoteImageDataUrl existed (see
+  // noteHandleImageFiles) — shrinks any still-oversized <img> already
+  // sitting in this note the moment it's opened, then lets the normal
+  // autosave commit the smaller version. Without this, an old bloated
+  // note keeps re-triggering the same full-map-tree stringify (see
+  // pushUndo/persist) on every edit, forever, even after new pastes stop
+  // adding to the problem.
+  function noteDownscaleOversizedImagesInEditor() {
+    const oversized = Array.from(noteTextarea.querySelectorAll("img[src^='data:']"))
+      .filter(img => img.src.length > NOTE_IMAGE_SKIP_BYTES);
+    if (!oversized.length) return;
+    Promise.all(oversized.map((img) => downscaleNoteImageDataUrl(img.src).then((smaller) => {
+      if (smaller && smaller !== img.src) img.src = smaller;
+    }))).then(() => {
+      // commitNotesToNode only actually writes/pushUndo's if the note's
+      // serialized content changed, so this is a no-op when nothing here
+      // needed shrinking after all.
+      scheduleNoteAutosave();
+    });
   }
 
   // Syncs the ☆/★ favorite button in the note editor's nav row to match
@@ -12386,10 +12409,50 @@
     noteInsertImages([dataUrl], targetLine, atStart);
   }
 
-  // Images embedded in a note are stored exactly as provided — no
-  // downscaling, no lossy re-encoding. Reads every file first (in
-  // parallel) but inserts them in their original order once they've all
-  // loaded, so a slow read never scrambles the sequence.
+  // Images embedded in a note live inline as base64 in the node's own
+  // `notes` array — which is part of the same tree that gets fully
+  // JSON.stringify'd on every pushUndo() (map-level undo, fired by the
+  // note's own autosave — see commitNotesToNode) and on every persist().
+  // Storing screenshots at their original, un-downscaled resolution meant
+  // every one of those serializations re-cloned every embedded image
+  // across the *whole map*, not just the note being edited — on a
+  // trading-journal map with a run of DRC notes full of pasted chart
+  // screenshots, a single one of those clones could itself spike memory
+  // into an "Out of Memory" tab crash, independent of how many snapshots
+  // the undo stacks keep. Downscaling/re-encoding each pasted image here
+  // (skipped when it's already small) keeps that per-image cost small
+  // regardless of how many screenshots accumulate in the map.
+  const NOTE_IMAGE_MAX_DIM = 1600; // long-edge cap, px
+  const NOTE_IMAGE_SKIP_BYTES = 400 * 1024; // already-small pastes go through untouched
+  function downscaleNoteImageDataUrl(dataUrl) {
+    return new Promise((resolve) => {
+      if (!dataUrl || dataUrl.length <= NOTE_IMAGE_SKIP_BYTES) { resolve(dataUrl); return; }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, NOTE_IMAGE_MAX_DIM / Math.max(img.width, img.height));
+          if (scale >= 1) { resolve(dataUrl); return; } // small dimensions, just a big/lossless file — leave it
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        } catch (e) {
+          resolve(dataUrl); // fail safe — keep the original rather than lose the paste
+        } finally {
+          img.onload = img.onerror = null;
+        }
+      };
+      img.onerror = () => { img.onload = img.onerror = null; resolve(dataUrl); };
+      img.src = dataUrl;
+    });
+  }
+
+  // Reads every file first (in parallel), downscales any that are large,
+  // then inserts them in their original order once they've all finished,
+  // so a slow read/downscale never scrambles the sequence.
   function noteHandleImageFiles(fileList, targetLine, atStart) {
     const files = Array.from(fileList || []).filter(f => f && f.type && f.type.startsWith("image/"));
     if (!files.length) return;
@@ -12399,11 +12462,13 @@
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => { hadError = true; resolve(null); };
       reader.readAsDataURL(file);
-    }))).then((dataUrls) => {
-      const loaded = dataUrls.filter(Boolean);
-      if (loaded.length) noteInsertImages(loaded, targetLine, atStart);
-      if (hadError) alert("Some images couldn't be read.");
-    });
+    })))
+      .then((dataUrls) => Promise.all(dataUrls.map(downscaleNoteImageDataUrl)))
+      .then((dataUrls) => {
+        const loaded = dataUrls.filter(Boolean);
+        if (loaded.length) noteInsertImages(loaded, targetLine, atStart);
+        if (hadError) alert("Some images couldn't be read.");
+      });
   }
 
   // Kept for the single-file paste path.
