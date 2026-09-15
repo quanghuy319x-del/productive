@@ -2271,6 +2271,28 @@
     if (clean) node.linkTitles[url] = clean;
     else delete node.linkTitles[url];
   }
+  // Photo(s) attached to a link's comment — e.g. a screenshot pasted into
+  // the YouTube player's comment box. Stored as an ordered list of
+  // PhotoDB ids, same { [url]: ... } map shape as linkComments/
+  // linkFavorites above, so a link can carry several photos alongside
+  // its text comment.
+  function getLinkPhotos(node, url) {
+    return (node && node.linkPhotos && node.linkPhotos[url]) || [];
+  }
+  function addLinkPhoto(node, url, dataUrl) {
+    if (!node || !url) return null;
+    const id = addPhotoRecord(dataUrl);
+    if (!node.linkPhotos) node.linkPhotos = {};
+    if (!node.linkPhotos[url]) node.linkPhotos[url] = [];
+    node.linkPhotos[url].push(id);
+    return id;
+  }
+  function removeLinkPhoto(node, url, photoId) {
+    if (!node || !node.linkPhotos || !node.linkPhotos[url]) return;
+    node.linkPhotos[url] = node.linkPhotos[url].filter((id) => id !== photoId);
+    if (!node.linkPhotos[url].length) delete node.linkPhotos[url];
+    deletePhotoRecord(photoId);
+  }
   // A link (or, since a YouTube URL is just a link that opens in the video
   // player, a video too) can be starred as a favorite — same { [url]: true }
   // map on the node as linkTitles/linkComments. Powers the star toggle in
@@ -2761,6 +2783,25 @@
     if (clean) a.linkComments[url] = clean;
     else delete a.linkComments[url];
   }
+  // Same per-link attached photo(s) as getLinkPhotos/addLinkPhoto/
+  // removeLinkPhoto above, just scoped to a table cell's own attach record.
+  function getCellLinkPhotos(a, url) {
+    return (a && a.linkPhotos && a.linkPhotos[url]) || [];
+  }
+  function addCellLinkPhoto(a, url, dataUrl) {
+    if (!a || !url) return null;
+    const id = addPhotoRecord(dataUrl);
+    if (!a.linkPhotos) a.linkPhotos = {};
+    if (!a.linkPhotos[url]) a.linkPhotos[url] = [];
+    a.linkPhotos[url].push(id);
+    return id;
+  }
+  function removeCellLinkPhoto(a, url, photoId) {
+    if (!a || !a.linkPhotos || !a.linkPhotos[url]) return;
+    a.linkPhotos[url] = a.linkPhotos[url].filter((id) => id !== photoId);
+    if (!a.linkPhotos[url].length) delete a.linkPhotos[url];
+    deletePhotoRecord(photoId);
+  }
   // Same "[icon] title" row-label builder as linkRowFragment above, just
   // reading a cell's own linkTitles instead of a node's.
   function cellLinkRowFragment(u, a) {
@@ -2952,6 +2993,9 @@
           set: (v) => setLinkComment(findNode(nodeId) || node, u, v),
           getFavorite: () => getLinkFavorite(findNode(nodeId) || node, u),
           setFavorite: (v) => setLinkFavorite(findNode(nodeId) || node, u, v),
+          getPhotos: () => getLinkPhotos(findNode(nodeId) || node, u),
+          addPhoto: (dataUrl) => addLinkPhoto(findNode(nodeId) || node, u, dataUrl),
+          removePhoto: (id) => removeLinkPhoto(findNode(nodeId) || node, u, id),
         });
       });
       it.appendChild(labelSpan);
@@ -6069,6 +6113,9 @@
       linkIcon.addEventListener("click", () => openLinkSmart(u, {
         get: () => getCellLinkComment(getCellAttach(node, r, c), u),
         set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
+        getPhotos: () => getCellLinkPhotos(getCellAttach(node, r, c), u),
+        addPhoto: (dataUrl) => addCellLinkPhoto(getCellAttach(node, r, c), u, dataUrl),
+        removePhoto: (id) => removeCellLinkPhoto(getCellAttach(node, r, c), u, id),
       }));
       linkIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i, sourceR: r, sourceC: c }));
       linkIcon.addEventListener("dragend", endMarkerDrag);
@@ -6686,6 +6733,9 @@
               set: (v) => setLinkComment(findNode(node.id) || node, u, v),
               getFavorite: () => getLinkFavorite(findNode(node.id) || node, u),
               setFavorite: (v) => setLinkFavorite(findNode(node.id) || node, u, v),
+              getPhotos: () => getLinkPhotos(findNode(node.id) || node, u),
+              addPhoto: (dataUrl) => addLinkPhoto(findNode(node.id) || node, u, dataUrl),
+              removePhoto: (id) => removeLinkPhoto(findNode(node.id) || node, u, id),
             });
           });
         }
@@ -9679,6 +9729,9 @@
   const videoModalCloseBtn = $("#video-modal-close");
   const videoModalCommentRow = $("#video-modal-comment-row");
   const videoModalCommentInput = $("#video-modal-comment-input");
+  const videoModalPhotoStrip = $("#video-modal-photo-strip");
+  const videoModalPhotoAddBtn = $("#video-modal-photo-add");
+  const videoModalPhotoInput = $("#video-modal-photo-input");
   let videoModalCommentCtx = null;
 
   // Remembers where each video was last playing, keyed by YouTube video
@@ -9816,6 +9869,7 @@
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     renderVideoModalFavorite();
+    renderVideoModalPhotos();
     zoomModalOpen(videoModal);
     if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
 
@@ -9901,6 +9955,85 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); videoModalCommentInput.blur(); }
   });
   videoModalCommentInput.addEventListener("input", () => autoGrowTextarea(videoModalCommentInput));
+
+  // Photos attached to the video's comment (see getLinkPhotos/addLinkPhoto/
+  // removeLinkPhoto and their table-cell equivalents) — a simple thumbnail
+  // strip below the comment box. Paste a screenshot straight into the
+  // textarea, or use the "+ 📷" button, to attach one; click a thumbnail
+  // to open it full-size in a new tab; click its "×" to remove it.
+  function renderVideoModalPhotos() {
+    videoModalPhotoStrip.querySelectorAll(".video-modal-photo-thumb").forEach((el) => el.remove());
+    videoModalPhotoAddBtn.style.display = videoModalCommentCtx && videoModalCommentCtx.addPhoto ? "" : "none";
+    if (!videoModalCommentCtx || !videoModalCommentCtx.getPhotos) return;
+    const ids = videoModalCommentCtx.getPhotos();
+    ids.forEach((id) => {
+      const thumb = document.createElement("div");
+      thumb.className = "video-modal-photo-thumb";
+      thumb.title = "Open full size";
+      const img = document.createElement("img");
+      img.src = photoUrl(id);
+      img.alt = "Attached photo";
+      thumb.appendChild(img);
+      thumb.addEventListener("click", () => window.open(photoUrl(id), "_blank"));
+      if (videoModalCommentCtx.removePhoto) {
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "video-modal-photo-thumb-remove";
+        rm.textContent = "×";
+        rm.title = "Remove photo";
+        rm.setAttribute("aria-label", "Remove photo");
+        rm.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (!videoModalCommentCtx) return;
+          pushUndo();
+          videoModalCommentCtx.removePhoto(id);
+          persist();
+          renderVideoModalPhotos();
+        });
+        thumb.appendChild(rm);
+      }
+      videoModalPhotoStrip.insertBefore(thumb, videoModalPhotoAddBtn);
+    });
+  }
+
+  // Reads and attaches one or more image files (from a file picker or a
+  // clipboard paste) to the video's comment — downscaling large screenshots
+  // first via the same helper the note editor's image paste already uses,
+  // so a full-resolution screenshot doesn't bloat the map's saved size.
+  function videoModalHandleImageFiles(fileList) {
+    if (!videoModalCommentCtx || !videoModalCommentCtx.addPhoto) return;
+    const files = Array.from(fileList || []).filter((f) => f && f.type && f.type.startsWith("image/"));
+    if (!files.length) return;
+    Promise.all(files.map((file) => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    })))
+      .then((dataUrls) => Promise.all(dataUrls.filter(Boolean).map(downscaleNoteImageDataUrl)))
+      .then((dataUrls) => {
+        if (!dataUrls.length || !videoModalCommentCtx) return;
+        pushUndo();
+        dataUrls.forEach((dataUrl) => videoModalCommentCtx.addPhoto(dataUrl));
+        persist();
+        renderVideoModalPhotos();
+      });
+  }
+  videoModalCommentInput.addEventListener("paste", (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    const imageItems = Array.from(items).filter((item) => item.type && item.type.startsWith("image/"));
+    if (!imageItems.length) return;
+    e.preventDefault();
+    videoModalHandleImageFiles(imageItems.map((item) => item.getAsFile()));
+  });
+  videoModalPhotoAddBtn.addEventListener("click", () => videoModalPhotoInput.click());
+  videoModalPhotoInput.addEventListener("change", () => {
+    if (videoModalPhotoInput.files && videoModalPhotoInput.files.length) {
+      videoModalHandleImageFiles(videoModalPhotoInput.files);
+    }
+    videoModalPhotoInput.value = "";
+  });
 
   // Standalone comment editor — opened by the right-click "💬" button on
   // any link icon (see openUrlSingleManageMenu/openCellUrlManageMenu),
@@ -16515,6 +16648,9 @@
         set: (v) => setLinkComment(findNode(item.nodeId) || node, item.url, v),
         getFavorite: () => getLinkFavorite(findNode(item.nodeId) || node, item.url),
         setFavorite: (v) => setLinkFavorite(findNode(item.nodeId) || node, item.url, v),
+        getPhotos: () => getLinkPhotos(findNode(item.nodeId) || node, item.url),
+        addPhoto: (dataUrl) => addLinkPhoto(findNode(item.nodeId) || node, item.url, dataUrl),
+        removePhoto: (id) => removeLinkPhoto(findNode(item.nodeId) || node, item.url, id),
       });
     }
   }
@@ -17114,6 +17250,9 @@
       set: (v) => setLinkComment(findNode(it.nodeId) || node, it.url, v),
       getFavorite: () => getLinkFavorite(findNode(it.nodeId) || node, it.url),
       setFavorite: (v) => setLinkFavorite(findNode(it.nodeId) || node, it.url, v),
+      getPhotos: () => getLinkPhotos(findNode(it.nodeId) || node, it.url),
+      addPhoto: (dataUrl) => addLinkPhoto(findNode(it.nodeId) || node, it.url, dataUrl),
+      removePhoto: (id) => removeLinkPhoto(findNode(it.nodeId) || node, it.url, id),
     });
   }
 

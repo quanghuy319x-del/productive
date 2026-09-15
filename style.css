@@ -3718,6 +3718,61 @@ kbd{
   outline: none;
   border-color: var(--accent);
 }
+/* Photos attached to the video/link comment (paste a screenshot into the
+   textarea above, or use the "+ 📷" button) — a simple row of thumbnails
+   that opens full-size in a new tab on click, with a small "×" to
+   remove. See renderVideoModalPhotos/openVideoModal in app.js. */
+.video-modal-photo-strip{
+  display:flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.video-modal-photo-thumb{
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #d8dae0;
+  flex: 0 0 auto;
+  cursor: pointer;
+  background: #eee;
+}
+.video-modal-photo-thumb img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.video-modal-photo-thumb-remove{
+  position: absolute;
+  top: 1px; right: 1px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  display:flex; align-items:center; justify-content:center;
+  cursor: pointer;
+  padding: 0;
+}
+.video-modal-photo-thumb-remove:hover{ background: rgba(0,0,0,0.85); }
+.video-modal-photo-add{
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  border: 1px dashed #b8bac2;
+  background: transparent;
+  color: #6b6f78;
+  font-size: 12px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.video-modal-photo-add:hover{ border-color: var(--accent); color: var(--accent); }
 
 .photo-modal-card img{
   display:block;

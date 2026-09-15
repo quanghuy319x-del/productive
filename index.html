@@ -301,7 +301,11 @@
       <button id="video-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="video-modal-comment-row" class="video-modal-comment-row hidden">
-      <textarea id="video-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this link… (shown on hover). Press Enter for a new paragraph."></textarea>
+      <textarea id="video-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this link… Paste a screenshot to attach it. Press Enter for a new paragraph."></textarea>
+      <div id="video-modal-photo-strip" class="video-modal-photo-strip">
+        <button type="button" id="video-modal-photo-add" class="video-modal-photo-add" title="Attach a photo" aria-label="Attach a photo">+ 📷</button>
+      </div>
+      <input type="file" id="video-modal-photo-input" accept="image/*" multiple hidden>
     </div>
   </div>
 </div>
