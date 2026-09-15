@@ -11971,6 +11971,7 @@
       noteNavAdd.title = "Start a new note on this node";
     }
     noteTextarea.innerHTML = noteHtmlFromRaw(current.html);
+    setNoteAutoColorEnabled(!isDRCNote(current));
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
@@ -12287,6 +12288,19 @@
   // `container` defaults to the per-node rich note editor but also serves
   // the per-task note editor.
   let noteAutoColorEnabled = true;
+  // Shared by the toggle button below and by loadNoteIntoEditor (which
+  // defaults it off specifically for DRC notes — see isDRCNote — since a
+  // Daily Report Card reads better as plain, uniform text rather than a
+  // cycling rainbow of line colors). `btn` is passed in lazily since this
+  // runs before the button element itself is declared further down.
+  function setNoteAutoColorEnabled(enabled) {
+    noteAutoColorEnabled = enabled;
+    const btn = $("#note-tool-autocolor");
+    if (!btn) return;
+    btn.classList.toggle("active", enabled);
+    btn.setAttribute("aria-pressed", String(enabled));
+    btn.title = "Auto alternate line colors: " + (enabled ? "on" : "off");
+  }
   function noteAutoColorParagraphs(container = noteTextarea) {
     if (!noteAutoColorEnabled) return;
     let idx = 0;
@@ -12852,10 +12866,7 @@
   const noteAutoColorBtn = $("#note-tool-autocolor");
   noteAutoColorBtn.addEventListener("mousedown", (e) => {
     e.preventDefault(); // keep focus off this button, same as the other toolbar buttons
-    noteAutoColorEnabled = !noteAutoColorEnabled;
-    noteAutoColorBtn.classList.toggle("active", noteAutoColorEnabled);
-    noteAutoColorBtn.setAttribute("aria-pressed", String(noteAutoColorEnabled));
-    noteAutoColorBtn.title = "Auto alternate line colors: " + (noteAutoColorEnabled ? "on" : "off");
+    setNoteAutoColorEnabled(!noteAutoColorEnabled);
     if (!noteAutoColorEnabled) {
       // Once lines stop getting auto-colored, plain default-color typing
       // would be hard to tell apart from a still-active line — default
