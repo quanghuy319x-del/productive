@@ -12823,7 +12823,8 @@
   // Single trigger button that opens/closes the color popover, instead of
   // 6 separate swatch buttons always taking up space in the toolbar.
   const noteAutoColorBtn = $("#note-tool-autocolor");
-  noteAutoColorBtn.addEventListener("click", () => {
+  noteAutoColorBtn.addEventListener("mousedown", (e) => {
+    e.preventDefault(); // keep focus off this button, same as the other toolbar buttons
     noteAutoColorEnabled = !noteAutoColorEnabled;
     noteAutoColorBtn.classList.toggle("active", noteAutoColorEnabled);
     noteAutoColorBtn.setAttribute("aria-pressed", String(noteAutoColorEnabled));

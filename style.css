@@ -1995,6 +1995,7 @@ kbd{
 .note-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
 .note-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
 .note-color-swatch[data-color="#4a72b5"]{ color:#4a72b5; }
+.note-color-swatch[data-color="#7c7c76"]{ color:#7c7c76; }
 .note-color-custom-wrap{ position:relative; overflow:hidden; color: var(--paper-text-dim); }
 .note-color-custom-wrap input[type="color"]{
   position:absolute; inset:0;
@@ -2045,6 +2046,7 @@ kbd{
 .brainstorm-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
 .brainstorm-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
 .brainstorm-color-swatch[data-color="#4a72b5"]{ color:#4a72b5; }
+.brainstorm-color-swatch[data-color="#7c7c76"]{ color:#7c7c76; }
 .brainstorm-symbol-swatch{ font-size: 15px; }
 
 .note-textarea{
