@@ -671,6 +671,7 @@
         await DB.setHandle("mapsFolder", handle);
         await this.syncFromFolder();
         for (const m of state.maps) await this.save(m);
+        await autoRemoveDuplicateMaps();
         renderSidebar();
         updateFolderUI();
       } catch (e) {
@@ -4020,6 +4021,68 @@
     await DriveDB.save(m);
     renderSidebar();
     renderTrashModal();
+  }
+
+  // Strips fields that only ever exist to make one specific instance of a
+  // node/map unique (its id, and the createdAt/updatedAt stamps on it) so
+  // two independently-created copies of otherwise-identical content
+  // compare equal below. Recurses into every nested object/array (notes,
+  // tasks, photos, links, table cells, etc.) — not just top-level nodes —
+  // since a duplicate map is a full deep copy, ids and all, all the way
+  // down.
+  function stripIdentifiersForDupeCheck(value) {
+    if (Array.isArray(value)) return value.map(stripIdentifiersForDupeCheck);
+    if (value && typeof value === "object") {
+      const out = {};
+      for (const k of Object.keys(value)) {
+        if (k === "id" || k === "createdAt" || k === "updatedAt") continue;
+        out[k] = stripIdentifiersForDupeCheck(value[k]);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  // A content "fingerprint" for a map: its whole tree of nodes plus
+  // cross-links, with every id/timestamp stripped out (see above) so two
+  // maps that are otherwise word-for-word identical fingerprint the same
+  // even though every node under them got its own fresh id when each copy
+  // was created.
+  function mapContentFingerprint(map) {
+    return JSON.stringify(stripIdentifiersForDupeCheck({ root: map.root, links: map.links || [] }));
+  }
+
+  // Auto-cleanup run once at boot (see boot() below): finds active,
+  // non-trashed maps in the sidebar that share both the exact same title
+  // and the exact same content fingerprint, and trashes every copy but
+  // the most recently updated one. Soft-deletes (same as deleteMap) so a
+  // false match is always recoverable from the trash modal, and skips any
+  // map already in the trash — this only ever tidies the regular sidebar
+  // list. Returns how many duplicates were trashed, for the console.
+  async function autoRemoveDuplicateMaps() {
+    const bestForSignature = new Map(); // signature -> map currently being kept
+    const toTrash = [];
+    for (const m of activeMaps()) {
+      const signature = (m.title || "").trim() + "\u0000" + mapContentFingerprint(m);
+      const kept = bestForSignature.get(signature);
+      if (!kept) {
+        bestForSignature.set(signature, m);
+        continue;
+      }
+      if ((m.updatedAt || 0) > (kept.updatedAt || 0)) {
+        bestForSignature.set(signature, m);
+        toTrash.push(kept);
+      } else {
+        toTrash.push(m);
+      }
+    }
+    for (const dup of toTrash) {
+      dup.trashedAt = Date.now();
+      await DB.put(dup);
+      await FolderDB.save(dup);
+      await DriveDB.save(dup);
+    }
+    return toTrash.length;
   }
 
   async function permanentlyDeleteMap(id) {
@@ -17005,6 +17068,8 @@
       await FolderDB.syncFromFolder();
     }
     await DriveDB.restore(); // silent re-sign-in, only if previously connected
+    const dupesTrashed = await autoRemoveDuplicateMaps();
+    if (dupesTrashed) console.log(`Auto-removed ${dupesTrashed} duplicate map(s) to trash`);
     if (activeMaps().length === 0) {
       const sample = sampleMindMap();
       await DB.put(sample);
