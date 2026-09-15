@@ -11700,6 +11700,22 @@
     return raw.split(/\n/).map(line => `<div>${escapeHtml(line) || "<br>"}</div>`).join("");
   }
 
+  // Same conversion as noteHtmlFromRaw, but bolds each non-blank line —
+  // used only for a fresh DRC note's starting content, so the template's
+  // section headers (📊 OVERVIEW, ✅ GOOD, ❌ BAD, 🔄 CHANGE FROM TOMORROW,
+  // 📈 TRADES IN DETAILS — the only non-blank lines the template has by
+  // convention) land bold from the start instead of plain text. Blank
+  // separator lines between them are left alone.
+  function noteHtmlFromDRCTemplate(raw) {
+    if (!raw) return "";
+    if (looksLikeHtml(raw)) return raw;
+    return raw.split(/\n/).map(line => {
+      const escaped = escapeHtml(line);
+      if (!escaped) return "<div><br></div>";
+      return `<div><b>${escaped}</b></div>`;
+    }).join("");
+  }
+
   // Keeps a line's strikethrough in sync with its checklist glyph: struck
   // when it starts with the checked box (☑), plain otherwise. `el` is
   // whatever noteToggleLinePrefix / the glyph-click handler already treated
@@ -11834,7 +11850,7 @@
       if (existingDRCIndex >= 0) {
         noteActiveIndex = existingDRCIndex;
       } else {
-        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromRaw(getDRCTemplateText()), createdAt: Date.now(), updatedAt: Date.now() });
+        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromDRCTemplate(getDRCTemplateText()), createdAt: Date.now(), updatedAt: Date.now() });
         noteActiveIndex = noteWorkingList.length - 1;
       }
     } else {
