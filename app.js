@@ -12926,7 +12926,18 @@
     noteSymbolPopover.style.top = `${top}px`;
   }
 
-  noteModal.addEventListener("click", (e) => { if (!noteIsResizing && e.target === noteModal) closeNoteModal(); });
+  // Close on a genuine backdrop click only — not a text selection that was
+  // started inside the note card but dragged past its edge before mouseup.
+  // In that case mousedown's target is inside the card while mouseup's
+  // target is the backdrop, and the browser still fires "click" targeted
+  // at their common ancestor (the backdrop itself), which used to close
+  // the note out from under an in-progress selection. Requiring the
+  // mousedown to ALSO have started on the backdrop rules that out.
+  let noteBackdropMousedown = false;
+  noteModal.addEventListener("mousedown", (e) => { noteBackdropMousedown = (e.target === noteModal); });
+  noteModal.addEventListener("click", (e) => {
+    if (!noteIsResizing && e.target === noteModal && noteBackdropMousedown) closeNoteModal();
+  });
   noteTitleInput.addEventListener("input", scheduleNoteAutosave);
   noteTitleInput.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Enter/Delete/arrows trigger the canvas shortcuts while typing a title
@@ -15848,7 +15859,14 @@
   });
 
   $("#brainstorm-back").addEventListener("click", closeBrainstormModal);
-  brainstormModal.addEventListener("click", (e) => { if (!brainstormIsResizing && e.target === brainstormModal) closeBrainstormModal(); });
+  // Same fix as noteModal above: require the mousedown to have started on
+  // the backdrop too, so dragging a text selection past the card's edge
+  // doesn't get misread as a click-away-to-close.
+  let brainstormBackdropMousedown = false;
+  brainstormModal.addEventListener("mousedown", (e) => { brainstormBackdropMousedown = (e.target === brainstormModal); });
+  brainstormModal.addEventListener("click", (e) => {
+    if (!brainstormIsResizing && e.target === brainstormModal && brainstormBackdropMousedown) closeBrainstormModal();
+  });
 
   /* ---------------- affirmation lines manager ---------------- */
   // Lets the person edit the pool of lines itself: rename any existing
