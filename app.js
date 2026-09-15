@@ -9436,23 +9436,27 @@
   const drcTemplateTextarea = $("#drc-template-textarea");
 
   function openDRCTemplateModal() {
-    drcTemplateTextarea.value = getDRCTemplateText();
+    drcTemplateTextarea.innerHTML = noteHtmlFromDRCTemplate(getDRCTemplateText());
     zoomModalOpen(drcTemplateModal);
     requestAnimationFrame(() => drcTemplateTextarea.focus());
   }
 
-  // Persists whatever's currently in the textarea, verbatim — no parsing,
-  // no reformatting. Falls back to the existing saved template (rather
-  // than wiping it) if the textarea was fully blanked out, since that's
-  // almost certainly not what was intended.
+  // Persists whatever's currently in the editor, verbatim (as HTML, so any
+  // colors picked below are kept — see noteHtmlFromDRCTemplate's
+  // looksLikeHtml check, which then leaves it untouched instead of
+  // re-wrapping it). Falls back to the existing saved template (rather
+  // than wiping it) if the editor was fully blanked out, since that's
+  // almost certainly not what was intended. Checked via textContent, not
+  // innerHTML, since an "empty" contenteditable still has wrapper markup
+  // (e.g. "<div><br></div>") that isn't actually blank text.
   function saveDRCTemplateFromTextarea() {
-    const text = drcTemplateTextarea.value;
-    saveDRCTemplateText(text.trim() ? text : getDRCTemplateText());
+    const isEmpty = !drcTemplateTextarea.textContent.trim();
+    saveDRCTemplateText(isEmpty ? getDRCTemplateText() : drcTemplateTextarea.innerHTML);
   }
 
   if (drcTemplateModal) {
     $("#drc-template-reset").addEventListener("click", () => {
-      drcTemplateTextarea.value = DEFAULT_DRC_TEMPLATE_TEXT;
+      drcTemplateTextarea.innerHTML = noteHtmlFromDRCTemplate(DEFAULT_DRC_TEMPLATE_TEXT);
     });
     $("#drc-template-close").addEventListener("click", () => {
       saveDRCTemplateFromTextarea();
@@ -9465,6 +9469,68 @@
       }
     });
     drcTemplateTextarea.addEventListener("keydown", (e) => e.stopPropagation());
+
+    // ---- Text color, same trigger+popover+swatch pattern as the note
+    // editor's own color picker (see noteApplyForeColor and friends), just
+    // scoped to this editor instead. ----
+    const drcColorTriggerBtn = $("#drc-tool-color");
+    const drcColorPopover = $("#drc-color-popover");
+    function drcApplyForeColor(color) {
+      drcTemplateTextarea.focus();
+      const sel = window.getSelection();
+      if (sel.rangeCount && sel.getRangeAt(0).collapsed) {
+        // No selection: select the whole editor's contents so picking a
+        // color with nothing highlighted still visibly does something,
+        // same fallback the note editor uses for a single line.
+        sel.selectAllChildren(drcTemplateTextarea);
+      }
+      document.execCommand("foreColor", false, color);
+    }
+    function setDrcColorTrigger(color){ $("#drc-color-trigger-swatch").style.background = color; }
+    function openDrcColorPopover(){ drcColorPopover.classList.remove("hidden"); positionDrcColorPopover(); }
+    function closeDrcColorPopover(){ drcColorPopover.classList.add("hidden"); }
+    function positionDrcColorPopover(){
+      const margin = 8;
+      const btnRect = drcColorTriggerBtn.getBoundingClientRect();
+      const popRect = drcColorPopover.getBoundingClientRect();
+      let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+      left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+      let top = btnRect.bottom + 6;
+      if (top + popRect.height > window.innerHeight - margin) {
+        top = btnRect.top - popRect.height - 6;
+      }
+      drcColorPopover.style.left = `${left}px`;
+      drcColorPopover.style.top = `${top}px`;
+    }
+    drcColorTriggerBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (drcColorPopover.classList.contains("hidden")) openDrcColorPopover();
+      else closeDrcColorPopover();
+    });
+    drcColorPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+    document.querySelectorAll(".drc-color-swatch").forEach(btn => {
+      btn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        drcApplyForeColor(btn.dataset.color);
+        setDrcColorTrigger(btn.dataset.color);
+      });
+      btn.addEventListener("click", () => { closeDrcColorPopover(); });
+    });
+    $("#drc-color-custom").addEventListener("input", (e) => {
+      drcApplyForeColor(e.target.value);
+      setDrcColorTrigger(e.target.value);
+    });
+    $("#drc-color-custom").addEventListener("mousedown", (e) => e.stopPropagation());
+    document.addEventListener("mousedown", (e) => {
+      if (!drcColorPopover.classList.contains("hidden") &&
+          !drcColorPopover.contains(e.target) && e.target !== drcColorTriggerBtn) {
+        closeDrcColorPopover();
+      }
+    });
+    window.addEventListener("resize", () => {
+      if (!drcColorPopover.classList.contains("hidden")) positionDrcColorPopover();
+    });
   }
 
   /* ---------------- node photo attachments ---------------- */
@@ -11848,7 +11914,9 @@
   // has actually typed into a DRC note (see drcNoteIsFilled below), so an
   // untouched template doesn't itself count as "filled".
   function drcTemplateLines() {
-    return getDRCTemplateText().split("\n").map(l => l.trim()).filter(Boolean);
+    const raw = getDRCTemplateText();
+    if (looksLikeHtml(raw)) return noteLinesFromHtml(raw).map(l => l.trim()).filter(Boolean);
+    return raw.split("\n").map(l => l.trim()).filter(Boolean);
   }
 
   // Opens the note editor for a node, or (with `photoId`) for one photo
