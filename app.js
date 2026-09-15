@@ -12448,9 +12448,28 @@
   // Splitting via Range.extractContents (rather than textContent, which
   // would flatten any bold/colored spans already in the line) keeps
   // existing inline formatting intact on both halves of the split.
+  // A bare <br> for an empty line, or that <br> wrapped in a <font color>
+  // when `color` isn't the note's plain default — used when a new line
+  // has nothing extracted onto it (see noteHandlePlainLineEnter below).
+  // Without this, an empty line has no colored span for the caret to sit
+  // inside, so anything typed on it falls back to the browser's default
+  // black instead of continuing in whatever color the line above it was.
+  const NOTE_DEFAULT_TEXT_RGB = "rgb(43, 42, 37)"; // #2b2a25, the "Default text" swatch
+  function noteEmptyLineContent(color) {
+    const br = document.createElement("br");
+    if (!color || color.replace(/\s+/g, "") === NOTE_DEFAULT_TEXT_RGB.replace(/\s+/g, "")) return br;
+    const font = document.createElement("font");
+    font.setAttribute("color", color);
+    font.appendChild(br);
+    return font;
+  }
+
   function noteHandlePlainLineEnter(el, sel) {
     if (el === noteTextarea) return false; // no wrapping div yet — let the browser create the very first one
     notePushUndo();
+    // Capture the color in effect right at the caret before splitting —
+    // needed below if either half of the split ends up empty.
+    const caretColor = document.queryCommandValue("foreColor");
     const range = sel.getRangeAt(0);
     const afterRange = document.createRange();
     afterRange.setStart(range.startContainer, range.startOffset);
@@ -12461,13 +12480,21 @@
     else afterRange.setEnd(range.startContainer, range.startOffset);
     const frag = afterRange.extractContents();
     const newDiv = document.createElement("div");
+    let newDivEmptyContent = null;
     if (frag.hasChildNodes()) newDiv.appendChild(frag);
-    else newDiv.appendChild(document.createElement("br"));
-    if (!el.hasChildNodes()) el.appendChild(document.createElement("br"));
+    else newDiv.appendChild((newDivEmptyContent = noteEmptyLineContent(caretColor)));
+    if (!el.hasChildNodes()) el.appendChild(noteEmptyLineContent(caretColor));
     el.parentNode.insertBefore(newDiv, el.nextSibling);
     noteAutoColorParagraphs();
     const caretRange = document.createRange();
-    caretRange.selectNodeContents(newDiv);
+    // If the new line is the empty-<font><br></font> case, put the caret
+    // *inside* the font element (before the <br>) so typed text lands
+    // inside that colored span instead of as a plain sibling of it.
+    if (newDivEmptyContent && newDivEmptyContent.nodeName === "FONT") {
+      caretRange.setStart(newDivEmptyContent, 0);
+    } else {
+      caretRange.selectNodeContents(newDiv);
+    }
     caretRange.collapse(true);
     sel.removeAllRanges();
     sel.addRange(caretRange);
@@ -12829,6 +12856,16 @@
     noteAutoColorBtn.classList.toggle("active", noteAutoColorEnabled);
     noteAutoColorBtn.setAttribute("aria-pressed", String(noteAutoColorEnabled));
     noteAutoColorBtn.title = "Auto alternate line colors: " + (noteAutoColorEnabled ? "on" : "off");
+    if (!noteAutoColorEnabled) {
+      // Once lines stop getting auto-colored, plain default-color typing
+      // would be hard to tell apart from a still-active line — default
+      // to gray instead, same as picking it from the color popover, so
+      // new typing is visibly "auto-color is off" rather than looking
+      // like nothing happened.
+      noteTextarea.focus();
+      document.execCommand("foreColor", false, "#7c7c76");
+      setNoteColorTrigger("#7c7c76");
+    }
   });
   const noteColorTriggerBtn = $("#note-tool-color");
   const noteColorPopover = $("#note-color-popover");
