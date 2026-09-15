@@ -12286,7 +12286,9 @@
   // div-level style, so the two never fight over the same text either.
   // `container` defaults to the per-node rich note editor but also serves
   // the per-task note editor.
+  let noteAutoColorEnabled = true;
   function noteAutoColorParagraphs(container = noteTextarea) {
+    if (!noteAutoColorEnabled) return;
     let idx = 0;
     Array.from(container.children).forEach(el => {
       const text = el.textContent || "";
@@ -12820,6 +12822,13 @@
 
   // Single trigger button that opens/closes the color popover, instead of
   // 6 separate swatch buttons always taking up space in the toolbar.
+  const noteAutoColorBtn = $("#note-tool-autocolor");
+  noteAutoColorBtn.addEventListener("click", () => {
+    noteAutoColorEnabled = !noteAutoColorEnabled;
+    noteAutoColorBtn.classList.toggle("active", noteAutoColorEnabled);
+    noteAutoColorBtn.setAttribute("aria-pressed", String(noteAutoColorEnabled));
+    noteAutoColorBtn.title = "Auto alternate line colors: " + (noteAutoColorEnabled ? "on" : "off");
+  });
   const noteColorTriggerBtn = $("#note-tool-color");
   const noteColorPopover = $("#note-color-popover");
   noteColorTriggerBtn.addEventListener("mousedown", (e) => {
