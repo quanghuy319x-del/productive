@@ -2337,18 +2337,19 @@ kbd{
 }
 .task-star:hover{ color: #f5c14b; }
 .task-star.starred{ color: #f5c14b; }
-/* Optional per-task color dot (see getTaskColor/openTaskColorPopover in
-   app.js) — a plain filled circle once a color is set; an empty dashed
-   ring, revealed on hover like the star/note/due buttons below, when it
-   isn't. */
+/* Optional per-task color label (see getTaskColor/openTaskColorPopover
+   in app.js) — now a small hollow ring in the current color; the
+   primary indicator is the light tinted fill on the whole task row
+   (see taskColorTint). An empty dashed ring, revealed on hover like the
+   star/note/due buttons below, when no color is set. */
 .task-color-dot{
   flex:none;
   width:14px; height:14px;
   border-radius:50%;
-  border:none;
+  border:2px solid var(--text-faint);
+  background: transparent;
   padding:0;
   cursor:pointer;
-  background: var(--text-faint);
 }
 .task-color-dot:hover{ filter: brightness(1.2); }
 .task-color-dot-empty{

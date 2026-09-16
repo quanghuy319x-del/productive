@@ -2441,10 +2441,10 @@
     return false;
   }
   // A task's optional color label — one swatch from the same shared
-  // PALETTE used for node/branch/font colors, shown as a small dot next
-  // to the task. Purely a visual tag: doesn't affect progress, sorting,
-  // or the star-priority system above. Absent (no `color` field) means
-  // "no color".
+  // PALETTE used for node/branch/font colors, shown as a light tinted
+  // fill on the whole task row. Purely a visual tag: doesn't affect
+  // progress, sorting, or the star-priority system above. Absent (no
+  // `color` field) means "no color".
   function getTaskColor(t) {
     return (t && t.color) || null;
   }
@@ -2452,6 +2452,17 @@
     if (!t) return;
     if (color) t.color = color;
     else delete t.color;
+  }
+  // Converts a task's color (a "#rrggbb" PALETTE swatch) into a low-alpha
+  // rgba() fill so it reads as a light tint behind the row's text/icons
+  // rather than a solid block. Returns null for no color.
+  function taskColorTint(color) {
+    if (!color || color[0] !== "#" || color.length !== 7) return null;
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    if ([r, g, b].some(Number.isNaN)) return null;
+    return `rgba(${r}, ${g}, ${b}, 0.16)`;
   }
   // Shared ordering for the "★ Sort" actions (Tasks modal + day popup):
   // starred tasks first, then grouped by color label (in PALETTE order,
@@ -14033,6 +14044,8 @@
       const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
       const showingSubtasks = subExpanded && subProg.total > 0;
       li.className = "task-row" + (t.done ? " done" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (showingSubtasks ? " has-open-subtasks" : "");
+      const rowColor = getTaskColor(t);
+      li.style.background = taskColorTint(rowColor) || "";
 
       li.addEventListener("dragover", (e) => {
         if (taskDragState && taskDragState.taskId !== t.id) {
@@ -14112,14 +14125,16 @@
         renderTasksModal();
       });
 
-      // Optional color dot (see getTaskColor/setTaskColor) — click opens
-      // the shared swatch popover; the button itself just shows the
-      // current color, or a faint empty ring when there isn't one.
+      // Optional color label (see getTaskColor/setTaskColor) — click opens
+      // the shared swatch popover. The button itself is a small hollow
+      // ring in the current color (the light fill on the whole row is
+      // the primary indicator), or a faint dashed ring when there isn't
+      // one set yet.
       const colorBtn = document.createElement("button");
       colorBtn.type = "button";
       const taskColor = getTaskColor(t);
       colorBtn.className = "task-color-dot" + (taskColor ? "" : " task-color-dot-empty");
-      if (taskColor) colorBtn.style.background = taskColor;
+      if (taskColor) colorBtn.style.borderColor = taskColor;
       colorBtn.title = taskColor ? "Change color label" : "Add a color label";
       colorBtn.addEventListener("mousedown", (e) => e.stopPropagation());
       colorBtn.addEventListener("click", (e) => {
@@ -14542,6 +14557,8 @@
     const subProg = taskSubtaskProgress(t);
     const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
     li.className = "task-row" + (t.done ? " done" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (subExpanded ? " has-open-subtasks" : "");
+    const rowColor = getTaskColor(t);
+    li.style.background = taskColorTint(rowColor) || "";
 
     const sameList = (state) => state && state.nodeId === node.id && (state.r ?? null) === (r ?? null) && (state.c ?? null) === (c ?? null);
 
@@ -14601,14 +14618,15 @@
       renderCalendar();
     });
 
-    // Optional color dot — same shared popover as the Tasks modal (see
+    // Optional color label — same shared popover as the Tasks modal (see
     // getTaskColor/openTaskColorPopover), since both edit the same task
-    // objects.
+    // objects. Shown as a hollow ring in the current color; the light
+    // fill on the whole row is the primary indicator.
     const colorBtn = document.createElement("button");
     colorBtn.type = "button";
     const calTaskColor = getTaskColor(t);
     colorBtn.className = "task-color-dot" + (calTaskColor ? "" : " task-color-dot-empty");
-    if (calTaskColor) colorBtn.style.background = calTaskColor;
+    if (calTaskColor) colorBtn.style.borderColor = calTaskColor;
     colorBtn.title = calTaskColor ? "Change color label" : "Add a color label";
     colorBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     colorBtn.addEventListener("click", (e) => {
