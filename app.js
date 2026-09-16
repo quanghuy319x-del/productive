@@ -14262,12 +14262,12 @@
 
       li.appendChild(handle);
       li.appendChild(cb);
-      li.appendChild(colorBtn);
       li.appendChild(text);
       li.appendChild(subtaskAddBtn);
       li.appendChild(dueBtn);
       li.appendChild(noteBtn);
       li.appendChild(star);
+      li.appendChild(colorBtn);
       li.appendChild(del);
       tasksListEl.appendChild(li);
 
@@ -14715,10 +14715,10 @@
 
     li.appendChild(handle);
     li.appendChild(cb);
-    li.appendChild(colorBtn);
     li.appendChild(text);
     li.appendChild(subtaskAddBtn);
     li.appendChild(star);
+    li.appendChild(colorBtn);
     li.appendChild(del);
     li.appendChild(nodeBtn);
     return li;
