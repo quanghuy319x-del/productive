@@ -2426,26 +2426,19 @@
   function nodeHasTasks(node) {
     return getNodeTasks(node).length > 0;
   }
-  // Tasks carry a 0–3 "stars" priority level, used only for progress
+  // Tasks carry a 0–1 "stars" priority flag, used only for progress
   // weighting (see nodeTaskProgress) — it does not affect task order.
   // Also tolerates old maps saved before this existed, which only ever
-  // had a boolean `starred` flag, treated as 1 star.
+  // had a boolean `starred` flag, treated as 1 star. Old maps saved
+  // while 2/3-star levels existed are clamped down to 1.
   function getTaskStars(t) {
-    if (typeof t.stars === "number" && !Number.isNaN(t.stars)) return clamp(Math.round(t.stars), 0, 3);
+    if (typeof t.stars === "number" && !Number.isNaN(t.stars)) return clamp(Math.round(t.stars), 0, 1);
     return t.starred ? 1 : 0;
   }
-  // Star levels are capped per node/cell so priority stays meaningful:
-  // at most one 3-star task and at most three 2-star tasks among the
-  // tasks that live directly on the same node/cell (host). 0 and 1 star
-  // are uncapped. Returns true when giving `task` `starLevel` stars
-  // would push that level over its cap (excludes `task` itself from the
-  // count, since it may already be sitting at a lower/higher level).
-  const TASK_STAR_CAP = { 2: 5, 3: 1 };
-  function taskStarCapReached(host, task, starLevel) {
-    const cap = TASK_STAR_CAP[starLevel];
-    if (!cap) return false;
-    const count = getNodeTasks(host).filter(t => t.id !== task.id && getTaskStars(t) === starLevel).length;
-    return count >= cap;
+  // Star priority is uncapped — any number of tasks on a node/cell can
+  // be starred.
+  function taskStarCapReached() {
+    return false;
   }
   // A task's optional color label — one swatch from the same shared
   // PALETTE used for node/branch/font colors, shown as a small dot next
@@ -2465,14 +2458,13 @@
     // Progress is subtask-based: a task with subtasks contributes their
     // done/total counts. A task with none of its own counts as a single
     // unit instead (done via its own checkbox), so plain tasks still
-    // move the needle. Each star of priority adds +1x to the weight
-    // (0 stars = 1x, 1 star = 2x, 2 stars = 3x, 3 stars = 4x), so marking
-    // (or completing subtasks of) a higher-starred task moves the node's
-    // ring/bar further.
+    // move the needle. A starred task counts 3x toward the weight, so
+    // marking (or completing subtasks of) a starred task moves the
+    // node's ring/bar further.
     let total = 0, done = 0;
     tasks.forEach((t) => {
       const stars = getTaskStars(t);
-      const weight = stars > 0 ? stars + 1 : 1;
+      const weight = stars > 0 ? 3 : 1;
       const subs = getTaskSubtasks(t);
       if (subs.length) {
         total += subs.length * weight;
@@ -14080,18 +14072,13 @@
       const star = document.createElement("button");
       star.type = "button";
       star.className = "task-star" + (stars > 0 ? " starred" : "");
-      star.textContent = stars > 0 ? "★".repeat(stars) : "☆";
+      star.textContent = stars > 0 ? "★" : "☆";
       star.title = stars > 0
-        ? `${stars} star${stars > 1 ? "s" : ""} — counts ${stars + 1}x toward progress. Click to ${stars < 3 ? "add another star" : "clear stars"}.`
-        : "Star this task for priority — click again for 2 or 3 stars, each adding +1x to its weight toward progress (2x/3x/4x)";
+        ? "Starred — counts 3x toward progress. Click to clear."
+        : "Star this task for priority — counts 3x toward progress";
       star.addEventListener("click", (e) => {
         e.stopPropagation();
-        const next = stars >= 3 ? 0 : stars + 1;
-        if (next > 0 && taskStarCapReached(host, t, next)) {
-          const cap = TASK_STAR_CAP[next];
-          alert(`Only ${cap} task${cap > 1 ? "s" : ""} per node can have ${next} star${next > 1 ? "s" : ""}. Remove a star from another task first.`);
-          return;
-        }
+        const next = stars > 0 ? 0 : 1;
         pushUndo();
         t.stars = next;
         t.starred = t.stars > 0; // kept in sync for older code paths reading the legacy flag
@@ -14609,23 +14596,16 @@
       renderCalDayModal();
     });
 
-    // ★ priority — same 0-3 star cycle as the Tasks modal.
+    // ★ priority — same 0/1 star toggle as the Tasks modal.
     const stars = getTaskStars(t);
     const star = document.createElement("button");
     star.type = "button";
     star.className = "task-star" + (stars > 0 ? " starred" : "");
-    star.textContent = stars > 0 ? "★".repeat(stars) : "☆";
-    star.title = stars > 0
-      ? `${stars} star${stars > 1 ? "s" : ""} — click to ${stars < 3 ? "add another" : "clear"}`
-      : "Star this task for priority";
+    star.textContent = stars > 0 ? "★" : "☆";
+    star.title = stars > 0 ? "Starred — click to clear" : "Star this task for priority";
     star.addEventListener("click", (e) => {
       e.stopPropagation();
-      const next = stars >= 3 ? 0 : stars + 1;
-      if (next > 0 && taskStarCapReached(host, t, next)) {
-        const cap = TASK_STAR_CAP[next];
-        alert(`Only ${cap} task${cap > 1 ? "s" : ""} per node can have ${next} star${next > 1 ? "s" : ""}. Remove a star from another task first.`);
-        return;
-      }
+      const next = stars > 0 ? 0 : 1;
       pushUndo();
       t.stars = next;
       t.starred = t.stars > 0;
