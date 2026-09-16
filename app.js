@@ -10583,6 +10583,16 @@
   photoModalSymbol.setAttribute("aria-label", "Insert a number symbol into the photo");
   photoModalSymbol.textContent = "🔢";
 
+  // Combine button — pastes an image from the clipboard and stitches it
+  // onto the top or bottom of the current photo, replacing it with the
+  // taller combined result (see combinePhotoFromClipboard below).
+  const photoModalCombine = document.createElement("button");
+  photoModalCombine.id = "photo-modal-combine";
+  photoModalCombine.className = "photo-modal-toolbar-btn";
+  photoModalCombine.title = "Paste a photo above or below this one";
+  photoModalCombine.setAttribute("aria-label", "Paste a photo above or below this one");
+  photoModalCombine.textContent = "⬍";
+
   // Favorite star — same ☆/★ toggle as the note editor and link/video
   // modals (see toggleNoteFavorite/getPhotoFavorite), sat in the same
   // top-right toolbar as crop/text/symbol. Hidden for an inline note photo
@@ -10597,8 +10607,8 @@
 
   // Inserted right before the comment toggle (which, along with
   // delete/close, is already in the toolbar in index.html), giving a
-  // final left-to-right order of: 🔢, Aa, ⛶, ☆, 💬, 🗑, ✕.
-  [photoModalSymbol, photoModalText, photoModalCrop, photoModalFavorite].forEach(btn => {
+  // final left-to-right order of: 🔢, Aa, ⛶, ⬍, ☆, 💬, 🗑, ✕.
+  [photoModalSymbol, photoModalText, photoModalCrop, photoModalCombine, photoModalFavorite].forEach(btn => {
     photoModalToolbarTop.insertBefore(btn, photoModalCommentToggle);
   });
 
@@ -10665,6 +10675,239 @@
   window.addEventListener("resize", () => {
     if (!photoModalSymbolPopover.classList.contains("hidden")) positionPhotoSymbolPopover();
   });
+
+  // ---- Combine (paste a photo above/below) ----
+  // Pick a side, paste an image, and the two are stitched into one taller
+  // photo that replaces the current one. Deliberately no options: always
+  // vertical, always at each image's own native pixel size (nothing is
+  // rescaled, so neither half loses detail), and encoded at quality 1.0
+  // through the same encodePhotoCanvas the crop/text tools use.
+  const photoCombinePopover = document.createElement("div");
+  photoCombinePopover.id = "photo-modal-combine-popover";
+  photoCombinePopover.className = "photo-modal-symbol-popover hidden";
+  photoCombinePopover.style.flexDirection = "column";
+  photoCombinePopover.style.maxWidth = "none";
+  [["above", "⬆  Paste above"], ["below", "⬇  Paste below"]].forEach(([where, label]) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "photo-modal-symbol-swatch";
+    btn.textContent = label;
+    Object.assign(btn.style, {
+      width: "auto", height: "26px", padding: "0 10px",
+      fontSize: "12px", justifyContent: "flex-start", whiteSpace: "nowrap"
+    });
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closePhotoCombinePopover();
+      combinePhotoFromClipboard(where);
+    });
+    photoCombinePopover.appendChild(btn);
+  });
+  document.body.appendChild(photoCombinePopover);
+
+  function openPhotoCombinePopover() {
+    photoCombinePopover.classList.remove("hidden");
+    positionPhotoCombinePopover();
+  }
+  function closePhotoCombinePopover() {
+    photoCombinePopover.classList.add("hidden");
+  }
+  function positionPhotoCombinePopover() {
+    const margin = 8;
+    const btnRect = photoModalCombine.getBoundingClientRect();
+    const popRect = photoCombinePopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) top = btnRect.top - popRect.height - 6;
+    photoCombinePopover.style.left = `${left}px`;
+    photoCombinePopover.style.top = `${top}px`;
+  }
+  photoModalCombine.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (cropping || addingText) return;
+    if (photoCombinePopover.classList.contains("hidden")) openPhotoCombinePopover();
+    else closePhotoCombinePopover();
+  });
+  photoModalCombine.addEventListener("click", (e) => e.stopPropagation());
+  photoCombinePopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!photoCombinePopover.classList.contains("hidden") &&
+        !photoCombinePopover.contains(e.target) && e.target !== photoModalCombine) {
+      closePhotoCombinePopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!photoCombinePopover.classList.contains("hidden")) positionPhotoCombinePopover();
+  });
+
+  // Whichever photo the viewer is showing right now, note-mode or not —
+  // the same two places renderPhotoModal itself reads from.
+  function currentPhotoModalSrc() {
+    if (!photoModalState) return null;
+    const images = photoModalState.noteMode
+      ? photoModalState.images
+      : getNodeImages(findNode(photoModalState.nodeId));
+    return images[photoModalState.index] || null;
+  }
+
+  function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error("could not decode image"));
+      im.src = src;
+    });
+  }
+  // (blobToDataUrl — the clipboard/file → data: URL step — already exists
+  // up near the photo store; reused here rather than redeclared.)
+  // navigator.clipboard.read() is the direct path, but it needs the
+  // clipboard-read permission and isn't available at all in some
+  // browsers, so a failure here isn't an error — it just means falling
+  // back to waiting for a real Ctrl+V (see armCombinePaste).
+  async function readClipboardImageDataUrl() {
+    if (!navigator.clipboard || !navigator.clipboard.read) return null;
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith("image/"));
+      if (type) return await blobToDataUrl(await item.getType(type));
+    }
+    return null;
+  }
+
+  // Browsers cap canvas dimensions (~32,767px in Chrome/Firefox, lower on
+  // some mobiles); past that the canvas silently comes back blank, so
+  // refuse rather than replacing a good photo with an empty one.
+  const PHOTO_COMBINE_MAX_PX = 32000;
+
+  async function combineTwoVertically(baseSrc, addSrc, where) {
+    const [baseImg, addImg] = await Promise.all([loadImageElement(baseSrc), loadImageElement(addSrc)]);
+    const top = where === "above" ? addImg : baseImg;
+    const bottom = where === "above" ? baseImg : addImg;
+    const width = Math.max(top.naturalWidth, bottom.naturalWidth);
+    const height = top.naturalHeight + bottom.naturalHeight;
+    if (height > PHOTO_COMBINE_MAX_PX || width > PHOTO_COMBINE_MAX_PX) {
+      throw new Error("The combined photo would be too tall for the browser to render.");
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    // Only stays lossless/transparent when BOTH halves are PNG; otherwise
+    // the result goes out as WebP/JPEG, where transparency wouldn't
+    // survive anyway, so any width difference is padded white instead of
+    // left as black.
+    const isPng = baseSrc.startsWith("data:image/png") && addSrc.startsWith("data:image/png");
+    if (!isPng) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+    }
+    // Each half is drawn at 1:1 and centered, so the narrower one gets
+    // padding rather than being stretched to match.
+    ctx.drawImage(top, Math.round((width - top.naturalWidth) / 2), 0);
+    ctx.drawImage(bottom, Math.round((width - bottom.naturalWidth) / 2), top.naturalHeight);
+    return encodePhotoCanvas(canvas, isPng ? "image/png" : "image/jpeg", width * height, 1.0);
+  }
+
+  // Swaps the photo the viewer is currently showing for `outUrl`, keeping
+  // its tags/notes/comment/star/timestamp attached — the same hand-off
+  // the crop and add-text tools do when they bake their edit in.
+  function replacePhotoModalImage(outUrl) {
+    if (!photoModalState) return;
+    if (photoModalState.noteMode) {
+      const noteImgs = Array.from(noteTextarea.querySelectorAll("img"));
+      const targetImg = noteImgs[photoModalState.index];
+      if (targetImg) targetImg.src = outUrl;
+      photoModalState.images[photoModalState.index] = outUrl;
+      commitNotesToNode();
+    } else {
+      const liveNode = findNode(photoModalState.nodeId);
+      const liveIds = getNodeImageIds(liveNode);
+      if (!liveIds.length) return;
+      pushUndo();
+      const newId = addPhotoRecord(outUrl);
+      const oldId = liveIds[photoModalState.index];
+      carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
+      carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
+      carryPhotoComments(liveNode, liveNode, [[oldId, newId]]);
+      carryPhotoFavorites(liveNode, liveNode, [[oldId, newId]]);
+      carryPhotoTimestamps(liveNode, liveNode, [[oldId, newId]]);
+      setPhotoTags(liveNode, oldId, null);
+      setPhotoNotes(liveNode, oldId, null);
+      setPhotoComment(liveNode, oldId, null);
+      setPhotoTimestamp(liveNode, oldId, null);
+      deletePhotoRecord(oldId);
+      liveIds[photoModalState.index] = newId;
+      liveNode.images = liveIds;
+      liveNode.image = null;
+      renderAll();
+      persist();
+    }
+    resetPhotoZoom();
+    renderPhotoModal();
+  }
+
+  let combiningPhoto = false;
+  // Set while waiting for a manual Ctrl+V: which side the pasted image
+  // should land on. Cleared by the paste itself, by Escape, or by the
+  // photo viewer closing.
+  let pendingCombineSide = null;
+
+  function armCombinePaste(where) {
+    pendingCombineSide = where;
+    showToast(`Press Ctrl+V (⌘V) to paste the photo to add ${where}`);
+  }
+  function cancelCombinePaste() {
+    pendingCombineSide = null;
+  }
+
+  async function applyCombine(addSrc, where) {
+    const baseSrc = currentPhotoModalSrc();
+    if (!baseSrc) return;
+    combiningPhoto = true;
+    photoModalCombine.disabled = true;
+    try {
+      replacePhotoModalImage(await combineTwoVertically(baseSrc, addSrc, where));
+      showToast(`Photo added ${where}`);
+    } catch (err) {
+      showToast(err && err.message ? err.message : "Couldn't combine those photos.");
+    } finally {
+      combiningPhoto = false;
+      photoModalCombine.disabled = false;
+    }
+  }
+
+  async function combinePhotoFromClipboard(where) {
+    if (combiningPhoto || cropping || addingText || !photoModalState) return;
+    if (!currentPhotoModalSrc()) return;
+    let addSrc = null;
+    try {
+      addSrc = await readClipboardImageDataUrl();
+    } catch (err) {
+      addSrc = null; // permission denied or unsupported — fall through to Ctrl+V
+    }
+    if (!addSrc) { armCombinePaste(where); return; }
+    await applyCombine(addSrc, where);
+  }
+
+  // The manual Ctrl+V path. Only ever does anything while a side is armed
+  // and the photo viewer is open, so it can't hijack pasting elsewhere.
+  document.addEventListener("paste", (e) => {
+    if (!pendingCombineSide || !photoModalState || combiningPhoto) return;
+    const items = e.clipboardData ? Array.from(e.clipboardData.items || []) : [];
+    const imageItem = items.find(it => it.type && it.type.startsWith("image/"));
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const where = pendingCombineSide;
+    cancelCombinePaste();
+    blobToDataUrl(file).then(src => applyCombine(src, where))
+      .catch(() => showToast("Couldn't read the pasted image."));
+  }, true);
 
   let cropping = false;
   let cropCleanup = null;
@@ -10827,8 +11070,12 @@
     photoModalCrop.style.display = notePhoto ? "none" : "";
     photoModalText.style.display = "";
     photoModalSymbol.style.display = "";
+    // Combine works in note mode too: like the text tool, it bakes a new
+    // image and writes it straight back (see replacePhotoModalImage).
+    photoModalCombine.style.display = "";
     photoModalFavorite.style.display = notePhoto ? "none" : "";
     closePhotoSymbolPopover();
+    closePhotoCombinePopover();
     if (notePhoto) return;
     renderPhotoModalTags();
     renderPhotoModalComment();
@@ -10971,6 +11218,8 @@
   function closePhotoModal() {
     savePhotoModalComment();
     closePhotoSymbolPopover();
+    closePhotoCombinePopover();
+    cancelCombinePaste();
     photoModalState = null;
     photoModal.classList.remove("photo-modal-above-note");
     zoomModalClose(photoModal, () => {
