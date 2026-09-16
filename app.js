@@ -2453,6 +2453,18 @@
     if (color) t.color = color;
     else delete t.color;
   }
+  // Shared ordering for the "★ Sort" actions (Tasks modal + day popup):
+  // starred tasks first, then grouped by color label (in PALETTE order,
+  // so the grouping is stable and matches the order swatches are offered
+  // in), with uncolored tasks last within each star group.
+  function taskColorSortIndex(t) {
+    const color = getTaskColor(t);
+    const idx = color ? PALETTE.indexOf(color) : -1;
+    return idx === -1 ? PALETTE.length : idx;
+  }
+  function compareTasksByStarAndColor(a, b) {
+    return (getTaskStars(b) - getTaskStars(a)) || (taskColorSortIndex(a) - taskColorSortIndex(b));
+  }
   function nodeTaskProgress(node) {
     const tasks = getNodeTasks(node);
     // Progress is subtask-based: a task with subtasks contributes their
@@ -13310,6 +13322,7 @@
   const tasksProgressBar = $("#tasks-progress-bar");
   const tasksProgressLabel = $("#tasks-progress-label");
   const tasksSortStarsBtn = $("#tasks-sort-stars");
+  const tasksSortColorBtn = $("#tasks-sort-color");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
   // Which tasks have their subtask checklist explicitly collapsed in the
@@ -13642,9 +13655,9 @@
     tasksListEl.querySelectorAll(".task-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
   }
 
-  // One-click "★ Sort" — reorders the whole task list by star count, highest
-  // first, using a stable sort so equally-starred (or unstarred) tasks keep
-  // their existing relative order instead of shuffling around. It's a real
+  // One-click "★ Sort" — reorders the whole task list by star, then by
+  // color label, using a stable sort so equally-ranked tasks keep their
+  // existing relative order instead of shuffling around. It's a real
   // edit (goes through pushUndo like any other reorder) rather than a
   // view-only toggle, so the new order sticks and can be undone.
   function sortTasksByStars() {
@@ -13654,7 +13667,24 @@
     if (!host) return;
     const tasks = getNodeTasks(host);
     if (tasks.length < 2) return;
-    const sorted = tasks.slice().sort((a, b) => getTaskStars(b) - getTaskStars(a));
+    const sorted = tasks.slice().sort(compareTasksByStarAndColor);
+    pushUndo();
+    host.tasks = sorted;
+    persist();
+    renderTasksModal();
+  }
+
+  // One-click "🎨 Sort" — same idea as sortTasksByStars, but groups purely
+  // by color label (PALETTE order, uncolored last) and doesn't take star
+  // into account at all.
+  function sortTasksByColor() {
+    if (!requireSignIn()) return;
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
+    const tasks = getNodeTasks(host);
+    if (tasks.length < 2) return;
+    const sorted = tasks.slice().sort((a, b) => taskColorSortIndex(a) - taskColorSortIndex(b));
     pushUndo();
     host.tasks = sorted;
     persist();
@@ -14238,6 +14268,7 @@
     tasksProgressBar.classList.toggle("done", prog.pct >= 1);
     tasksProgressLabel.textContent = prog.total ? `${prog.done} of ${prog.total} done` : "No tasks yet";
     tasksSortStarsBtn.disabled = tasks.length < 2;
+    tasksSortColorBtn.disabled = tasks.length < 2;
   }
 
   function addTaskFromModal() {
@@ -14283,6 +14314,7 @@
   $("#tasks-back").addEventListener("click", closeTasksModal);
   $("#tasks-close").addEventListener("click", closeTasksModal);
   tasksSortStarsBtn.addEventListener("click", sortTasksByStars);
+  tasksSortColorBtn.addEventListener("click", sortTasksByColor);
   tasksModal.addEventListener("click", (e) => { if (e.target === tasksModal) closeTasksModal(); });
   document.addEventListener("keydown", (e) => {
     if (tasksModal.classList.contains("hidden")) return;
@@ -14314,10 +14346,12 @@
   const calDayModalEmpty = $("#cal-day-modal-empty-state");
   const calDayNewInput = $("#cal-day-new-input");
   const calDaySortBtn = $("#cal-day-sort-stars");
+  const calDaySortColorBtn = $("#cal-day-sort-color");
   let calCursor = new Date();
   calCursor.setDate(1); // first of the currently-displayed month
   let calDayModalDate = null; // "YYYY-MM-DD" of the day currently shown, or null when closed
   let calDaySortByStars = false; // view-only sort toggle for the day popup, reset each time it opens
+  let calDaySortByColor = false; // same, for the color-only sort; mutually exclusive with the above
 
   // Every task on every node, anywhere in the tree — deliberately
   // ignores node.collapsed (unlike the render walks) so a task due
@@ -14467,6 +14501,7 @@
   function openCalDayModal(iso) {
     calDayModalDate = iso;
     calDaySortByStars = false;
+    calDaySortByColor = false;
     renderCalDayModal();
     zoomModalOpen(calDayModalBackdrop, ".day-modal");
     requestAnimationFrame(() => autosizeTextarea(calDayNewInput));
@@ -14485,7 +14520,9 @@
 
     let dayEntries = allTasksWithNodes().filter(e => e.task.due === calDayModalDate);
     if (calDaySortByStars) {
-      dayEntries = dayEntries.slice().sort((a, b) => getTaskStars(b.task) - getTaskStars(a.task));
+      dayEntries = dayEntries.slice().sort((a, b) => compareTasksByStarAndColor(a.task, b.task));
+    } else if (calDaySortByColor) {
+      dayEntries = dayEntries.slice().sort((a, b) => taskColorSortIndex(a.task) - taskColorSortIndex(b.task));
     }
     calDayModalList.innerHTML = "";
     dayEntries.forEach(({ task: t, node, r, c }) => {
@@ -14496,6 +14533,7 @@
     });
     calDayModalEmpty.classList.toggle("hidden", dayEntries.length > 0);
     calDaySortBtn.disabled = dayEntries.length < 2;
+    calDaySortColorBtn.disabled = dayEntries.length < 2;
   }
 
   function buildCalDayTaskRow(t, node, r, c) {
@@ -14902,6 +14940,15 @@
   });
   calDaySortBtn.addEventListener("click", () => {
     calDaySortByStars = !calDaySortByStars;
+    if (calDaySortByStars) calDaySortByColor = false;
+    calDaySortBtn.classList.toggle("active", calDaySortByStars);
+    calDaySortColorBtn.classList.toggle("active", calDaySortByColor);
+    renderCalDayModal();
+  });
+  calDaySortColorBtn.addEventListener("click", () => {
+    calDaySortByColor = !calDaySortByColor;
+    if (calDaySortByColor) calDaySortByStars = false;
+    calDaySortColorBtn.classList.toggle("active", calDaySortByColor);
     calDaySortBtn.classList.toggle("active", calDaySortByStars);
     renderCalDayModal();
   });

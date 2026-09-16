@@ -587,7 +587,8 @@
         <div id="tasks-progress-bar" class="tasks-progress-bar"></div>
       </div>
       <span id="tasks-progress-label" class="tasks-progress-label">No tasks yet</span>
-      <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by stars, highest first">★ Sort</button>
+      <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by star, then color">★ Sort</button>
+      <button type="button" id="tasks-sort-color" class="tasks-sort-stars-btn" title="Sort tasks by color, ignoring star">🎨 Sort</button>
     </div>
     <ul id="tasks-list" class="tasks-list"></ul>
     <div class="tasks-add-row">
@@ -626,7 +627,8 @@
     </div>
     <div class="day-modal-add-row">
       <textarea id="cal-day-new-input" class="day-modal-new-input autosize-input" rows="1" placeholder="Add a task and press Enter…" spellcheck="false"></textarea>
-      <button type="button" id="cal-day-sort-stars" class="day-modal-sort-btn" title="Sort tasks by stars, highest first">★ Sort</button>
+      <button type="button" id="cal-day-sort-stars" class="day-modal-sort-btn" title="Sort tasks by star, then color">★ Sort</button>
+      <button type="button" id="cal-day-sort-color" class="day-modal-sort-btn" title="Sort tasks by color, ignoring star">🎨 Sort</button>
     </div>
     <ul id="cal-day-modal-task-list" class="today-task-list"></ul>
     <div id="cal-day-modal-empty-state" class="empty-state hidden">Nothing due this day.</div>
@@ -754,6 +756,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=129"></script>
+<script src="app.js?v=131"></script>
 </body>
 </html>
