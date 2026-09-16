@@ -2447,6 +2447,19 @@
     const count = getNodeTasks(host).filter(t => t.id !== task.id && getTaskStars(t) === starLevel).length;
     return count >= cap;
   }
+  // A task's optional color label — one swatch from the same shared
+  // PALETTE used for node/branch/font colors, shown as a small dot next
+  // to the task. Purely a visual tag: doesn't affect progress, sorting,
+  // or the star-priority system above. Absent (no `color` field) means
+  // "no color".
+  function getTaskColor(t) {
+    return (t && t.color) || null;
+  }
+  function setTaskColor(t, color) {
+    if (!t) return;
+    if (color) t.color = color;
+    else delete t.color;
+  }
   function nodeTaskProgress(node) {
     const tasks = getNodeTasks(node);
     // Progress is subtask-based: a task with subtasks contributes their
@@ -13314,6 +13327,73 @@
   // but resets on reload.
   const collapsedSubtaskIds = new Set();
 
+  // Shared color-dot popover for a task's optional color label (see
+  // getTaskColor/setTaskColor) — one instance reused by every task row,
+  // in both the Tasks modal and the Calendar day modal's task list,
+  // since both render the same underlying task objects. Same
+  // fixed-viewport-coordinates + clamp positioning as the photo modal's
+  // symbol popover (see positionPhotoSymbolPopover).
+  let taskColorPopoverCtx = null; // { t, rerender } — set by openTaskColorPopover
+  const taskColorPopover = document.createElement("div");
+  taskColorPopover.className = "task-color-popover hidden";
+  const taskColorNoneSwatch = document.createElement("span");
+  taskColorNoneSwatch.className = "task-color-swatch task-color-swatch-none";
+  taskColorNoneSwatch.title = "No color";
+  taskColorNoneSwatch.addEventListener("click", (e) => { e.stopPropagation(); applyTaskColor(null); });
+  taskColorPopover.appendChild(taskColorNoneSwatch);
+  PALETTE.forEach((c) => {
+    const sw = document.createElement("span");
+    sw.className = "task-color-swatch";
+    sw.style.background = c;
+    sw.dataset.color = c;
+    sw.addEventListener("click", (e) => { e.stopPropagation(); applyTaskColor(c); });
+    taskColorPopover.appendChild(sw);
+  });
+  document.body.appendChild(taskColorPopover);
+
+  function applyTaskColor(color) {
+    if (!taskColorPopoverCtx) return;
+    const { t, rerender } = taskColorPopoverCtx;
+    pushUndo();
+    setTaskColor(t, color);
+    persist();
+    closeTaskColorPopover();
+    rerender();
+  }
+  function openTaskColorPopover(btn, t, rerender) {
+    taskColorPopoverCtx = { t, rerender };
+    taskColorPopover.querySelectorAll(".task-color-swatch").forEach((sw) => {
+      sw.classList.toggle("active", getTaskColor(t) === (sw.dataset.color || null));
+    });
+    taskColorPopover.classList.remove("hidden");
+    positionTaskColorPopover(btn);
+  }
+  function closeTaskColorPopover() {
+    taskColorPopover.classList.add("hidden");
+    taskColorPopoverCtx = null;
+  }
+  function positionTaskColorPopover(btn) {
+    const margin = 8;
+    const btnRect = btn.getBoundingClientRect();
+    const popRect = taskColorPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6;
+    }
+    taskColorPopover.style.left = `${left}px`;
+    taskColorPopover.style.top = `${top}px`;
+  }
+  taskColorPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!taskColorPopover.classList.contains("hidden") &&
+        !taskColorPopover.contains(e.target) &&
+        !e.target.closest(".task-color-dot")) {
+      closeTaskColorPopover();
+    }
+  });
+
   // Per-task focus timer — a lightweight, non-persisted countdown so the
   // person can start a quick focus session on one task at a time. It
   // keeps running (via setInterval) even if the tasks modal is closed or
@@ -14019,6 +14099,21 @@
         renderTasksModal();
       });
 
+      // Optional color dot (see getTaskColor/setTaskColor) — click opens
+      // the shared swatch popover; the button itself just shows the
+      // current color, or a faint empty ring when there isn't one.
+      const colorBtn = document.createElement("button");
+      colorBtn.type = "button";
+      const taskColor = getTaskColor(t);
+      colorBtn.className = "task-color-dot" + (taskColor ? "" : " task-color-dot-empty");
+      if (taskColor) colorBtn.style.background = taskColor;
+      colorBtn.title = taskColor ? "Change color label" : "Add a color label";
+      colorBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+      colorBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openTaskColorPopover(colorBtn, t, renderTasksModal);
+      });
+
       const text = document.createElement("span");
       text.className = "task-text";
       text.contentEditable = "true";
@@ -14047,7 +14142,7 @@
         ? "Double-click to hide subtasks"
         : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
       li.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".task-checkbox, .task-star, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-note-btn, .task-due-btn, .task-text")) return;
+        if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-note-btn, .task-due-btn, .task-text")) return;
         if (subExpanded) {
           collapsedSubtaskIds.add(t.id);
         } else {
@@ -14139,6 +14234,7 @@
 
       li.appendChild(handle);
       li.appendChild(cb);
+      li.appendChild(colorBtn);
       li.appendChild(text);
       li.appendChild(subtaskAddBtn);
       li.appendChild(dueBtn);
@@ -14480,6 +14576,21 @@
       renderCalendar();
     });
 
+    // Optional color dot — same shared popover as the Tasks modal (see
+    // getTaskColor/openTaskColorPopover), since both edit the same task
+    // objects.
+    const colorBtn = document.createElement("button");
+    colorBtn.type = "button";
+    const calTaskColor = getTaskColor(t);
+    colorBtn.className = "task-color-dot" + (calTaskColor ? "" : " task-color-dot-empty");
+    if (calTaskColor) colorBtn.style.background = calTaskColor;
+    colorBtn.title = calTaskColor ? "Change color label" : "Add a color label";
+    colorBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    colorBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openTaskColorPopover(colorBtn, t, renderCalDayModal);
+    });
+
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
@@ -14556,7 +14667,7 @@
       ? "Double-click to hide subtasks"
       : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
     li.addEventListener("dblclick", (e) => {
-      if (e.target.closest(".task-checkbox, .task-star, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-source-node")) return;
+      if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-source-node")) return;
       if (subExpanded) {
         collapsedSubtaskIds.add(t.id);
       } else {
@@ -14568,6 +14679,7 @@
 
     li.appendChild(handle);
     li.appendChild(cb);
+    li.appendChild(colorBtn);
     li.appendChild(text);
     li.appendChild(subtaskAddBtn);
     li.appendChild(star);

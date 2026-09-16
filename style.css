@@ -2337,6 +2337,26 @@ kbd{
 }
 .task-star:hover{ color: #f5c14b; }
 .task-star.starred{ color: #f5c14b; }
+/* Optional per-task color dot (see getTaskColor/openTaskColorPopover in
+   app.js) — a plain filled circle once a color is set; an empty dashed
+   ring, revealed on hover like the star/note/due buttons below, when it
+   isn't. */
+.task-color-dot{
+  flex:none;
+  width:14px; height:14px;
+  border-radius:50%;
+  border:none;
+  padding:0;
+  cursor:pointer;
+  background: var(--text-faint);
+}
+.task-color-dot:hover{ filter: brightness(1.2); }
+.task-color-dot-empty{
+  width:10px; height:10px;
+  background: transparent;
+  border: 2px dashed var(--text-faint);
+}
+.task-color-dot-empty:hover{ border-color: var(--text-dim); filter: none; }
 /* Hide the checkbox, drag handle, star, subtask-add, note, and delete
    buttons until the row is hovered/focused, but only on devices that
    actually have a mouse/trackpad available — on touch-only devices,
@@ -2361,6 +2381,7 @@ kbd{
   .task-note-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-note-btn.has-note{ opacity: 1; }
   .task-due-btn{ opacity: 0; transition: opacity .12s ease; }
+  .task-color-dot-empty{ opacity: 0; transition: opacity .12s ease; }
   .task-row:hover .task-drag-handle,
   .task-row:focus-within .task-drag-handle,
   .task-row:hover .task-star,
@@ -2372,7 +2393,9 @@ kbd{
   .task-row:hover .task-note-btn,
   .task-row:focus-within .task-note-btn,
   .task-row:hover .task-due-btn,
-  .task-row:focus-within .task-due-btn{ opacity: 1; }
+  .task-row:focus-within .task-due-btn,
+  .task-row:hover .task-color-dot-empty,
+  .task-row:focus-within .task-color-dot-empty{ opacity: 1; }
   .task-row:hover .task-checkbox,
   .task-row:focus-within .task-checkbox{ display: inline-block; }
 }
@@ -3911,6 +3934,46 @@ kbd{
   padding:0;
 }
 .photo-modal-symbol-swatch:hover{ border-color: var(--accent); background: var(--panel-2); }
+
+/* Popover of PALETTE swatches opened from a task's color dot (see
+   .task-color-dot / openTaskColorPopover in app.js) — same fixed-
+   viewport-positioning pattern as the symbol popover above. */
+.task-color-popover{
+  position: fixed;
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  padding:8px;
+  width: 132px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+  z-index: 10001;
+}
+.task-color-popover.hidden{ display:none; }
+.task-color-swatch{
+  width:20px; height:20px;
+  border-radius:50%;
+  cursor:pointer;
+  border: 2px solid transparent;
+  box-sizing:border-box;
+}
+.task-color-swatch.active{ border-color: var(--text); }
+.task-color-swatch-none{
+  background: transparent;
+  border: 2px dashed var(--text-faint);
+  position: relative;
+}
+.task-color-swatch-none::after{
+  content:"";
+  position:absolute;
+  left:2px; right:2px; top:50%;
+  height:2px;
+  background: var(--text-faint);
+  transform: rotate(-45deg);
+}
+.task-color-swatch-none.active{ border-color: var(--text); border-style: solid; }
 
 .photo-modal-goto{
   /* No longer independently fixed — sits as the leftmost item inside
