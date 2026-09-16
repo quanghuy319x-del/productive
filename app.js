@@ -10684,11 +10684,41 @@
   let photoZoom = { scale: 1, tx: 0, ty: 0 };
   const PHOTO_ZOOM_MIN = 1, PHOTO_ZOOM_MAX = 6;
 
+  // Set while the add-text overlay is open, so that overlay can re-apply
+  // the exact same transform to itself and stay glued to the photo — the
+  // whole point being that you can zoom right into a detail and drop a
+  // small label precisely on it, instead of the tool snapping back to 1x.
+  let onPhotoZoomChange = null;
+
   function applyPhotoZoom() {
     photoModalImg.style.transform = photoZoom.scale === 1
       ? ""
       : `translate(${photoZoom.tx}px, ${photoZoom.ty}px) scale(${photoZoom.scale})`;
     photoModalImg.classList.toggle("zoomed", photoZoom.scale > 1);
+    if (onPhotoZoomChange) onPhotoZoomChange();
+  }
+
+  // Cursor-anchored zoom step, shared by the image's own wheel handler and
+  // by the add-text overlay's (which sits on top of the image and would
+  // otherwise swallow the wheel events before they ever reached it).
+  function zoomPhotoAtPoint(clientX, clientY, deltaY) {
+    const rect = photoModalImg.getBoundingClientRect();
+    // Cursor's offset from the image's current (already zoomed/panned)
+    // on-screen center — used to keep the point under the cursor fixed
+    // as the scale changes, so zooming feels anchored to the mouse
+    // rather than always zooming toward the photo's center.
+    const offX = clientX - (rect.left + rect.width / 2);
+    const offY = clientY - (rect.top + rect.height / 2);
+    const prevScale = photoZoom.scale;
+    const delta = -deltaY * 0.0018;
+    const newScale = clamp(prevScale * (1 + delta), PHOTO_ZOOM_MIN, PHOTO_ZOOM_MAX);
+    if (newScale === prevScale) return;
+    const factor = newScale / prevScale;
+    photoZoom.tx += offX * (1 - factor);
+    photoZoom.ty += offY * (1 - factor);
+    photoZoom.scale = newScale;
+    if (photoZoom.scale === PHOTO_ZOOM_MIN) { photoZoom.tx = 0; photoZoom.ty = 0; }
+    applyPhotoZoom();
   }
   function resetPhotoZoom() {
     photoZoom = { scale: 1, tx: 0, ty: 0 };
@@ -10700,23 +10730,7 @@
     if (!photoModalState || cropping || addingText) return;
     e.preventDefault();
     e.stopPropagation();
-    const rect = photoModalImg.getBoundingClientRect();
-    // Cursor's offset from the image's current (already zoomed/panned)
-    // on-screen center — used to keep the point under the cursor fixed
-    // as the scale changes, so zooming feels anchored to the mouse
-    // rather than always zooming toward the photo's center.
-    const offX = e.clientX - (rect.left + rect.width / 2);
-    const offY = e.clientY - (rect.top + rect.height / 2);
-    const prevScale = photoZoom.scale;
-    const delta = -e.deltaY * 0.0018;
-    const newScale = clamp(prevScale * (1 + delta), PHOTO_ZOOM_MIN, PHOTO_ZOOM_MAX);
-    if (newScale === prevScale) return;
-    const factor = newScale / prevScale;
-    photoZoom.tx += offX * (1 - factor);
-    photoZoom.ty += offY * (1 - factor);
-    photoZoom.scale = newScale;
-    if (photoZoom.scale === PHOTO_ZOOM_MIN) { photoZoom.tx = 0; photoZoom.ty = 0; }
-    applyPhotoZoom();
+    zoomPhotoAtPoint(e.clientX, e.clientY, e.deltaY);
   }, { passive: false });
 
   // Drag to pan once zoomed in — only kicks in above 1x so a plain click
@@ -11411,7 +11425,10 @@
 
   function startAddText(initialSymbol) {
     if (addingText || cropping || !photoModalState) return;
-    resetPhotoZoom();
+    // Deliberately does NOT reset the zoom (crop still does): zooming in
+    // and then labelling a fine detail is exactly the case this tool is
+    // most useful for, so the overlay below just mirrors whatever
+    // pan/zoom is currently applied to the image instead.
     // A note-photo session (see openNotePhotoViewer) has no backing node —
     // its images live only in photoModalState.images, taken straight from
     // the note's own <img> elements — so read from there instead of the
@@ -11436,8 +11453,59 @@
     Object.assign(overlay.style, {
       position: "absolute", left: img.offsetLeft + "px", top: img.offsetTop + "px",
       width: iw + "px", height: ih + "px",
-      overflow: "hidden", borderRadius: "10px", zIndex: "5", cursor: "text", touchAction: "none"
+      overflow: "hidden", borderRadius: "10px", zIndex: "5", cursor: "text", touchAction: "none",
+      // Same box and same origin as the image, so copying the image's
+      // transform verbatim (see syncOverlayZoom) lands the overlay exactly
+      // on top of it at any zoom/pan.
+      transformOrigin: "50% 50%"
     });
+
+    // Everything inside the overlay — box.x/box.y, font sizes, the baked
+    // canvas math in Apply — stays in the image's *unzoomed* display
+    // coordinates. The zoom is purely a transform on the overlay itself,
+    // so nothing downstream has to care about it; only the handful of
+    // places that read raw screen pixels (click placement, drag deltas,
+    // resize deltas) divide by the scale to convert back.
+    function syncOverlayZoom() {
+      overlay.style.transform = photoZoom.scale === 1
+        ? ""
+        : `translate(${photoZoom.tx}px, ${photoZoom.ty}px) scale(${photoZoom.scale})`;
+      boxes.forEach(sizeHandles);
+    }
+
+    // The overlay's transform scales its children too, which would blow
+    // the little ✕/grab/resize dots up to thumb-sized blobs at 6x — so
+    // their sizes and corner offsets are divided back down by the scale,
+    // keeping them the same physical size on screen at every zoom level.
+    function sizeHandles(box) {
+      const inv = 1 / photoZoom.scale;
+      const d = 18 * inv, off = -10 * inv, bw = 1.5 * inv;
+      Object.assign(box.del.style, {
+        width: d + "px", height: d + "px", top: off + "px", right: off + "px",
+        fontSize: (10 * inv) + "px", borderWidth: bw + "px"
+      });
+      Object.assign(box.grab.style, {
+        width: d + "px", height: d + "px", top: off + "px", left: off + "px",
+        fontSize: (11 * inv) + "px", borderWidth: bw + "px"
+      });
+      Object.assign(box.resize.style, {
+        width: (14 * inv) + "px", height: (14 * inv) + "px",
+        bottom: (-8 * inv) + "px", right: (-8 * inv) + "px", borderWidth: (2 * inv) + "px"
+      });
+      // The selected-box dashes come from .bl-text-box-active in the
+      // stylesheet; these inline widths override them so the dashes don't
+      // thicken into a solid band at high zoom.
+      box.wrap.style.outlineWidth = (1.5 * inv) + "px";
+      box.wrap.style.outlineOffset = (3 * inv) + "px";
+    }
+
+    // Where the centre of the *visible* (zoomed) region falls in overlay-
+    // local coordinates — so a dropped symbol lands in view rather than
+    // at the photo's true centre, which may be far off-screen at 4x.
+    function visibleCenter() {
+      const s = photoZoom.scale;
+      return { x: iw / 2 - photoZoom.tx / s, y: ih / 2 - photoZoom.ty / s };
+    }
 
     const TEXT_COLORS = ["#ffffff", "#2b2a25", "#e0433a", "#f5b301", "#4a9e4a", "#4a72d6"];
     let currentColor = TEXT_COLORS[0];
@@ -11554,6 +11622,7 @@
       wrap.appendChild(grab);
 
       const box = { wrap, el, del, resize, grab, x, y, color: currentColor, size: currentSize };
+      sizeHandles(box); // counter-scale the controls for the current zoom
       del.addEventListener("pointerdown", (e) => e.stopPropagation());
       del.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -11574,9 +11643,14 @@
       });
       function onResizeMove(e) {
         if (!resizing) return;
-        const dx = e.clientX - resizeStart.x, dy = e.clientY - resizeStart.y;
+        // Divided by the zoom so a given hand movement changes the font by
+        // the same *visual* amount at 1x and at 6x — at high zoom that
+        // also makes fine adjustment of a small label possible, which is
+        // the point of being able to label while zoomed in.
+        const s = photoZoom.scale;
+        const dx = (e.clientX - resizeStart.x) / s, dy = (e.clientY - resizeStart.y) / s;
         const delta = (dx + dy) / 2;
-        pendingResizeSize = clamp(Math.round(resizeStart.size + delta), 10, 140);
+        pendingResizeSize = clamp(Math.round(resizeStart.size + delta), 6, 140);
         // Pointermove can fire far faster than the screen repaints (well
         // over 60/sec on a trackpad or high-poll-rate mouse). Writing
         // fontSize straight from every event forces the browser to
@@ -11629,7 +11703,8 @@
       grab.addEventListener("pointerdown", beginDrag);
       function onDrag(e) {
         if (!dragging) return;
-        const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+        const s = photoZoom.scale;
+        const dx = (e.clientX - dragStart.x) / s, dy = (e.clientY - dragStart.y) / s;
         box.x = clamp(dragStart.bx + dx, 0, Math.max(0, iw - wrap.offsetWidth));
         box.y = clamp(dragStart.by + dy, 0, Math.max(0, ih - wrap.offsetHeight));
         wrap.style.left = box.x + "px";
@@ -11653,9 +11728,13 @@
     // initialSymbol below) and for any further ones added while this
     // overlay session is still open (see addSymbolToActiveSession).
     function dropSymbol(ch) {
-      const size = 56;
-      const x = clamp((iw - size) / 2, 0, Math.max(0, iw - size));
-      const y = clamp((ih - size) / 2, 0, Math.max(0, ih - size));
+      // Scaled down by the zoom so the symbol looks the same size on
+      // screen wherever you drop it, and lands in whatever part of the
+      // photo you're actually looking at.
+      const size = clamp(Math.round(56 / photoZoom.scale), 6, 140);
+      const c = visibleCenter();
+      const x = clamp(c.x - size / 2, 0, Math.max(0, iw - size));
+      const y = clamp(c.y - size / 2, 0, Math.max(0, ih - size));
       currentSize = size;
       const box = makeBox(x, y);
       box.el.textContent = ch;
@@ -11673,14 +11752,60 @@
       dropSymbol(initialSymbol);
     }
 
+    // The overlay covers the image, so the image's own wheel/drag pan-zoom
+    // handlers never see these events — re-implement them here so you can
+    // keep zooming and panning around the photo mid-session, e.g. zoom
+    // further in after placing one label to position the next.
+    overlay.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      zoomPhotoAtPoint(e.clientX, e.clientY, e.deltaY);
+    }, { passive: false });
+
+    overlay.addEventListener("dblclick", (e) => {
+      if (e.target !== overlay) return;
+      e.stopPropagation();
+      resetPhotoZoom();
+    });
+
+    let overlayPan = null;
+    function onOverlayPanMove(e) {
+      if (!overlayPan) return;
+      photoZoom.tx = overlayPan.tx + (e.clientX - overlayPan.x);
+      photoZoom.ty = overlayPan.ty + (e.clientY - overlayPan.y);
+      applyPhotoZoom();
+    }
+    function onOverlayPanEnd() {
+      overlayPan = null;
+      overlay.style.cursor = "text";
+      document.removeEventListener("pointermove", onOverlayPanMove);
+      document.removeEventListener("pointerup", onOverlayPanEnd);
+    }
+
     overlay.addEventListener("pointerdown", (e) => {
       if (e.target !== overlay) return; // a click landed on an existing box, not empty space
-      if (!placementArmed) { deselectAll(); return; } // click away just finishes the current label
+      if (!placementArmed) {
+        // Click away just finishes the current label — and, while zoomed,
+        // doubles as the drag-to-pan gesture, since the image underneath
+        // can't receive it any more.
+        deselectAll();
+        if (photoZoom.scale > 1) {
+          e.preventDefault();
+          overlayPan = { x: e.clientX, y: e.clientY, tx: photoZoom.tx, ty: photoZoom.ty };
+          overlay.style.cursor = "grabbing";
+          document.addEventListener("pointermove", onOverlayPanMove);
+          document.addEventListener("pointerup", onOverlayPanEnd);
+        }
+        return;
+      }
       placementArmed = false;
       photoModalText.classList.remove("bl-text-armed");
       const rect = overlay.getBoundingClientRect();
-      const x = clamp(e.clientX - rect.left, 0, Math.max(0, iw - 20));
-      const y = clamp(e.clientY - rect.top, 0, Math.max(0, ih - 20));
+      // rect is the *transformed* box, so divide the click's offset back
+      // down into the image's own unzoomed coordinates.
+      const s = photoZoom.scale;
+      const x = clamp((e.clientX - rect.left) / s, 0, Math.max(0, iw - 20));
+      const y = clamp((e.clientY - rect.top) / s, 0, Math.max(0, ih - 20));
       const box = makeBox(x, y);
       selectBox(box);
       requestAnimationFrame(() => {
@@ -11721,6 +11846,22 @@
     });
     syncSwatches();
 
+    // The modal's own zoom buttons are hidden for the duration of this
+    // session (see hiddenWhileAddingText), so mirror them here — scroll
+    // still works, but a trackpad-less/touch user needs a button.
+    [["−", 1 / 1.4], ["+", 1.4], ["1:1", 0]].forEach(([label, factor]) => {
+      const zb = document.createElement("button");
+      zb.type = "button"; zb.className = "btn-ghost";
+      zb.textContent = label;
+      zb.title = factor ? (factor > 1 ? "Zoom in" : "Zoom out") : "Reset zoom";
+      Object.assign(zb.style, { padding: "2px 8px", fontSize: "12px", lineHeight: "1.4" });
+      zb.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (factor) zoomPhotoBy(factor); else resetPhotoZoom();
+      });
+      toolbar.appendChild(zb);
+    });
+
     const sizeHint = document.createElement("span");
     sizeHint.textContent = "Drag a label's corner dot to resize";
     Object.assign(sizeHint.style, {
@@ -11737,8 +11878,14 @@
 
     card.appendChild(overlay);
     card.appendChild(toolbar);
+    // Follow every later zoom/pan (wheel, buttons, drag) for as long as
+    // this session is open, and adopt the current one right now.
+    onPhotoZoomChange = syncOverlayZoom;
+    syncOverlayZoom();
 
     function cleanup() {
+      onPhotoZoomChange = null;
+      if (overlayPan) onOverlayPanEnd();
       overlay.remove();
       toolbar.remove();
       hiddenWhileAddingText.forEach(el => { el.style.display = el.dataset.prevDisplay || ""; delete el.dataset.prevDisplay; });
