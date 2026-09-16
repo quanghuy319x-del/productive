@@ -2366,14 +2366,17 @@ kbd{
    any-pointer rather than hover/pointer since those only test the
    *primary* input — a touchscreen laptop that also has a mouse would
    otherwise never match and never get the reveal-on-hover behavior.
-   The checkbox uses display:none (not opacity) so it takes no space
-   and doesn't leave an empty clickable gap while hidden; a checked
-   checkbox stays visible regardless, so a done task still reads as
-   done at a glance without hovering. Subtask checkboxes
+   The checkbox fades via opacity (like the other controls here), not
+   display:none, so it always reserves its layout space — otherwise a
+   done row (checkbox visible) and an undone row (checkbox space
+   collapsed) end up misaligned with each other. pointer-events is
+   turned off while faded so it doesn't leave an invisible clickable
+   gap. A checked checkbox stays visible regardless, so a done task
+   still reads as done at a glance without hovering. Subtask checkboxes
    (.subtask-checkbox) are a separate rule below and are untouched. */
 @media (any-hover: hover) and (any-pointer: fine) {
-  .task-checkbox{ display: none; }
-  .task-checkbox:checked{ display: inline-block; }
+  .task-checkbox{ opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+  .task-checkbox:checked{ opacity: 1; pointer-events: auto; }
   .task-drag-handle{ opacity: 0; transition: opacity .12s ease; }
   .task-star{ opacity: 0; transition: opacity .12s ease; }
   .task-star.starred{ opacity: 1; }
@@ -2383,6 +2386,8 @@ kbd{
   .task-note-btn.has-note{ opacity: 1; }
   .task-due-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-color-dot{ opacity: 0; transition: opacity .12s ease; }
+  .task-row:hover .task-checkbox,
+  .task-row:focus-within .task-checkbox,
   .task-row:hover .task-drag-handle,
   .task-row:focus-within .task-drag-handle,
   .task-row:hover .task-star,
@@ -2396,9 +2401,7 @@ kbd{
   .task-row:hover .task-due-btn,
   .task-row:focus-within .task-due-btn,
   .task-row:hover .task-color-dot,
-  .task-row:focus-within .task-color-dot{ opacity: 1; }
-  .task-row:hover .task-checkbox,
-  .task-row:focus-within .task-checkbox{ display: inline-block; }
+  .task-row:focus-within .task-color-dot{ opacity: 1; pointer-events: auto; }
 }
 .task-text{
   flex: 1 1 auto;
