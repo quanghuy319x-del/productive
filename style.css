@@ -2382,7 +2382,7 @@ kbd{
   .task-note-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-note-btn.has-note{ opacity: 1; }
   .task-due-btn{ opacity: 0; transition: opacity .12s ease; }
-  .task-color-dot-empty{ opacity: 0; transition: opacity .12s ease; }
+  .task-color-dot{ opacity: 0; transition: opacity .12s ease; }
   .task-row:hover .task-drag-handle,
   .task-row:focus-within .task-drag-handle,
   .task-row:hover .task-star,
@@ -2395,8 +2395,8 @@ kbd{
   .task-row:focus-within .task-note-btn,
   .task-row:hover .task-due-btn,
   .task-row:focus-within .task-due-btn,
-  .task-row:hover .task-color-dot-empty,
-  .task-row:focus-within .task-color-dot-empty{ opacity: 1; }
+  .task-row:hover .task-color-dot,
+  .task-row:focus-within .task-color-dot{ opacity: 1; }
   .task-row:hover .task-checkbox,
   .task-row:focus-within .task-checkbox{ display: inline-block; }
 }
