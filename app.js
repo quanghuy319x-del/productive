@@ -9546,7 +9546,51 @@
         zoomModalClose(drcTemplateModal);
       }
     });
-    drcTemplateTextarea.addEventListener("keydown", (e) => e.stopPropagation());
+    // Splits the current line into two sibling <div>s on Enter, the same
+    // way the note editor's plain-line Enter handling does (see
+    // noteHandlePlainLineEnter above) — otherwise the browser's own
+    // "insertParagraph" drops whatever color was active at the caret and
+    // the new line starts back at plain black text.
+    function drcHandlePlainLineEnter(el, sel) {
+      if (el === drcTemplateTextarea) return false; // no wrapping div yet — let the browser create the very first one
+      const caretColor = document.queryCommandValue("foreColor");
+      const range = sel.getRangeAt(0);
+      const afterRange = document.createRange();
+      afterRange.setStart(range.startContainer, range.startOffset);
+      if (el.lastChild) afterRange.setEndAfter(el.lastChild);
+      else afterRange.setEnd(range.startContainer, range.startOffset);
+      const frag = afterRange.extractContents();
+      const newDiv = document.createElement("div");
+      let newDivEmptyContent = null;
+      if (frag.hasChildNodes()) newDiv.appendChild(frag);
+      else newDiv.appendChild((newDivEmptyContent = noteEmptyLineContent(caretColor)));
+      if (!el.hasChildNodes()) el.appendChild(noteEmptyLineContent(caretColor));
+      el.parentNode.insertBefore(newDiv, el.nextSibling);
+      const caretRange = document.createRange();
+      if (newDivEmptyContent && newDivEmptyContent.nodeName === "FONT") {
+        caretRange.setStart(newDivEmptyContent, 0);
+      } else {
+        caretRange.selectNodeContents(newDiv);
+      }
+      caretRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(caretRange);
+      scrollCaretIntoView(newDiv);
+      return true;
+    }
+    function drcHandleEnter() {
+      const sel = window.getSelection();
+      if (!sel.rangeCount || !sel.getRangeAt(0).collapsed) return false;
+      const lineDiv = noteCurrentLine(drcTemplateTextarea);
+      const el = lineDiv || drcTemplateTextarea;
+      return drcHandlePlainLineEnter(el, sel);
+    }
+    drcTemplateTextarea.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter" && !e.shiftKey) {
+        if (drcHandleEnter()) e.preventDefault();
+      }
+    });
 
     // ---- Text color, same trigger+popover+swatch pattern as the note
     // editor's own color picker (see noteApplyForeColor and friends), just
