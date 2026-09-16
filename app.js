@@ -10589,8 +10589,8 @@
   const photoModalCombine = document.createElement("button");
   photoModalCombine.id = "photo-modal-combine";
   photoModalCombine.className = "photo-modal-toolbar-btn";
-  photoModalCombine.title = "Paste a photo above or below this one";
-  photoModalCombine.setAttribute("aria-label", "Paste a photo above or below this one");
+  photoModalCombine.title = "Paste a photo above, below, left, or right of this one";
+  photoModalCombine.setAttribute("aria-label", "Paste a photo above, below, left, or right of this one");
   photoModalCombine.textContent = "⬍";
 
   // Favorite star — same ☆/★ toggle as the note editor and link/video
@@ -10676,18 +10676,19 @@
     if (!photoModalSymbolPopover.classList.contains("hidden")) positionPhotoSymbolPopover();
   });
 
-  // ---- Combine (paste a photo above/below) ----
-  // Pick a side, paste an image, and the two are stitched into one taller
-  // photo that replaces the current one. Deliberately no options: always
-  // vertical, always at each image's own native pixel size (nothing is
-  // rescaled, so neither half loses detail), and encoded at quality 1.0
-  // through the same encodePhotoCanvas the crop/text tools use.
+  // ---- Combine (paste a photo above/below/left/right) ----
+  // Pick a side, paste an image, and the two are stitched into one larger
+  // photo that replaces the current one. Deliberately no other options:
+  // above/below stitch vertically, left/right stitch horizontally, always
+  // at each image's own native pixel size (nothing is rescaled, so
+  // neither half loses detail), and encoded at quality 1.0 through the
+  // same encodePhotoCanvas the crop/text tools use.
   const photoCombinePopover = document.createElement("div");
   photoCombinePopover.id = "photo-modal-combine-popover";
   photoCombinePopover.className = "photo-modal-symbol-popover hidden";
   photoCombinePopover.style.flexDirection = "column";
   photoCombinePopover.style.maxWidth = "none";
-  [["above", "⬆  Paste above"], ["below", "⬇  Paste below"]].forEach(([where, label]) => {
+  [["above", "⬆  Paste above"], ["below", "⬇  Paste below"], ["left", "⬅  Paste left"], ["right", "➡  Paste right"]].forEach(([where, label]) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "photo-modal-symbol-swatch";
@@ -10782,14 +10783,21 @@
   // refuse rather than replacing a good photo with an empty one.
   const PHOTO_COMBINE_MAX_PX = 32000;
 
-  async function combineTwoVertically(baseSrc, addSrc, where) {
+  async function combineTwo(baseSrc, addSrc, where) {
     const [baseImg, addImg] = await Promise.all([loadImageElement(baseSrc), loadImageElement(addSrc)]);
-    const top = where === "above" ? addImg : baseImg;
-    const bottom = where === "above" ? baseImg : addImg;
-    const width = Math.max(top.naturalWidth, bottom.naturalWidth);
-    const height = top.naturalHeight + bottom.naturalHeight;
+    const vertical = where === "above" || where === "below";
+    // For above/below the added image goes first (top) or second (bottom);
+    // for left/right the same slot logic applies along the horizontal axis.
+    const first = (where === "above" || where === "left") ? addImg : baseImg;
+    const second = (where === "above" || where === "left") ? baseImg : addImg;
+    const width = vertical
+      ? Math.max(first.naturalWidth, second.naturalWidth)
+      : first.naturalWidth + second.naturalWidth;
+    const height = vertical
+      ? first.naturalHeight + second.naturalHeight
+      : Math.max(first.naturalHeight, second.naturalHeight);
     if (height > PHOTO_COMBINE_MAX_PX || width > PHOTO_COMBINE_MAX_PX) {
-      throw new Error("The combined photo would be too tall for the browser to render.");
+      throw new Error(`The combined photo would be too ${vertical ? "tall" : "wide"} for the browser to render.`);
     }
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -10797,17 +10805,22 @@
     const ctx = canvas.getContext("2d");
     // Only stays lossless/transparent when BOTH halves are PNG; otherwise
     // the result goes out as WebP/JPEG, where transparency wouldn't
-    // survive anyway, so any width difference is padded white instead of
+    // survive anyway, so any size difference is padded white instead of
     // left as black.
     const isPng = baseSrc.startsWith("data:image/png") && addSrc.startsWith("data:image/png");
     if (!isPng) {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
     }
-    // Each half is drawn at 1:1 and centered, so the narrower one gets
-    // padding rather than being stretched to match.
-    ctx.drawImage(top, Math.round((width - top.naturalWidth) / 2), 0);
-    ctx.drawImage(bottom, Math.round((width - bottom.naturalWidth) / 2), top.naturalHeight);
+    // Each half is drawn at 1:1 and centered on the cross-axis, so the
+    // smaller one gets padding rather than being stretched to match.
+    if (vertical) {
+      ctx.drawImage(first, Math.round((width - first.naturalWidth) / 2), 0);
+      ctx.drawImage(second, Math.round((width - second.naturalWidth) / 2), first.naturalHeight);
+    } else {
+      ctx.drawImage(first, 0, Math.round((height - first.naturalHeight) / 2));
+      ctx.drawImage(second, first.naturalWidth, Math.round((height - second.naturalHeight) / 2));
+    }
     return encodePhotoCanvas(canvas, isPng ? "image/png" : "image/jpeg", width * height, 1.0);
   }
 
@@ -10869,7 +10882,7 @@
     combiningPhoto = true;
     photoModalCombine.disabled = true;
     try {
-      replacePhotoModalImage(await combineTwoVertically(baseSrc, addSrc, where));
+      replacePhotoModalImage(await combineTwo(baseSrc, addSrc, where));
       showToast(`Photo added ${where}`);
     } catch (err) {
       showToast(err && err.message ? err.message : "Couldn't combine those photos.");
@@ -11756,7 +11769,7 @@
       return { x: iw / 2 - photoZoom.tx / s, y: ih / 2 - photoZoom.ty / s };
     }
 
-    const TEXT_COLORS = ["#ffffff", "#2b2a25", "#e0433a", "#f5b301", "#4a9e4a", "#4a72d6"];
+    const TEXT_COLORS = ["#e0433a", "#ffffff", "#2b2a25", "#f5b301", "#4a9e4a", "#4a72d6"];
     let currentColor = TEXT_COLORS[0];
     let currentSize = 28; // px, at the displayed (not natural) scale
     const boxes = [];
