@@ -10683,20 +10683,31 @@
   // at each image's own native pixel size (nothing is rescaled, so
   // neither half loses detail), and encoded at quality 1.0 through the
   // same encodePhotoCanvas the crop/text tools use.
+  //
+  // Laid out as a directional pad (a plus sign) rather than a stacked
+  // list, so each button's position matches the side it pastes onto —
+  // above sits on top, left/right flank the middle, below sits on the
+  // bottom — which reads at a glance instead of needing the arrow +
+  // label text to spell it out.
   const photoCombinePopover = document.createElement("div");
   photoCombinePopover.id = "photo-modal-combine-popover";
-  photoCombinePopover.className = "photo-modal-symbol-popover hidden";
-  photoCombinePopover.style.flexDirection = "column";
+  photoCombinePopover.className = "photo-modal-symbol-popover hidden photo-modal-combine-dpad";
   photoCombinePopover.style.maxWidth = "none";
-  [["above", "⬆  Paste above"], ["below", "⬇  Paste below"], ["left", "⬅  Paste left"], ["right", "➡  Paste right"]].forEach(([where, label]) => {
+  photoCombinePopover.style.display = "grid";
+  photoCombinePopover.style.gridTemplateAreas = '". above ." "left . right" ". below ."';
+  photoCombinePopover.style.gridTemplateColumns = "repeat(3, 30px)";
+  photoCombinePopover.style.gridTemplateRows = "repeat(3, 30px)";
+  photoCombinePopover.style.gap = "4px";
+  [["above", "⬆", "Paste above"], ["below", "⬇", "Paste below"], ["left", "⬅", "Paste left"], ["right", "➡", "Paste right"]].forEach(([where, arrow, label]) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "photo-modal-symbol-swatch";
-    btn.textContent = label;
-    Object.assign(btn.style, {
-      width: "auto", height: "26px", padding: "0 10px",
-      fontSize: "12px", justifyContent: "flex-start", whiteSpace: "nowrap"
-    });
+    btn.textContent = arrow;
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+    btn.style.gridArea = where;
+    btn.style.width = "100%";
+    btn.style.height = "100%";
     btn.addEventListener("mousedown", (e) => e.preventDefault());
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
