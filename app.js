@@ -10693,7 +10693,6 @@
   photoCombinePopover.id = "photo-modal-combine-popover";
   photoCombinePopover.className = "photo-modal-symbol-popover hidden photo-modal-combine-dpad";
   photoCombinePopover.style.maxWidth = "none";
-  photoCombinePopover.style.display = "grid";
   photoCombinePopover.style.gridTemplateAreas = '". above ." "left . right" ". below ."';
   photoCombinePopover.style.gridTemplateColumns = "repeat(3, 30px)";
   photoCombinePopover.style.gridTemplateRows = "repeat(3, 30px)";
@@ -10720,10 +10719,12 @@
 
   function openPhotoCombinePopover() {
     photoCombinePopover.classList.remove("hidden");
+    photoCombinePopover.style.display = "grid";
     positionPhotoCombinePopover();
   }
   function closePhotoCombinePopover() {
     photoCombinePopover.classList.add("hidden");
+    photoCombinePopover.style.display = "";
   }
   function positionPhotoCombinePopover() {
     const margin = 8;
