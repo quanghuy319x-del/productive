@@ -13365,6 +13365,15 @@
   // typing. But if the caret was at the very start of the line (nothing
   // typed before it), the images go above that line instead, since that's
   // where a cursor at position zero implies the photo(s) belong.
+  //
+  // Every newly inserted photo starts at 20% of the note's own default
+  // display size — the same width/height style.css falls back to (see
+  // .note-textarea img: width min(420px,100%), height 300px) — rather
+  // than full size, since a freshly dropped-in photo is more often
+  // glanced at than read closely; the ➖/➕ buttons (see
+  // noteImageShrinkBtn/noteImageGrowBtn below) resize it from there.
+  const NOTE_IMG_DEFAULT_INSERT_WIDTH = 84;  // 20% of the 420px default width
+  const NOTE_IMG_DEFAULT_INSERT_HEIGHT = 60; // 20% of the 300px default height
   function noteInsertImages(dataUrls, targetLine, atStart) {
     noteTextarea.focus();
     notePushUndo();
@@ -13384,6 +13393,8 @@
         const imgLine = document.createElement("div");
         const img = document.createElement("img");
         img.src = dataUrl;
+        img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
+        img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
         imgLine.appendChild(img);
         parent.insertBefore(imgLine, lineDiv);
       });
@@ -13400,6 +13411,8 @@
         const imgLine = document.createElement("div");
         const img = document.createElement("img");
         img.src = dataUrl;
+        img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
+        img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
         imgLine.appendChild(img);
         parent.insertBefore(imgLine, cursor ? cursor.nextSibling : null);
         cursor = imgLine;
@@ -13412,6 +13425,7 @@
     }
     scheduleNoteAutosave();
   }
+
 
   // Single-image convenience wrapper (used by clipboard paste, which only
   // ever offers one image at a time).
