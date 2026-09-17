@@ -13546,14 +13546,14 @@
     }
   });
 
-  // ---- Shrink button for inline note photos ----
-  // A small "−" button that hovers over whichever note image the pointer
-  // is currently over, so the photo's display size can be shrunk with one
-  // click instead of dragging the resize handle in its corner (see the
-  // resize:both rule on .note-textarea img in style.css). Kept as a single
-  // floating element positioned over whichever image is hovered, rather
-  // than one button per image, so nothing extra needs wiring up when new
-  // images are pasted or dropped in.
+  // ---- Shrink/grow buttons for inline note photos ----
+  // A small "−" and "+" pair that hover over whichever note image the
+  // pointer is currently over, so the photo's display size can be shrunk
+  // or grown back with one click instead of dragging the resize handle in
+  // its corner (see the resize:both rule on .note-textarea img in
+  // style.css). Kept as a single floating pair positioned over whichever
+  // image is hovered, rather than one pair per image, so nothing extra
+  // needs wiring up when new images are pasted or dropped in.
   const noteImageShrinkBtn = document.createElement("button");
   noteImageShrinkBtn.type = "button";
   noteImageShrinkBtn.className = "note-img-shrink-btn hidden";
@@ -13562,27 +13562,40 @@
   noteImageShrinkBtn.textContent = "−";
   document.body.appendChild(noteImageShrinkBtn);
 
+  const noteImageGrowBtn = document.createElement("button");
+  noteImageGrowBtn.type = "button";
+  noteImageGrowBtn.className = "note-img-shrink-btn note-img-grow-btn hidden";
+  noteImageGrowBtn.title = "Make this photo bigger";
+  noteImageGrowBtn.setAttribute("aria-label", "Make this photo bigger");
+  noteImageGrowBtn.textContent = "+";
+  document.body.appendChild(noteImageGrowBtn);
+
   let noteImageShrinkTarget = null;
 
   function positionNoteImageShrinkBtn(img) {
     const rect = img.getBoundingClientRect();
-    noteImageShrinkBtn.style.left = `${rect.right - 26}px`;
+    noteImageGrowBtn.style.left = `${rect.right - 26}px`;
+    noteImageGrowBtn.style.top = `${rect.top + 4}px`;
+    noteImageShrinkBtn.style.left = `${rect.right - 52}px`;
     noteImageShrinkBtn.style.top = `${rect.top + 4}px`;
   }
   function showNoteImageShrinkBtn(img) {
     noteImageShrinkTarget = img;
     positionNoteImageShrinkBtn(img);
     noteImageShrinkBtn.classList.remove("hidden");
+    noteImageGrowBtn.classList.remove("hidden");
   }
   function hideNoteImageShrinkBtn() {
     noteImageShrinkTarget = null;
     noteImageShrinkBtn.classList.add("hidden");
+    noteImageGrowBtn.classList.add("hidden");
   }
   noteTextarea.addEventListener("mouseover", (e) => {
     if (e.target && e.target.tagName === "IMG") showNoteImageShrinkBtn(e.target);
   });
   noteTextarea.addEventListener("mouseout", (e) => {
-    if (e.target && e.target.tagName === "IMG" && !noteImageShrinkBtn.contains(e.relatedTarget)) {
+    if (e.target && e.target.tagName === "IMG" &&
+        !noteImageShrinkBtn.contains(e.relatedTarget) && !noteImageGrowBtn.contains(e.relatedTarget)) {
       hideNoteImageShrinkBtn();
     }
   });
@@ -13595,17 +13608,36 @@
   // Prevent the mousedown from stealing focus/selection out of the note,
   // same pattern as the symbol/color popovers.
   noteImageShrinkBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  noteImageGrowBtn.addEventListener("mousedown", (e) => e.preventDefault());
   noteImageShrinkBtn.addEventListener("mouseleave", hideNoteImageShrinkBtn);
+  noteImageGrowBtn.addEventListener("mouseleave", hideNoteImageShrinkBtn);
+  const NOTE_IMG_MIN_WIDTH = 80;
+  const NOTE_IMG_MIN_HEIGHT = 60;
   noteImageShrinkBtn.addEventListener("click", (e) => {
     e.preventDefault();
     const img = noteImageShrinkTarget;
     if (!img) return;
     const NOTE_IMG_SHRINK_FACTOR = 0.2;
-    const NOTE_IMG_MIN_WIDTH = 80;
-    const NOTE_IMG_MIN_HEIGHT = 60;
     notePushUndo();
     const w = Math.max(NOTE_IMG_MIN_WIDTH, Math.round(img.offsetWidth * NOTE_IMG_SHRINK_FACTOR));
     const h = Math.max(NOTE_IMG_MIN_HEIGHT, Math.round(img.offsetHeight * NOTE_IMG_SHRINK_FACTOR));
+    img.style.width = `${w}px`;
+    img.style.height = `${h}px`;
+    positionNoteImageShrinkBtn(img);
+    scheduleNoteAutosave();
+  });
+  // Grows back by the shrink button's inverse (5x), capped at the photo's
+  // own natural resolution so it never upscales past its real pixel size.
+  noteImageGrowBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const img = noteImageShrinkTarget;
+    if (!img) return;
+    const NOTE_IMG_GROW_FACTOR = 5;
+    notePushUndo();
+    const maxW = img.naturalWidth || Infinity;
+    const maxH = img.naturalHeight || Infinity;
+    const w = Math.min(maxW, Math.round(img.offsetWidth * NOTE_IMG_GROW_FACTOR));
+    const h = Math.min(maxH, Math.round(img.offsetHeight * NOTE_IMG_GROW_FACTOR));
     img.style.width = `${w}px`;
     img.style.height = `${h}px`;
     positionNoteImageShrinkBtn(img);
