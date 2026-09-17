@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=72">
+<link rel="stylesheet" href="style.css?v=73">
 </head>
 <body>
 <div id="app">
@@ -256,6 +256,7 @@
          chain near photoModalToolbarTop in app.js. -->
     <div id="photo-modal-toolbar-top" class="photo-modal-toolbar photo-modal-toolbar-top">
       <button id="photo-modal-comment-toggle" class="photo-modal-toolbar-btn" title="Add/view comment" aria-label="Add or view comment">💬</button>
+      <button id="photo-modal-folder" class="photo-modal-toolbar-btn" title="Move to folder" aria-label="Move to folder">📁</button>
       <button id="photo-modal-delete" class="photo-modal-toolbar-btn" title="Delete this photo" aria-label="Delete this photo">🗑</button>
       <button id="photo-modal-close" class="photo-modal-toolbar-btn" title="Close" aria-label="Close">✕</button>
     </div>
@@ -320,6 +321,7 @@
     <div class="video-modal-actions">
       <a id="video-modal-open-link" class="video-modal-open-link" target="_blank" rel="noopener">Open on YouTube ↗</a>
       <button id="video-modal-favorite" class="video-modal-size item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
+      <button id="video-modal-folder" class="video-modal-size" title="Move to folder" aria-label="Move to folder">📁</button>
       <button id="video-modal-minimize" class="video-modal-size" title="Minimize player" aria-label="Minimize player">─</button>
       <button id="video-modal-size" class="video-modal-size" title="Make player bigger" aria-label="Change player size">⤢</button>
       <button id="video-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
@@ -552,6 +554,7 @@
       <span class="note-nav-gap"></span>
       <button type="button" id="note-nav-add" class="note-nav-btn" title="Start a new note on this node">+ New note</button>
       <button type="button" id="note-nav-favorite" class="note-nav-btn item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
+      <button type="button" id="note-nav-folder" class="note-nav-btn" title="Move to folder" aria-label="Move to folder">📁</button>
       <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
       <button type="button" id="note-nav-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
@@ -782,6 +785,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=145"></script>
+<script src="app.js?v=146"></script>
 </body>
 </html>

@@ -3188,6 +3188,7 @@
       labelSpan.addEventListener("click", () => {
         closeContextMenu();
         openLinkSmart(u, {
+          videoKey: `${nodeId}|${u}`,
           get: () => getLinkComment(findNode(nodeId) || node, u),
           set: (v) => setLinkComment(findNode(nodeId) || node, u, v),
           getFavorite: () => getLinkFavorite(findNode(nodeId) || node, u),
@@ -7000,6 +7001,7 @@
           urlIcon.addEventListener("click", (e) => {
             e.stopPropagation();
             openLinkSmart(u, {
+              videoKey: `${node.id}|${u}`,
               get: () => getLinkComment(findNode(node.id) || node, u),
               set: (v) => setLinkComment(findNode(node.id) || node, u, v),
               getFavorite: () => getLinkFavorite(findNode(node.id) || node, u),
@@ -10039,6 +10041,7 @@
   const videoModalIframe = $("#video-modal-iframe");
   const videoModalOpenLink = $("#video-modal-open-link");
   const videoModalFavoriteBtn = $("#video-modal-favorite");
+  const videoModalFolderBtn = $("#video-modal-folder");
   const videoModalMinimizeBtn = $("#video-modal-minimize");
   const videoModalSizeBtn = $("#video-modal-size");
   const videoModalCloseBtn = $("#video-modal-close");
@@ -10184,6 +10187,7 @@
     videoModalCommentInput.value = commentCtx ? commentCtx.get() : "";
     videoModalCommentRow.classList.toggle("hidden", !commentCtx);
     renderVideoModalFavorite();
+    renderVideoModalFolder();
     renderVideoModalPhotos();
     zoomModalOpen(videoModal);
     if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
@@ -10238,6 +10242,28 @@
     persist();
     renderVideoModalFavorite();
   });
+  // Same "📁, dotted when filed" idea as the note/photo viewers — keyed
+  // by videoKey (nodeId|url, same shape collectAllVideos uses), which
+  // only node-level links carry (see the videoKey additions above) —
+  // a cell-scoped link's commentCtx has neither this nor getFavorite,
+  // so the button stays hidden there, same split as the favorite star.
+  function renderVideoModalFolder() {
+    if (!videoModalFolderBtn) return;
+    const key = videoModalCommentCtx && videoModalCommentCtx.videoKey;
+    videoModalFolderBtn.style.display = key ? "" : "none";
+    if (!key) return;
+    const folder = videosFolderMgr.folderOf(key);
+    videoModalFolderBtn.title = folder ? `In folder: ${folder}` : "Move to folder";
+    videoModalFolderBtn.classList.toggle("has-folder", !!folder);
+  }
+  if (videoModalFolderBtn) {
+    videoModalFolderBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = videoModalCommentCtx && videoModalCommentCtx.videoKey;
+      if (!key) return;
+      openFolderMovePopover(videoModalFolderBtn, videosFolderMgr, key, renderVideoModalFolder);
+    });
+  }
   function closeVideoModal() {
     if (ytPlayer && ytPlayerCurrentId && typeof ytPlayer.getCurrentTime === "function") {
       try { saveYtPosition(ytPlayerCurrentId, ytPlayer.getCurrentTime()); } catch {}
@@ -10774,6 +10800,7 @@
   const photoModalNext = $("#photo-modal-next");
   const photoModalCount = $("#photo-modal-count");
   const photoModalDelete = $("#photo-modal-delete");
+  const photoModalFolder = $("#photo-modal-folder");
   const photoModalTags = $("#photo-modal-tags");
   const photoModalTagChips = $("#photo-modal-tag-chips");
   const photoModalTagInput = $("#photo-modal-tag-input");
@@ -11335,6 +11362,7 @@
     photoModalTags.style.display = notePhoto ? "none" : "";
     photoModalCommentRow.style.display = notePhoto ? "none" : "";
     photoModalDelete.style.display = notePhoto ? "none" : "";
+    if (photoModalFolder) photoModalFolder.style.display = notePhoto ? "none" : "";
     photoModalCrop.style.display = notePhoto ? "none" : "";
     photoModalText.style.display = "";
     photoModalSymbol.style.display = "";
@@ -11348,6 +11376,19 @@
     renderPhotoModalTags();
     renderPhotoModalComment();
     renderPhotoModalFavorite();
+    updatePhotoModalFolderUI();
+  }
+
+  // Same 📁-with-a-dot idea as the note editor's folder button — see
+  // updateNoteFolderUI — keyed by the photo's own id (getNodeImageIds),
+  // the same id the Photos browser files it under.
+  function updatePhotoModalFolderUI() {
+    if (!photoModalFolder || !photoModalState || photoModalState.noteMode) return;
+    const node = findNode(photoModalState.nodeId);
+    const id = node && getNodeImageIds(node)[photoModalState.index];
+    const folder = id ? photosFolderMgr.folderOf(id) : null;
+    photoModalFolder.title = folder ? `In folder: ${folder}` : "Move to folder";
+    photoModalFolder.classList.toggle("has-folder", !!folder);
   }
 
   // Syncs the ☆/★ favorite button to match whichever photo is currently
@@ -11575,6 +11616,17 @@
   }
   photoModalZoomIn.addEventListener("click", (e) => { e.stopPropagation(); zoomPhotoBy(1.4); });
   photoModalZoomOut.addEventListener("click", (e) => { e.stopPropagation(); zoomPhotoBy(1 / 1.4); });
+  if (photoModalFolder) {
+    photoModalFolder.addEventListener("mousedown", (e) => e.preventDefault());
+    photoModalFolder.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!photoModalState || photoModalState.noteMode) return;
+      const node = findNode(photoModalState.nodeId);
+      const id = node && getNodeImageIds(node)[photoModalState.index];
+      if (!id) return;
+      openFolderMovePopover(photoModalFolder, photosFolderMgr, id, updatePhotoModalFolderUI);
+    });
+  }
   photoModalDelete.addEventListener("click", (e) => {
     e.stopPropagation();
     if (!photoModalState || photoModalState.noteMode) return;
@@ -12525,6 +12577,7 @@
   let noteActiveIndex = 0;
   const noteNavAdd = $("#note-nav-add");
   const noteNavFavorite = $("#note-nav-favorite");
+  const noteNavFolder = $("#note-nav-folder");
   const noteNavDelete = $("#note-nav-delete");
 
   // ---- Note editor undo/redo ----
@@ -12916,6 +12969,7 @@
     updateNoteNavUI();
     updateNoteLineCount();
     updateNoteFavoriteUI();
+    updateNoteFolderUI();
     updateNoteColorToolAvailability();
     noteDownscaleOversizedImagesInEditor();
   }
@@ -12970,6 +13024,22 @@
   function updateNoteNavUI() {
     // No more pager buttons/label to sync — paging between notes is now
     // keyboard-only (Alt+←/→), see the keydown handlers below.
+  }
+
+  // Syncs the 📁 button in the note editor's nav row to whichever note is
+  // currently loaded — hidden for a DRC note, same reasoning as the
+  // Notes browser rows (see the isDRC branch in buildNoteBrowserRow):
+  // its folder isn't a choice, syncDRCFolderAssignments would just put
+  // it straight back, so a button here would silently undo itself.
+  function updateNoteFolderUI() {
+    if (!noteNavFolder) return;
+    const current = noteWorkingList[noteActiveIndex];
+    const isDRC = !!(current && isDRCNote(current));
+    noteNavFolder.classList.toggle("hidden", isDRC);
+    if (isDRC) return;
+    const folder = current ? notesFolderMgr.folderOf(current.id) : null;
+    noteNavFolder.title = folder ? `In folder: ${folder}` : "Move to folder";
+    noteNavFolder.classList.toggle("has-folder", !!folder);
   }
 
   // Reads whatever's currently in the editor (title + body) back into the
@@ -14083,6 +14153,15 @@
   noteNavAdd.addEventListener("click", addAnotherNote);
   noteNavFavorite.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavFavorite.addEventListener("click", toggleNoteFavorite);
+  if (noteNavFolder) {
+    noteNavFolder.addEventListener("mousedown", (e) => e.preventDefault());
+    noteNavFolder.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const current = noteWorkingList[noteActiveIndex];
+      if (!current) return;
+      openFolderMovePopover(noteNavFolder, notesFolderMgr, current.id, updateNoteFolderUI);
+    });
+  }
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
   $("#note-nav-close").addEventListener("click", closeNoteModal);
@@ -17749,6 +17828,7 @@
       // own icon on the canvas (see openLinkSmart): a video opens in the
       // in-app player, anything else opens its own popup window.
       openLinkSmart(item.url, {
+        videoKey: `${item.nodeId}|${item.url}`,
         get: () => getLinkComment(findNode(item.nodeId) || node, item.url),
         set: (v) => setLinkComment(findNode(item.nodeId) || node, item.url, v),
         getFavorite: () => getLinkFavorite(findNode(item.nodeId) || node, item.url),
@@ -18646,6 +18726,7 @@
     if (!node) return;
     closeVideosBrowserModal();
     openLinkSmart(it.url, {
+      videoKey: `${it.nodeId}|${it.url}`,
       get: () => getLinkComment(findNode(it.nodeId) || node, it.url),
       set: (v) => setLinkComment(findNode(it.nodeId) || node, it.url, v),
       getFavorite: () => getLinkFavorite(findNode(it.nodeId) || node, it.url),

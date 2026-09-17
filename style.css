@@ -1989,6 +1989,30 @@ kbd{
 }
 .note-nav-btn:hover{ border-color: var(--paper-text-dim); background:#f2f0e6; color: var(--paper-text); }
 .note-nav-btn-danger:hover{ color:#b5504a; border-color:#b5504a; }
+.note-nav-btn.hidden{ display:none; }
+
+/* Small dot on any of the three viewers' 📁 buttons (note editor, photo
+   viewer, video player) once the item is actually filed into a folder —
+   the button itself never changes shape/label, just this one hint that
+   there's an active folder to know about (see the .has-folder toggles
+   in app.js's updateNoteFolderUI/updatePhotoModalFolderUI/
+   renderVideoModalFolder). */
+.note-nav-btn.has-folder,
+.photo-modal-toolbar-btn.has-folder,
+.video-modal-size.has-folder{ position:relative; }
+.note-nav-btn.has-folder::after,
+.photo-modal-toolbar-btn.has-folder::after,
+.video-modal-size.has-folder::after{
+  content:"";
+  position:absolute;
+  top:1px; right:1px;
+  width:6px; height:6px;
+  border-radius:50%;
+  background: var(--accent, #499FE0);
+  box-shadow: 0 0 0 1.5px var(--panel, #1c1c1c);
+}
+.note-nav-btn.has-folder::after{ box-shadow: 0 0 0 1.5px #ffffff; }
+
 
 .note-toolbar{
   flex: none;
