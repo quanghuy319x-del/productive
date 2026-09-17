@@ -10241,6 +10241,7 @@
     videoModalCommentCtx.setFavorite(!videoModalCommentCtx.getFavorite());
     persist();
     renderVideoModalFavorite();
+    renderVideoModalFolder();
   });
   // Same "📁, dotted when filed" idea as the note/photo viewers — keyed
   // by videoKey (nodeId|url, same shape collectAllVideos uses), which
@@ -10252,6 +10253,12 @@
     const key = videoModalCommentCtx && videoModalCommentCtx.videoKey;
     videoModalFolderBtn.style.display = key ? "" : "none";
     if (!key) return;
+    // Hidden once starred — same reasoning as Notes/Photos:
+    // syncVideosFavoriteFolderAssignments (next Videos-browser render)
+    // will claim it for Favorite regardless.
+    const fav = videoModalCommentCtx.getFavorite && videoModalCommentCtx.getFavorite();
+    videoModalFolderBtn.classList.toggle("hidden", !!fav);
+    if (fav) return;
     const folder = videosFolderMgr.folderOf(key);
     videoModalFolderBtn.title = folder ? `In folder: ${folder}` : "Move to folder";
     videoModalFolderBtn.classList.toggle("has-folder", !!folder);
@@ -11386,6 +11393,14 @@
     if (!photoModalFolder || !photoModalState || photoModalState.noteMode) return;
     const node = findNode(photoModalState.nodeId);
     const id = node && getNodeImageIds(node)[photoModalState.index];
+    // Hidden once starred — same reasoning as the Photos browser's own
+    // rows: syncPhotosFavoriteFolderAssignments (which runs the next
+    // time the Photos browser itself renders) will claim this photo for
+    // Favorite regardless, so offering a manual choice here would just
+    // be undone.
+    const fav = id && getPhotoFavorite(node, id);
+    photoModalFolder.classList.toggle("hidden", !!fav);
+    if (fav) return;
     const folder = id ? photosFolderMgr.folderOf(id) : null;
     photoModalFolder.title = folder ? `In folder: ${folder}` : "Move to folder";
     photoModalFolder.classList.toggle("has-folder", !!folder);
@@ -11599,6 +11614,7 @@
     togglePhotoFavorite(node, id);
     persist();
     renderPhotoModalFavorite();
+    updatePhotoModalFolderUI();
   });
   // Zoom buttons — same centered zoom math as the scroll-wheel handler
   // below, just anchored to the image's center instead of the cursor.
@@ -13018,6 +13034,7 @@
     captureActiveNote();
     current.favorite = !current.favorite;
     updateNoteFavoriteUI();
+    updateNoteFolderUI();
     commitNotesToNode();
   }
 
@@ -13027,16 +13044,17 @@
   }
 
   // Syncs the 📁 button in the note editor's nav row to whichever note is
-  // currently loaded — hidden for a DRC note, same reasoning as the
-  // Notes browser rows (see the isDRC branch in buildNoteBrowserRow):
-  // its folder isn't a choice, syncDRCFolderAssignments would just put
-  // it straight back, so a button here would silently undo itself.
+  // currently loaded — hidden for a DRC note or a starred one, same
+  // reasoning as the Notes browser rows (see the isDRC/favorite branch
+  // in buildNoteBrowserRow): either one's folder isn't a choice —
+  // syncDRCFolderAssignments/syncFavoriteFolderAssignments would just
+  // put it straight back — so a button here would silently undo itself.
   function updateNoteFolderUI() {
     if (!noteNavFolder) return;
     const current = noteWorkingList[noteActiveIndex];
-    const isDRC = !!(current && isDRCNote(current));
-    noteNavFolder.classList.toggle("hidden", isDRC);
-    if (isDRC) return;
+    const forced = !!(current && (isDRCNote(current) || current.favorite));
+    noteNavFolder.classList.toggle("hidden", forced);
+    if (forced) return;
     const folder = current ? notesFolderMgr.folderOf(current.id) : null;
     noteNavFolder.title = folder ? `In folder: ${folder}` : "Move to folder";
     noteNavFolder.classList.toggle("has-folder", !!folder);
@@ -17870,9 +17888,10 @@
     const name = document.createElement("span");
     name.className = "favoritesbrowser-row-name";
     name.textContent = it.nodeLabel;
+      name.title = it.nodeLabel;
     const preview = document.createElement("span");
     preview.className = "favoritesbrowser-row-preview";
-    preview.textContent = it.preview.length > 90 ? it.preview.slice(0, 89) + "…" : it.preview;
+    preview.textContent = it.preview;
     text.append(name, preview);
 
     const star = document.createElement("span");
@@ -18227,11 +18246,20 @@
   const notesBrowserList = $("#notesbrowser-list");
   const notesBrowserSearch = $("#notesbrowser-search");
   const notesBrowserFoldersEl = $("#notesbrowser-folders");
-  const notesBrowserSortBtns = [$("#notesbrowser-sort-date"), $("#notesbrowser-sort-favorite"), $("#notesbrowser-sort-alpha")];
+  const notesBrowserSortBtns = [$("#notesbrowser-sort-date"), $("#notesbrowser-sort-alpha")];
   // The one browser where DRC means something — see
   // syncDRCFolderAssignments below, which keeps it filled automatically.
   const DRC_FOLDER = "DRC";
-  const notesFolderMgr = createFolderManager("notes", { defaults: [DRC_FOLDER] });
+  // Shared with the Photos and Videos browsers below — a folder every
+  // browser maintains the same way (auto-filled, protected from manual
+  // move/delete), for the same reason DRC is: the sort-by-favorite
+  // button it replaces only ever gave you "favorites first in this one
+  // list, until you close it" — the star ended up cleared when you
+  // reopened the browser tomorrow and it had already sorted by date
+  // again. A real folder persists and is one click away from any
+  // browser's "All" view.
+  const FAVORITE_FOLDER = "Favorite";
+  const notesFolderMgr = createFolderManager("notes", { defaults: [DRC_FOLDER, FAVORITE_FOLDER] });
   let notesBrowserItems = [];
 
 
@@ -18293,9 +18321,7 @@
   function sortNotesBrowserItems(items) {
     const sorted = items.slice();
     const dir = notesBrowserSortState.dir === "asc" ? 1 : -1;
-    if (notesBrowserSortState.sort === "favorite") {
-      sorted.sort((a, b) => (((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (b.ts - a.ts)) * dir);
-    } else if (notesBrowserSortState.sort === "alpha") {
+    if (notesBrowserSortState.sort === "alpha") {
       sorted.sort((a, b) => noteBrowserRowLabel(a).localeCompare(noteBrowserRowLabel(b)) * dir);
     } else {
       sorted.sort((a, b) => (b.ts - a.ts) * dir);
@@ -18356,7 +18382,8 @@
     const name = document.createElement("span");
     name.className = "favoritesbrowser-row-name";
     const label = noteBrowserRowLabel(it);
-    name.textContent = label.length > 90 ? label.slice(0, 89) + "…" : label;
+    name.textContent = label;
+    name.title = label; // full text on hover too, in case a very long label still clips at the row's max height
     text.append(name);
 
     const meta = document.createElement("span");
@@ -18374,13 +18401,14 @@
       star.textContent = it.favorite ? "★" : "☆";
       star.classList.toggle("favorited", it.favorite);
       star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-      if (notesBrowserSortState.sort === "favorite") renderNotesBrowserList();
+      renderNotesBrowserList();
     });
 
-    // No "move to folder" button on a DRC row: its folder isn't a choice
-    // (syncDRCFolderAssignments would just put it straight back), so
+    // No "move to folder" button on a DRC or a starred row: both have
+    // their folder decided for them (syncDRCFolderAssignments /
+    // syncFavoriteFolderAssignments would just put it straight back), so
     // offering one would be a button that silently undoes itself.
-    if (it.isDRC) {
+    if (it.isDRC || it.favorite) {
       li.append(icon, text, meta, star);
     } else {
       li.append(icon, text, meta, buildFolderMoveBtn(notesFolderMgr, it.noteId, renderNotesBrowserList), star);
@@ -18388,11 +18416,6 @@
     li.addEventListener("click", () => jumpToNoteBrowserItem(it));
     return li;
   }
-
-  const NOTES_BROWSER_GROUPS = [
-    { key: "drc", label: "📋 DRC", match: (it) => it.isDRC },
-    { key: "notes", label: "📝 Notes", match: (it) => !it.isDRC },
-  ];
 
   // Files every DRC note into the "DRC" folder, without anyone having to
   // move it there. "DRC note" is decided the one way it's decided
@@ -18413,11 +18436,27 @@
     });
   }
 
+  // Same idea, for starred notes — except a note titled DRC keeps its
+  // DRC folder even if it's also starred: DRC is the stronger,
+  // title-based category, and letting a star quietly move it out of DRC
+  // (or bounce it back and forth depending on which sync ran last)
+  // would be more confusing than one note simply not living in two
+  // folders at once.
+  function syncFavoriteFolderAssignments() {
+    const favIds = notesBrowserItems.filter((it) => it.favorite && !it.isDRC).map((it) => it.noteId);
+    if (!favIds.length) return;
+    notesFolderMgr.create(FAVORITE_FOLDER);
+    favIds.forEach((id) => {
+      if (notesFolderMgr.folderOf(id) !== FAVORITE_FOLDER) notesFolderMgr.moveTo(id, FAVORITE_FOLDER);
+    });
+  }
+
   function renderNotesBrowserList() {
     const allIds = notesBrowserItems.map((it) => it.noteId);
     notesFolderMgr.prune(allIds);
     syncDRCFolderAssignments();
-    renderFolderSidebar(notesBrowserFoldersEl, notesFolderMgr, allIds, renderNotesBrowserList, [DRC_FOLDER]);
+    syncFavoriteFolderAssignments();
+    renderFolderSidebar(notesBrowserFoldersEl, notesFolderMgr, allIds, renderNotesBrowserList, [DRC_FOLDER, FAVORITE_FOLDER]);
     const q = notesBrowserSearch.value.trim().toLowerCase();
     const filtered = notesBrowserItems.filter((it) =>
       notesFolderMgr.matches(it.noteId) &&
@@ -18433,24 +18472,15 @@
       notesBrowserList.appendChild(empty);
       return;
     }
-    // DRC entries (see isDRCNote) get their own section, ahead of every
-    // other note — they're the daily-checklist kind of note rather than
-    // freeform ones, so lumping them in with everything else buried the
-    // "did I fill in today's DRC yet?" check among unrelated notes. Only
-    // a group that actually has a match gets a heading, same convention
-    // as the Favorites browser's type sections above.
-    NOTES_BROWSER_GROUPS.forEach((group) => {
-      const items = sorted.filter(group.match);
-      if (!items.length) return;
-      const heading = document.createElement("li");
-      heading.className = "favoritesbrowser-heading";
-      heading.textContent = `${group.label} (${items.length})`;
-      notesBrowserList.appendChild(heading);
-      items.forEach((it) => {
-        const node = findNode(it.nodeId);
-        if (!node) return; // stale entry (shouldn't normally happen)
-        notesBrowserList.appendChild(buildNoteBrowserRow(it));
-      });
+    // Used to split into a "📋 DRC" heading ahead of everything else,
+    // even under "All". Removed now that DRC notes are already sorted
+    // into their own real folder (see syncDRCFolderAssignments/DRC_FOLDER
+    // above) — with that folder already doing the separating, the extra
+    // heading here was the same grouping shown twice.
+    sorted.forEach((it) => {
+      const node = findNode(it.nodeId);
+      if (!node) return; // stale entry (shouldn't normally happen)
+      notesBrowserList.appendChild(buildNoteBrowserRow(it));
     });
   }
 
@@ -18478,8 +18508,8 @@
   const photosBrowserList = $("#photosbrowser-list");
   const photosBrowserSearch = $("#photosbrowser-search");
   const photosBrowserFoldersEl = $("#photosbrowser-folders");
-  const photosBrowserSortBtns = [$("#photosbrowser-sort-date"), $("#photosbrowser-sort-favorite"), $("#photosbrowser-sort-alpha")];
-  const photosFolderMgr = createFolderManager("photos", { retired: ["DRC"] });
+  const photosBrowserSortBtns = [$("#photosbrowser-sort-date"), $("#photosbrowser-sort-alpha")];
+  const photosFolderMgr = createFolderManager("photos", { retired: ["DRC"], defaults: [FAVORITE_FOLDER] });
   let photosBrowserItems = [];
 
   function collectAllPhotos() {
@@ -18514,9 +18544,7 @@
   function sortPhotosBrowserItems(items) {
     const sorted = items.slice();
     const dir = photosBrowserSortState.dir === "asc" ? 1 : -1;
-    if (photosBrowserSortState.sort === "favorite") {
-      sorted.sort((a, b) => (((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (b.ts - a.ts)) * dir);
-    } else if (photosBrowserSortState.sort === "alpha") {
+    if (photosBrowserSortState.sort === "alpha") {
       sorted.sort((a, b) => a.alphaKey.localeCompare(b.alphaKey) * dir);
     } else {
       sorted.sort((a, b) => (b.ts - a.ts) * dir);
@@ -18564,10 +18592,23 @@
     persist();
   }
 
+  // Same rule as the Notes browser's syncFavoriteFolderAssignments —
+  // photos have no DRC-equivalent concept, so this is the only folder
+  // rule they need.
+  function syncPhotosFavoriteFolderAssignments() {
+    const favIds = photosBrowserItems.filter((it) => it.favorite).map((it) => it.photoId);
+    if (!favIds.length) return;
+    photosFolderMgr.create(FAVORITE_FOLDER);
+    favIds.forEach((id) => {
+      if (photosFolderMgr.folderOf(id) !== FAVORITE_FOLDER) photosFolderMgr.moveTo(id, FAVORITE_FOLDER);
+    });
+  }
+
   function renderPhotosBrowserList() {
     const allIds = photosBrowserItems.map((it) => it.photoId);
     photosFolderMgr.prune(allIds);
-    renderFolderSidebar(photosBrowserFoldersEl, photosFolderMgr, allIds, renderPhotosBrowserList);
+    syncPhotosFavoriteFolderAssignments();
+    renderFolderSidebar(photosBrowserFoldersEl, photosFolderMgr, allIds, renderPhotosBrowserList, [FAVORITE_FOLDER]);
     const q = photosBrowserSearch.value.trim().toLowerCase();
     const filtered = photosBrowserItems.filter((it) =>
       photosFolderMgr.matches(it.photoId) &&
@@ -18608,6 +18649,7 @@
       const name = document.createElement("span");
       name.className = "favoritesbrowser-row-name";
       name.textContent = it.nodeLabel;
+      name.title = it.nodeLabel;
       const preview = document.createElement("span");
       preview.className = "favoritesbrowser-row-preview";
       preview.textContent = it.tag ? `Tagged “${it.tag}”` : "Photo";
@@ -18625,13 +18667,17 @@
       star.addEventListener("click", (e) => {
         e.stopPropagation();
         togglePhotoBrowserFavorite(it);
-        star.textContent = it.favorite ? "★" : "☆";
-        star.classList.toggle("favorited", it.favorite);
-        star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-        if (photosBrowserSortState.sort === "favorite") renderPhotosBrowserList();
+        renderPhotosBrowserList();
       });
 
-      li.append(icon, text, meta, buildFolderMoveBtn(photosFolderMgr, it.photoId, renderPhotosBrowserList), star);
+      // No folder button on a starred row — same reasoning as the Notes
+      // browser's DRC/starred rows: syncPhotosFavoriteFolderAssignments
+      // would just put it straight back into Favorite.
+      if (it.favorite) {
+        li.append(icon, text, meta, star);
+      } else {
+        li.append(icon, text, meta, buildFolderMoveBtn(photosFolderMgr, it.photoId, renderPhotosBrowserList), star);
+      }
       li.addEventListener("click", () => jumpToPhotoBrowserItem(it));
       photosBrowserList.appendChild(li);
     });
@@ -18661,8 +18707,8 @@
   const videosBrowserList = $("#videosbrowser-list");
   const videosBrowserSearch = $("#videosbrowser-search");
   const videosBrowserFoldersEl = $("#videosbrowser-folders");
-  const videosBrowserSortBtns = [$("#videosbrowser-sort-date"), $("#videosbrowser-sort-favorite"), $("#videosbrowser-sort-alpha")];
-  const videosFolderMgr = createFolderManager("videos", { retired: ["DRC"] });
+  const videosBrowserSortBtns = [$("#videosbrowser-sort-date"), $("#videosbrowser-sort-alpha")];
+  const videosFolderMgr = createFolderManager("videos", { retired: ["DRC"], defaults: [FAVORITE_FOLDER] });
   let videosBrowserItems = [];
 
   function collectAllVideos() {
@@ -18695,9 +18741,7 @@
   function sortVideosBrowserItems(items) {
     const sorted = items.slice();
     const dir = videosBrowserSortState.dir === "asc" ? 1 : -1;
-    if (videosBrowserSortState.sort === "favorite") {
-      sorted.sort((a, b) => (((b.favorite ? 1 : 0) - (a.favorite ? 1 : 0)) || (b.ts - a.ts)) * dir);
-    } else if (videosBrowserSortState.sort === "alpha") {
+    if (videosBrowserSortState.sort === "alpha") {
       sorted.sort((a, b) => a.title.localeCompare(b.title) * dir);
     } else {
       sorted.sort((a, b) => (b.ts - a.ts) * dir);
@@ -18746,10 +18790,21 @@
     persist();
   }
 
+  // Same rule as Photos — videos have no DRC-equivalent either.
+  function syncVideosFavoriteFolderAssignments() {
+    const favIds = videosBrowserItems.filter((it) => it.favorite).map((it) => it.id);
+    if (!favIds.length) return;
+    videosFolderMgr.create(FAVORITE_FOLDER);
+    favIds.forEach((id) => {
+      if (videosFolderMgr.folderOf(id) !== FAVORITE_FOLDER) videosFolderMgr.moveTo(id, FAVORITE_FOLDER);
+    });
+  }
+
   function renderVideosBrowserList() {
     const allIds = videosBrowserItems.map((it) => it.id);
     videosFolderMgr.prune(allIds);
-    renderFolderSidebar(videosBrowserFoldersEl, videosFolderMgr, allIds, renderVideosBrowserList);
+    syncVideosFavoriteFolderAssignments();
+    renderFolderSidebar(videosBrowserFoldersEl, videosFolderMgr, allIds, renderVideosBrowserList, [FAVORITE_FOLDER]);
     const q = videosBrowserSearch.value.trim().toLowerCase();
     const filtered = videosBrowserItems.filter((it) =>
       videosFolderMgr.matches(it.id) &&
@@ -18780,9 +18835,11 @@
       const name = document.createElement("span");
       name.className = "favoritesbrowser-row-name";
       name.textContent = it.nodeLabel;
+      name.title = it.nodeLabel;
       const preview = document.createElement("span");
       preview.className = "favoritesbrowser-row-preview";
-      preview.textContent = it.title.length > 90 ? it.title.slice(0, 89) + "…" : it.title;
+      preview.textContent = it.title;
+      preview.title = it.title;
       text.append(name, preview);
 
       const meta = document.createElement("span");
@@ -18797,13 +18854,17 @@
       star.addEventListener("click", (e) => {
         e.stopPropagation();
         toggleVideoBrowserFavorite(it);
-        star.textContent = it.favorite ? "★" : "☆";
-        star.classList.toggle("favorited", it.favorite);
-        star.title = it.favorite ? "Remove from favorites" : "Add to favorites";
-        if (videosBrowserSortState.sort === "favorite") renderVideosBrowserList();
+        renderVideosBrowserList();
       });
 
-      li.append(icon, text, meta, buildFolderMoveBtn(videosFolderMgr, it.id, renderVideosBrowserList), star);
+      // No folder button on a starred row — same reasoning as Notes/
+      // Photos: syncVideosFavoriteFolderAssignments would just put it
+      // straight back into Favorite.
+      if (it.favorite) {
+        li.append(icon, text, meta, star);
+      } else {
+        li.append(icon, text, meta, buildFolderMoveBtn(videosFolderMgr, it.id, renderVideosBrowserList), star);
+      }
       li.addEventListener("click", () => jumpToVideoBrowserItem(it));
       videosBrowserList.appendChild(li);
     });
