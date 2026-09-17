@@ -391,19 +391,8 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 }
 
 .title-input{
-  background:transparent;
-  border:none;
-  color:var(--text);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  padding: 6px 8px;
-  border-radius: 6px;
-  min-width: 120px;
-  max-width: 40vw;
+  display: none;
 }
-.title-input:hover{ background: var(--panel-2); }
-.title-input:focus{ background: var(--panel-2); outline: none; }
 
 .toolbar-gap{ flex:1; }
 
@@ -422,8 +411,8 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
     align-items:center;
     min-width:0;
     overflow:hidden;
-    height:30px;
-    padding:0 12px;
+    height:40px;
+    padding:0 16px;
     border-radius:8px;
     cursor:pointer;
     background: transparent;
@@ -436,9 +425,9 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
   }
 }
 #quote-banner-marquee{
-  color: var(--text-dim);
-  font-size: 12.5px;
-  font-weight: 600;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 700;
   letter-spacing: 0.02em;
   width:100%;
 }
