@@ -356,6 +356,72 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 }
 #stale-sync-banner.hidden{ display:none; }
 
+/* Signed in, but this device can't reach Drive right now (expired Google
+   session, failing uploads, or no connection). Editing is locked while
+   this is up — see driveLockReason/isEditingAllowed in app.js — so it's
+   deliberately louder than the amber syncing banner above it. */
+#drive-lost-banner{
+  flex: none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+  background: #c0392b;
+  border-bottom: 1px solid #96291d;
+}
+#drive-lost-banner.hidden{ display:none; }
+.drive-lost-btn{
+  flex:none;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #c0392b;
+  background: #fff;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.drive-lost-btn:hover{ background:#ffe9e6; }
+.drive-lost-btn.hidden{ display:none; }
+
+/* Note editor while the edit lock is on. The toolbar and the per-note
+   actions are neutralised with pointer-events rather than each button's
+   own `disabled` flag, so unlocking doesn't have to work out which of
+   them (undo/redo especially) were already legitimately disabled. */
+.note-lock-banner{
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7a2318;
+  background: #ffe1dc;
+  border: 1px solid #e8b3a9;
+  border-radius: 6px;
+}
+.note-lock-banner.hidden{ display:none; }
+.note-locked .note-textarea{
+  background: #f4f2ee;
+  color: #6b675f;
+  cursor: default;
+}
+.note-locked .note-toolbar{
+  opacity: .45;
+  pointer-events: none;
+}
+.note-locked .note-nav-btn:not(#note-nav-close){
+  opacity: .45;
+  pointer-events: none;
+}
+.note-locked .note-title-input{
+  background: #f4f2ee;
+  color: #6b675f;
+}
+
 #toolbar{
   height: 52px;
   flex:none;

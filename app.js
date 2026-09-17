@@ -900,6 +900,18 @@
     consecutiveSilentFailures: 0,
     MAX_SILENT_FAILURES: 3,
     needsReauth: false,
+    // True once a write to Drive has actually failed (or the sync poll
+    // has failed repeatedly). needsReauth alone isn't enough to notice a
+    // lost connection quickly: it only flips after MAX_SILENT_FAILURES
+    // consecutive silent refreshes, each separated by a 30s cooldown, so
+    // there's a multi-minute window where the token is already dead,
+    // every upload is quietly failing in the console, and the app still
+    // happily accepts edits that exist nowhere but this tab. This flag
+    // flips on the FIRST failed upload instead, and isEditingAllowed()
+    // treats it exactly like being signed out — see the edit lock below.
+    syncBroken: false,
+    consecutivePollFailures: 0,
+    MAX_POLL_FAILURES: 3,
     // map id -> { fileId, updatedAt } for every map we know is mirrored to
     // Drive, so save/remove don't have to search every time.
     fileIndex: {},
@@ -1113,6 +1125,8 @@
               // reauth-needed state, since it proves Google auth is
               // working for this session again.
               this.needsReauth = false;
+              this.syncBroken = false;
+              this.consecutivePollFailures = 0;
               this.consecutiveSilentFailures = 0;
               settle(resolve, resp.access_token);
             } else {
@@ -1341,8 +1355,21 @@
           this.fileIndex[map.id] = { fileId, updatedAt: map.updatedAt };
         }
         this.lastSyncedAt = Date.now();
+        this.syncBroken = false;
+        this.consecutivePollFailures = 0;
         updateDriveUI();
-      } catch (e) { console.error("Drive save failed", e); }
+      } catch (e) {
+        // A failed upload used to be a console-only event: the toolbar
+        // still said "Saved" (which was true — locally), the sidebar
+        // still said "Synced 4m ago" (also true, and useless), and the
+        // person kept editing into what was effectively a local-only
+        // copy. Treat it as the connection loss it is: flag it, lock
+        // editing, and say so on screen.
+        console.error("Drive save failed", e);
+        this.syncBroken = true;
+        if (!this.accessToken || Date.now() >= this.tokenExpiresAt) this.needsReauth = true;
+        try { updateDriveUI(); } catch (e2) {}
+      }
     },
 
     async remove(map) {
@@ -1421,6 +1448,8 @@
       }
       sortMaps(state.maps);
       this.lastSyncedAt = Date.now();
+      this.syncBroken = false;
+      this.consecutivePollFailures = 0;
     }
   };
 
@@ -1443,11 +1472,47 @@
     banner.classList.toggle("hidden", !stillSyncing);
   }
 
+  // Why editing is locked *despite* being signed in, or null when it
+  // isn't. Signed-out isn't listed here on purpose — that case already
+  // has its own full-screen panel (see applySignedOutGate).
+  function driveLockReason() {
+    if (!DriveDB.signedIn) return null;
+    if (!isOnline) return "offline";
+    if (DriveDB.needsReauth) return "reauth";
+    if (DriveDB.syncBroken) return "broken";
+    return null;
+  }
+
+  // The loud counterpart to the small sidebar status line. The sidebar
+  // text is easy to miss — it's tiny, it's off to the side, and on
+  // mobile the sidebar may not even be open — which is exactly how a
+  // long editing session can happen on top of a dead Drive session. This
+  // sits across the top of the map itself, in red, with the one button
+  // that fixes it.
+  function updateDriveLostBanner() {
+    const banner = $("#drive-lost-banner");
+    if (!banner) return;
+    const reason = driveLockReason();
+    banner.classList.toggle("hidden", !reason);
+    if (!reason) return;
+    const text = $("#drive-lost-text");
+    const btn = $("#drive-lost-reconnect");
+    if (text) {
+      text.textContent = reason === "offline"
+        ? "\u26a0\ufe0f No internet connection \u2014 editing is locked so nothing can be written to this device only and then lost."
+        : reason === "reauth"
+        ? "\u26a0\ufe0f Your Google session has expired \u2014 editing is locked until you reconnect. Nothing you've already typed is lost."
+        : "\u26a0\ufe0f Changes aren't reaching Google Drive \u2014 editing is locked until the connection is back. Nothing you've already typed is lost.";
+    }
+    if (btn) btn.classList.toggle("hidden", reason === "offline");
+  }
+
   function updateDriveUI(overrideStatus) {
     const status = $("#drive-status");
     const btn = $("#btn-google-signin");
     const onlineDot = $("#online-indicator");
     updateStaleSyncBanner();
+    updateDriveLostBanner();
     if (onlineDot) {
       onlineDot.classList.toggle("offline", !isOnline);
       onlineDot.title = isOnline ? "Online" : "Offline — editing paused";
@@ -1461,7 +1526,7 @@
     // "Sign in with Google" even though we're already signed in and
     // just waiting on the initial Drive sync to finish.
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
-    if (DriveDB.needsReauth) {
+    if (DriveDB.needsReauth || (DriveDB.syncBroken && isOnline)) {
       btn.textContent = "Reconnect Google";
       btn.classList.remove("hidden");
     } else if (stillSyncing) {
@@ -1483,7 +1548,9 @@
       // editing still works.
       status.textContent = "Offline — editing paused";
     } else if (DriveDB.needsReauth) {
-      status.textContent = "Google session expired";
+      status.textContent = "Google session expired \u2014 editing paused";
+    } else if (DriveDB.syncBroken) {
+      status.textContent = "Not reaching Drive \u2014 editing paused";
     } else if (DriveDB.signedIn) {
       status.textContent = driveSyncStatusText();
     } else {
@@ -1517,9 +1584,21 @@
   // place to update and the rest of the gate logic stays simple.
   let isOnline = navigator.onLine;
 
+  // Signed in + first sync done + online + Drive actually reachable.
+  // The last two matter as much as the first two: a token that expired
+  // an hour ago still leaves signedIn/dataSynced true, so without
+  // needsReauth/syncBroken here the app would keep accepting edits it
+  // can only ever write to this one browser.
   function isEditingAllowed() {
-    return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline;
+    return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
+      && !DriveDB.needsReauth && !DriveDB.syncBroken;
   }
+
+  // Set only while flushing already-typed work to disk as the lock comes
+  // down (see flushEditsBeforeLock) — the flush itself calls pushUndo()
+  // via commitNotesToNode(), which would otherwise be refused by the very
+  // lock we're applying, throwing away the text we're trying to rescue.
+  let finalFlushInProgress = false;
 
   // Thrown by pushUndo() when editing is blocked, so the rest of whatever
   // handler called it stops right where it is instead of mutating state
@@ -1554,13 +1633,23 @@
     const body = signinRequiredModalEl.querySelector("p");
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
     const offline = !isOnline;
-    if (heading) heading.textContent = offline ? "You're offline" : (stillSyncing ? "Syncing…" : "Sign in to edit");
+    const disconnected = driveLockReason() === "reauth" || driveLockReason() === "broken";
+    if (heading) heading.textContent = offline
+      ? "You're offline"
+      : disconnected
+      ? "Disconnected from Google Drive"
+      : (stillSyncing ? "Syncing\u2026" : "Sign in to edit");
     if (body) body.textContent = offline
       ? "Editing is paused until you're back online, so a change made here can't drift out of sync with your other devices. Reconnect and try again."
+      : disconnected
+      ? "Editing is paused because changes can't reach Drive right now \u2014 anything typed from here on would live only in this browser and disappear on a refresh. Everything already typed has been saved. Reconnect to carry on."
       : stillSyncing
-      ? "Hang on — making sure this device has your latest saved changes before you start editing, so a newer version from another device can't get overwritten. This only takes a moment."
+      ? "Hang on \u2014 making sure this device has your latest saved changes before you start editing, so a newer version from another device can't get overwritten. This only takes a moment."
       : "This map is read-only until you sign in with Google. Editing, undo/redo, and adding tasks, notes, or photos all need a signed-in session.";
-    if (signinRequiredSigninBtn) signinRequiredSigninBtn.classList.toggle("hidden", stillSyncing || offline);
+    if (signinRequiredSigninBtn) {
+      signinRequiredSigninBtn.textContent = disconnected ? "Reconnect Google" : "Sign in with Google";
+      signinRequiredSigninBtn.classList.toggle("hidden", stillSyncing || offline);
+    }
     zoomModalOpen(signinRequiredModalEl);
   }
   function closeSigninRequiredModal() {
@@ -1571,6 +1660,7 @@
   // modal immediately and reports "blocked" if not signed in, otherwise
   // is a silent no-op and reports "allowed".
   function requireSignIn() {
+    if (finalFlushInProgress) return true;
     if (isEditingAllowed()) return true;
     openSigninRequiredModal();
     return false;
@@ -1581,8 +1671,51 @@
   // even tries to edit — the modal above is still what actually enforces
   // it for anything not covered by a visible button (keyboard shortcuts,
   // drag, paste, context-menu actions, etc).
+  // Everything already typed but not yet committed, pushed through to
+  // IndexedDB the instant before the lock comes down. Without this, the
+  // half-second of typing still sitting in the note editor's own
+  // debounce (and any map edit still inside persist()'s 500ms window)
+  // would be refused by the lock on its way out and silently dropped —
+  // the person would watch the app lock itself and take their last
+  // sentence with it.
+  let editLockWasLocked = false;
+  function flushEditsBeforeLock() {
+    finalFlushInProgress = true;
+    try {
+      try { if (noteEditingId) flushNoteAutosave(); } catch (e) {}
+      try { flushPersist(); } catch (e) {}
+    } catch (e) {
+      // Can fire harmlessly during boot, before the note editor's and
+      // persist layer's own state exists yet — nothing to flush then.
+    } finally {
+      finalFlushInProgress = false;
+    }
+  }
+
+  // Makes the open note editor genuinely read-only, rather than letting
+  // someone keep typing into a box whose contents the lock would refuse
+  // to commit. The toolbar and per-note actions are disabled via CSS
+  // (see .note-locked in style.css) rather than each button's `disabled`
+  // property, so unlocking doesn't have to re-derive which of them were
+  // legitimately disabled on their own (undo/redo in particular).
+  function applyNoteEditorLock(locked) {
+    const modal = document.getElementById("note-modal");
+    if (!modal) return;
+    const body = document.getElementById("note-textarea");
+    const title = document.getElementById("note-title-input");
+    if (body) body.contentEditable = locked ? "false" : "true";
+    if (title) title.readOnly = locked;
+    modal.classList.toggle("note-locked", locked);
+    const lockNote = document.getElementById("note-lock-banner");
+    if (lockNote) lockNote.classList.toggle("hidden", !locked);
+    if (locked && body && document.activeElement === body) body.blur();
+  }
+
   function refreshEditLockUI() {
     const locked = !isEditingAllowed();
+    if (locked && !editLockWasLocked) flushEditsBeforeLock();
+    editLockWasLocked = locked;
+    applyNoteEditorLock(locked);
     if (!locked) closeSigninRequiredModal();
     document.body.classList.toggle("edit-locked", locked);
     const fabAddChild = $("#fab-add-child");
@@ -1634,8 +1767,18 @@
         renderSidebar();
         renderAll();
       }
+      DriveDB.consecutivePollFailures = 0;
     } catch (e) {
       console.error("Drive poll failed", e);
+      // One failed poll is a network blip and not worth interrupting
+      // anyone over; several in a row means this tab has genuinely lost
+      // Drive, which the person needs to know before they type another
+      // paragraph into it.
+      DriveDB.consecutivePollFailures++;
+      if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES) {
+        DriveDB.syncBroken = true;
+        updateDriveUI();
+      }
     }
     DriveDB.syncing = false;
     // Refresh the "Synced Xm ago" label every tick regardless of whether
@@ -3861,6 +4004,39 @@
     if (document.visibilityState === "hidden") flushAllPendingSaves();
   });
   window.addEventListener("pagehide", flushAllPendingSaves);
+
+  // Anything typed but not yet safely on Drive. Covers three separate
+  // stages of "not saved yet", because a refresh can land in any of
+  // them: still in the note editor's 500ms debounce, still in persist()'s
+  // own debounce or mid-write, or written locally but never accepted by
+  // Drive (the case a dead Google session produces).
+  function hasUnsyncedWork() {
+    try {
+      if (unsavedEdits || persistTimer || persistInFlight) return true;
+      if (noteEditingId && noteSaveTimer) return true;
+      if (!DriveDB.signedIn) return false;
+      for (const m of state.maps) {
+        const known = DriveDB.fileIndex[m.id];
+        if (!known || (m.updatedAt || 0) > (known.updatedAt || 0)) return true;
+      }
+    } catch (e) { return false; }
+    return false;
+  }
+
+  // pagehide's flush above kicks off async IndexedDB and Drive writes,
+  // and a page being torn down is under no obligation to wait for them —
+  // a refresh at the wrong moment can abort the transaction mid-write,
+  // which is how a session's work can vanish on F5 even though the app
+  // had "saved" it. This is the only mechanism a browser gives a page to
+  // buy that time: ask the person first. The prompt only appears when
+  // there is genuinely something unwritten, so a normal refresh on a
+  // fully-synced map is untouched.
+  window.addEventListener("beforeunload", (e) => {
+    if (!hasUnsyncedWork()) return;
+    e.preventDefault();
+    e.returnValue = "";
+    return "";
+  });
 
   // Panning/zooming the canvas only changes where you're *looking* — not
   // the map's actual content — so it must never bump `updatedAt` the way
@@ -17720,11 +17896,20 @@
   // separate from the map's own data, so this works the same way across
   // every map without touching how notes/photos/videos are themselves
   // saved, exported, or synced. Each browser gets its own independent
-  // set of folders (its own storage prefix) and starts out with one
-  // folder already made — "DRC" — which can be renamed by deleting it
-  // and making a new one, emptied, or removed just like any folder
-  // created afterward.
-  function createFolderManager(storagePrefix) {
+  // set of folders (its own storage prefix).
+  //
+  // Which folders a browser starts with is now the caller's decision
+  // (`opts.defaults`) instead of being hardcoded to ["DRC"] for all
+  // three. DRC is a notes-only idea — it's a note title (see isDRCNote),
+  // and there is no such thing as a DRC photo or a DRC video — so the
+  // Photos and Videos browsers were starting life with a folder that
+  // could never have anything in it. `opts.retired` cleans up after
+  // that: any folder named there is dropped (along with anything filed
+  // into it) the first time this runs on a browser that still has it
+  // stored from an older version.
+  function createFolderManager(storagePrefix, opts) {
+    const defaults = (opts && opts.defaults) || [];
+    const retired = (opts && opts.retired) || [];
     const foldersKey = `branchline-folders-${storagePrefix}`;
     const assignKey = `branchline-folder-assign-${storagePrefix}`;
 
@@ -17734,7 +17919,7 @@
         const list = raw ? JSON.parse(raw) : null;
         if (Array.isArray(list)) return list;
       } catch (e) {}
-      return ["DRC"];
+      return defaults.slice();
     }
     function saveFolders(list) {
       try { localStorage.setItem(foldersKey, JSON.stringify(list)); } catch (e) {}
@@ -17754,6 +17939,20 @@
     let folders = loadFolders();
     let assign = loadAssign();
     let selected = null; // null = "All"; "__unfiled__" = the Unfiled bucket
+
+    // One-time cleanup of folders this browser no longer has any use for
+    // (see `opts.retired` above). Anything that was filed into one goes
+    // back to Unfiled rather than disappearing — same as deleting a
+    // folder by hand.
+    if (retired.length) {
+      const doomed = folders.filter(f => retired.includes(f));
+      if (doomed.length) {
+        folders = folders.filter(f => !doomed.includes(f));
+        saveFolders(folders);
+        Object.keys(assign).forEach((id) => { if (doomed.includes(assign[id])) delete assign[id]; });
+        saveAssign(assign);
+      }
+    }
 
     return {
       list() { return folders.slice(); },
@@ -17809,7 +18008,11 @@
   // browser's list, plus the "+ new folder" row at the bottom. `onChange`
   // re-renders the whole browser (folder column and list both) whenever a
   // folder is picked, created, or deleted.
-  function renderFolderSidebar(container, mgr, allIds, onChange) {
+  // `protectedNames` lists folders this browser maintains itself, so they
+  // get no delete button — deleting one would only have it reappear on
+  // the next render (see syncDRCFolderAssignments), which reads as a bug.
+  function renderFolderSidebar(container, mgr, allIds, onChange, protectedNames) {
+    const protectedSet = new Set(protectedNames || []);
     container.innerHTML = "";
     function makeRow(name, label, icon, count, deletable) {
       const row = document.createElement("div");
@@ -17842,7 +18045,7 @@
       container.appendChild(row);
     }
     makeRow(null, "All", "🗂", allIds.length, false);
-    mgr.list().forEach((name) => makeRow(name, name, "📁", mgr.countIn(name, allIds), true));
+    mgr.list().forEach((name) => makeRow(name, name, "📁", mgr.countIn(name, allIds), !protectedSet.has(name)));
     makeRow("__unfiled__", "Unfiled", "📄", mgr.countUnfiled(allIds), false);
 
     const addRow = document.createElement("div");
@@ -17942,7 +18145,10 @@
   const notesBrowserSearch = $("#notesbrowser-search");
   const notesBrowserFoldersEl = $("#notesbrowser-folders");
   const notesBrowserSortBtns = [$("#notesbrowser-sort-date"), $("#notesbrowser-sort-favorite"), $("#notesbrowser-sort-alpha")];
-  const notesFolderMgr = createFolderManager("notes");
+  // The one browser where DRC means something — see
+  // syncDRCFolderAssignments below, which keeps it filled automatically.
+  const DRC_FOLDER = "DRC";
+  const notesFolderMgr = createFolderManager("notes", { defaults: [DRC_FOLDER] });
   let notesBrowserItems = [];
 
 
@@ -18088,9 +18294,14 @@
       if (notesBrowserSortState.sort === "favorite") renderNotesBrowserList();
     });
 
-    const folderBtn = buildFolderMoveBtn(notesFolderMgr, it.noteId, renderNotesBrowserList);
-
-    li.append(icon, text, meta, folderBtn, star);
+    // No "move to folder" button on a DRC row: its folder isn't a choice
+    // (syncDRCFolderAssignments would just put it straight back), so
+    // offering one would be a button that silently undoes itself.
+    if (it.isDRC) {
+      li.append(icon, text, meta, star);
+    } else {
+      li.append(icon, text, meta, buildFolderMoveBtn(notesFolderMgr, it.noteId, renderNotesBrowserList), star);
+    }
     li.addEventListener("click", () => jumpToNoteBrowserItem(it));
     return li;
   }
@@ -18100,10 +18311,30 @@
     { key: "notes", label: "📝 Notes", match: (it) => !it.isDRC },
   ];
 
+  // Files every DRC note into the "DRC" folder, without anyone having to
+  // move it there. "DRC note" is decided the one way it's decided
+  // everywhere else in the app — the title, see isDRCNote — so this
+  // covers both notes started from the 📋 DRC… shortcut (which titles
+  // them "DRC") and notes simply titled DRC by hand, and it keeps
+  // covering them if a title is edited either way later on. Runs on
+  // every render rather than at note-creation time so nothing can drift:
+  // notes made on another device and pulled in by Drive sync land in the
+  // right folder here too, even though the folder assignments themselves
+  // are local to this browser.
+  function syncDRCFolderAssignments() {
+    const drcIds = notesBrowserItems.filter((it) => it.isDRC).map((it) => it.noteId);
+    if (!drcIds.length) return;
+    notesFolderMgr.create(DRC_FOLDER); // no-op if it's already there
+    drcIds.forEach((id) => {
+      if (notesFolderMgr.folderOf(id) !== DRC_FOLDER) notesFolderMgr.moveTo(id, DRC_FOLDER);
+    });
+  }
+
   function renderNotesBrowserList() {
     const allIds = notesBrowserItems.map((it) => it.noteId);
     notesFolderMgr.prune(allIds);
-    renderFolderSidebar(notesBrowserFoldersEl, notesFolderMgr, allIds, renderNotesBrowserList);
+    syncDRCFolderAssignments();
+    renderFolderSidebar(notesBrowserFoldersEl, notesFolderMgr, allIds, renderNotesBrowserList, [DRC_FOLDER]);
     const q = notesBrowserSearch.value.trim().toLowerCase();
     const filtered = notesBrowserItems.filter((it) =>
       notesFolderMgr.matches(it.noteId) &&
@@ -18165,7 +18396,7 @@
   const photosBrowserSearch = $("#photosbrowser-search");
   const photosBrowserFoldersEl = $("#photosbrowser-folders");
   const photosBrowserSortBtns = [$("#photosbrowser-sort-date"), $("#photosbrowser-sort-favorite"), $("#photosbrowser-sort-alpha")];
-  const photosFolderMgr = createFolderManager("photos");
+  const photosFolderMgr = createFolderManager("photos", { retired: ["DRC"] });
   let photosBrowserItems = [];
 
   function collectAllPhotos() {
@@ -18348,7 +18579,7 @@
   const videosBrowserSearch = $("#videosbrowser-search");
   const videosBrowserFoldersEl = $("#videosbrowser-folders");
   const videosBrowserSortBtns = [$("#videosbrowser-sort-date"), $("#videosbrowser-sort-favorite"), $("#videosbrowser-sort-alpha")];
-  const videosFolderMgr = createFolderManager("videos");
+  const videosFolderMgr = createFolderManager("videos", { retired: ["DRC"] });
   let videosBrowserItems = [];
 
   function collectAllVideos() {
@@ -18560,6 +18791,15 @@
       DriveDB.signIn(false).catch(err => alert(err.message || "Google sign-in failed."));
     }
   });
+  const btnDriveLostReconnect = $("#drive-lost-reconnect");
+  if (btnDriveLostReconnect) {
+    btnDriveLostReconnect.addEventListener("click", () => {
+      DriveDB.signIn(false)
+        .then(() => DriveDB.scheduleRefresh())
+        .catch(err => alert(err.message || "Google sign-in failed."));
+    });
+  }
+
   const btnSignedOutSignin = $("#btn-signed-out-signin");
   if (btnSignedOutSignin) {
     btnSignedOutSignin.addEventListener("click", () => {

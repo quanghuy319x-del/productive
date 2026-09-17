@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=70">
+<link rel="stylesheet" href="style.css?v=71">
 </head>
 <body>
 <div id="app">
@@ -74,6 +74,14 @@
   <main id="main">
     <div id="stale-sync-banner" class="stale-sync-banner hidden" role="status">
       ⏳ Still syncing from Google Drive — what's on screen may not be the latest version from your other devices yet.
+    </div>
+    <!-- Shown whenever this device is signed in but can no longer reach
+         Drive (expired Google session, failed uploads, or offline). The
+         sidebar's small status line said this already, but quietly enough
+         to edit for an hour without noticing. -->
+    <div id="drive-lost-banner" class="drive-lost-banner hidden" role="alert">
+      <span id="drive-lost-text"></span>
+      <button type="button" id="drive-lost-reconnect" class="drive-lost-btn">Reconnect Google</button>
     </div>
     <div id="toolbar">
       <input id="title-input" class="title-input" spellcheck="false" placeholder="Untitled map">
@@ -547,6 +555,7 @@
       <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
       <button type="button" id="note-nav-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
+    <div id="note-lock-banner" class="note-lock-banner hidden" role="alert">🔒 Read-only — not connected to Google Drive. Everything up to here is saved.</div>
     <div id="note-textarea" class="note-textarea" contenteditable="true" spellcheck="false" data-placeholder="Add a note for this node…"></div>
     <div class="note-toolbar">
       <button type="button" id="note-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
@@ -773,6 +782,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=142"></script>
+<script src="app.js?v=144"></script>
 </body>
 </html>
