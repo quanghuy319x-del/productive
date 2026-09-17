@@ -13546,6 +13546,72 @@
     }
   });
 
+  // ---- Shrink button for inline note photos ----
+  // A small "−" button that hovers over whichever note image the pointer
+  // is currently over, so the photo's display size can be shrunk with one
+  // click instead of dragging the resize handle in its corner (see the
+  // resize:both rule on .note-textarea img in style.css). Kept as a single
+  // floating element positioned over whichever image is hovered, rather
+  // than one button per image, so nothing extra needs wiring up when new
+  // images are pasted or dropped in.
+  const noteImageShrinkBtn = document.createElement("button");
+  noteImageShrinkBtn.type = "button";
+  noteImageShrinkBtn.className = "note-img-shrink-btn hidden";
+  noteImageShrinkBtn.title = "Make this photo smaller";
+  noteImageShrinkBtn.setAttribute("aria-label", "Make this photo smaller");
+  noteImageShrinkBtn.textContent = "−";
+  document.body.appendChild(noteImageShrinkBtn);
+
+  let noteImageShrinkTarget = null;
+
+  function positionNoteImageShrinkBtn(img) {
+    const rect = img.getBoundingClientRect();
+    noteImageShrinkBtn.style.left = `${rect.right - 26}px`;
+    noteImageShrinkBtn.style.top = `${rect.top + 4}px`;
+  }
+  function showNoteImageShrinkBtn(img) {
+    noteImageShrinkTarget = img;
+    positionNoteImageShrinkBtn(img);
+    noteImageShrinkBtn.classList.remove("hidden");
+  }
+  function hideNoteImageShrinkBtn() {
+    noteImageShrinkTarget = null;
+    noteImageShrinkBtn.classList.add("hidden");
+  }
+  noteTextarea.addEventListener("mouseover", (e) => {
+    if (e.target && e.target.tagName === "IMG") showNoteImageShrinkBtn(e.target);
+  });
+  noteTextarea.addEventListener("mouseout", (e) => {
+    if (e.target && e.target.tagName === "IMG" && !noteImageShrinkBtn.contains(e.relatedTarget)) {
+      hideNoteImageShrinkBtn();
+    }
+  });
+  noteTextarea.addEventListener("scroll", () => {
+    if (noteImageShrinkTarget) positionNoteImageShrinkBtn(noteImageShrinkTarget);
+  });
+  window.addEventListener("resize", () => {
+    if (noteImageShrinkTarget) positionNoteImageShrinkBtn(noteImageShrinkTarget);
+  });
+  // Prevent the mousedown from stealing focus/selection out of the note,
+  // same pattern as the symbol/color popovers.
+  noteImageShrinkBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  noteImageShrinkBtn.addEventListener("mouseleave", hideNoteImageShrinkBtn);
+  noteImageShrinkBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const img = noteImageShrinkTarget;
+    if (!img) return;
+    const NOTE_IMG_SHRINK_FACTOR = 0.8;
+    const NOTE_IMG_MIN_WIDTH = 80;
+    const NOTE_IMG_MIN_HEIGHT = 60;
+    notePushUndo();
+    const w = Math.max(NOTE_IMG_MIN_WIDTH, Math.round(img.offsetWidth * NOTE_IMG_SHRINK_FACTOR));
+    const h = Math.max(NOTE_IMG_MIN_HEIGHT, Math.round(img.offsetHeight * NOTE_IMG_SHRINK_FACTOR));
+    img.style.width = `${w}px`;
+    img.style.height = `${h}px`;
+    positionNoteImageShrinkBtn(img);
+    scheduleNoteAutosave();
+  });
+
   // Clicking directly on a checklist glyph toggles it, like a real checkbox.
   noteTextarea.addEventListener("click", (e) => {
     if (e.target && e.target.tagName === "IMG") {

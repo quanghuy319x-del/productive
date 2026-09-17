@@ -2124,6 +2124,29 @@ kbd{
   margin: 4px 0;
   cursor: pointer; /* click opens the photo viewer (see openNotePhotoViewer) */
 }
+/* Small "-" button that floats over whichever note photo the pointer is
+   over, letting the photo be shrunk with one click instead of dragging
+   the resize handle in its corner (see note-img-shrink-btn in app.js). */
+.note-img-shrink-btn{
+  position: fixed;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--paper-bg);
+  border: 1px solid var(--paper-border);
+  color: var(--paper-text);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  z-index: 500;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.note-img-shrink-btn.hidden{ display: none; }
+
 .note-textarea.drag-over{
   outline: 2px dashed var(--paper-text-dim);
   outline-offset: -6px;
