@@ -13781,58 +13781,15 @@
   }
   function setNoteColorTrigger(color){ $("#note-color-trigger-swatch").style.background = color; }
 
-  // ---- Symbol popover — same trigger+popover pattern as the color
-  // picker above, but each swatch inserts its own fixed emoji instead of
-  // applying a color. ----
+  // ---- Symbol button — used to open a popover of choices, but now only
+  // one symbol (➡️) remains, so clicking the button inserts it directly
+  // instead of opening a list with a single option. ----
   const noteSymbolTriggerBtn = $("#note-tool-symbol");
-  const noteSymbolPopover = $("#note-symbol-popover");
-  document.querySelectorAll(".note-symbol-swatch").forEach(btn => {
-    btn.addEventListener("mousedown", (e) => {
-      e.preventDefault(); // keep focus (and the note's caret position) off this button
-      noteInsertSymbol(btn.dataset.symbol);
-    });
-    // Close on "click" rather than inside mousedown, for the same reason
-    // as the color swatches (see the comment above their listeners).
-    btn.addEventListener("click", () => { closeNoteSymbolPopover(); });
-  });
   noteSymbolTriggerBtn.addEventListener("mousedown", (e) => {
-    e.preventDefault();
+    e.preventDefault(); // keep focus (and the note's caret position) off this button
     e.stopPropagation();
-    if (noteSymbolPopover.classList.contains("hidden")) {
-      openNoteSymbolPopover();
-    } else {
-      closeNoteSymbolPopover();
-    }
+    noteInsertSymbol("➡️");
   });
-  noteSymbolPopover.addEventListener("mousedown", (e) => e.stopPropagation());
-  document.addEventListener("mousedown", (e) => {
-    if (!noteSymbolPopover.classList.contains("hidden") &&
-        !noteSymbolPopover.contains(e.target) && e.target !== noteSymbolTriggerBtn) {
-      closeNoteSymbolPopover();
-    }
-  });
-  window.addEventListener("resize", () => {
-    if (!noteSymbolPopover.classList.contains("hidden")) positionNoteSymbolPopover();
-  });
-  function openNoteSymbolPopover(){
-    noteSymbolPopover.classList.remove("hidden");
-    positionNoteSymbolPopover();
-  }
-  function closeNoteSymbolPopover(){ noteSymbolPopover.classList.add("hidden"); }
-  function positionNoteSymbolPopover(){
-    const margin = 8;
-    const btnRect = noteSymbolTriggerBtn.getBoundingClientRect();
-    const popRect = noteSymbolPopover.getBoundingClientRect();
-    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
-    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
-    let top = btnRect.bottom + 6;
-    if (top + popRect.height > window.innerHeight - margin) {
-      top = btnRect.top - popRect.height - 6; // not enough room below: flip above
-    }
-    noteSymbolPopover.style.left = `${left}px`;
-    noteSymbolPopover.style.top = `${top}px`;
-  }
-
   // Close on a genuine backdrop click only — not a text selection that was
   // started inside the note card but dragged past its edge before mouseup.
   // In that case mousedown's target is inside the card while mouseup's
