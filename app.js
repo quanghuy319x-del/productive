@@ -17698,6 +17698,223 @@
 
   /* ---------------- notes browser ---------------- */
 
+  /* ---------------- simple per-browser folder system ---------------- */
+  // A lightweight, file-manager-style way to sort items in the Notes,
+  // Photos, and Videos browsers into folders. Kept deliberately simple:
+  // both the folder names and which item belongs to which folder are
+  // stored in localStorage, keyed by the item's own id — entirely
+  // separate from the map's own data, so this works the same way across
+  // every map without touching how notes/photos/videos are themselves
+  // saved, exported, or synced. Each browser gets its own independent
+  // set of folders (its own storage prefix) and starts out with one
+  // folder already made — "DRC" — which can be renamed by deleting it
+  // and making a new one, emptied, or removed just like any folder
+  // created afterward.
+  function createFolderManager(storagePrefix) {
+    const foldersKey = `branchline-folders-${storagePrefix}`;
+    const assignKey = `branchline-folder-assign-${storagePrefix}`;
+
+    function loadFolders() {
+      try {
+        const raw = localStorage.getItem(foldersKey);
+        const list = raw ? JSON.parse(raw) : null;
+        if (Array.isArray(list)) return list;
+      } catch (e) {}
+      return ["DRC"];
+    }
+    function saveFolders(list) {
+      try { localStorage.setItem(foldersKey, JSON.stringify(list)); } catch (e) {}
+    }
+    function loadAssign() {
+      try {
+        const raw = localStorage.getItem(assignKey);
+        const obj = raw ? JSON.parse(raw) : null;
+        if (obj && typeof obj === "object") return obj;
+      } catch (e) {}
+      return {};
+    }
+    function saveAssign(obj) {
+      try { localStorage.setItem(assignKey, JSON.stringify(obj)); } catch (e) {}
+    }
+
+    let folders = loadFolders();
+    let assign = loadAssign();
+    let selected = null; // null = "All"; "__unfiled__" = the Unfiled bucket
+
+    return {
+      list() { return folders.slice(); },
+      getSelected() { return selected; },
+      select(name) { selected = name; },
+      folderOf(id) { return assign[id] || null; },
+      countIn(name, allIds) {
+        return allIds.filter(id => assign[id] === name).length;
+      },
+      countUnfiled(allIds) {
+        return allIds.filter(id => !assign[id]).length;
+      },
+      moveTo(id, name) {
+        if (name) assign[id] = name; else delete assign[id];
+        saveAssign(assign);
+      },
+      create(name) {
+        name = (name || "").trim();
+        if (!name || folders.includes(name)) return false;
+        folders.push(name);
+        saveFolders(folders);
+        return true;
+      },
+      remove(name) {
+        folders = folders.filter(f => f !== name);
+        saveFolders(folders);
+        Object.keys(assign).forEach((id) => { if (assign[id] === name) delete assign[id]; });
+        saveAssign(assign);
+        if (selected === name) selected = null;
+      },
+      // Whether an item (by id) should show under whichever folder is
+      // currently selected — "All" shows everything, "Unfiled" shows only
+      // items with no folder, anything else shows only that folder's own.
+      matches(id) {
+        if (selected === null) return true;
+        if (selected === "__unfiled__") return !assign[id];
+        return assign[id] === selected;
+      },
+      // Drops stale assignments for ids no longer present (e.g. a note or
+      // photo that's since been deleted) so storage doesn't grow forever.
+      prune(liveIds) {
+        const liveSet = new Set(liveIds);
+        let changed = false;
+        Object.keys(assign).forEach((id) => {
+          if (!liveSet.has(id)) { delete assign[id]; changed = true; }
+        });
+        if (changed) saveAssign(assign);
+      },
+    };
+  }
+
+  // Builds the "All / <folders> / Unfiled" column shown to the left of a
+  // browser's list, plus the "+ new folder" row at the bottom. `onChange`
+  // re-renders the whole browser (folder column and list both) whenever a
+  // folder is picked, created, or deleted.
+  function renderFolderSidebar(container, mgr, allIds, onChange) {
+    container.innerHTML = "";
+    function makeRow(name, label, icon, count, deletable) {
+      const row = document.createElement("div");
+      row.className = "browser-folder-row" + (mgr.getSelected() === name ? " active" : "");
+      const iconEl = document.createElement("span");
+      iconEl.className = "browser-folder-row-icon";
+      iconEl.textContent = icon;
+      const text = document.createElement("span");
+      text.className = "browser-folder-row-label";
+      text.textContent = label;
+      const badge = document.createElement("span");
+      badge.className = "browser-folder-row-count";
+      badge.textContent = String(count);
+      row.append(iconEl, text, badge);
+      if (deletable) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "browser-folder-row-del";
+        del.textContent = "×";
+        del.title = `Delete "${name}" folder`;
+        del.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (!confirm(`Delete the "${name}" folder? Its items go back to Unfiled.`)) return;
+          mgr.remove(name);
+          onChange();
+        });
+        row.appendChild(del);
+      }
+      row.addEventListener("click", () => { mgr.select(name); onChange(); });
+      container.appendChild(row);
+    }
+    makeRow(null, "All", "🗂", allIds.length, false);
+    mgr.list().forEach((name) => makeRow(name, name, "📁", mgr.countIn(name, allIds), true));
+    makeRow("__unfiled__", "Unfiled", "📄", mgr.countUnfiled(allIds), false);
+
+    const addRow = document.createElement("div");
+    addRow.className = "browser-folder-add-row";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "New folder…";
+    input.className = "browser-folder-add-input";
+    input.spellcheck = false;
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "browser-folder-add-btn";
+    addBtn.textContent = "+";
+    addBtn.title = "Create folder";
+    function submit() {
+      if (mgr.create(input.value)) { input.value = ""; onChange(); }
+    }
+    addBtn.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    addRow.append(input, addBtn);
+    container.appendChild(addRow);
+  }
+
+  // Small "📁" button (added to each browser row) that opens a popover
+  // listing every folder plus "Unfiled" — clicking one files that item
+  // straight away, no dragging required.
+  let folderMovePopoverEl = null;
+  let folderMovePopoverOutsideHandler = null;
+  function closeFolderMovePopover() {
+    if (folderMovePopoverEl) { folderMovePopoverEl.remove(); folderMovePopoverEl = null; }
+    if (folderMovePopoverOutsideHandler) {
+      document.removeEventListener("mousedown", folderMovePopoverOutsideHandler);
+      folderMovePopoverOutsideHandler = null;
+    }
+  }
+  function openFolderMovePopover(anchorBtn, mgr, id, onChange) {
+    closeFolderMovePopover();
+    const pop = document.createElement("div");
+    pop.className = "folder-move-popover";
+    const current = mgr.folderOf(id);
+    function addOption(name, label) {
+      const opt = document.createElement("button");
+      opt.type = "button";
+      opt.className = "folder-move-option" + (current === name ? " active" : "");
+      opt.textContent = label;
+      opt.addEventListener("mousedown", (e) => e.preventDefault());
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        mgr.moveTo(id, name);
+        closeFolderMovePopover();
+        onChange();
+      });
+      pop.appendChild(opt);
+    }
+    addOption(null, "Unfiled");
+    mgr.list().forEach((name) => addOption(name, name));
+    document.body.appendChild(pop);
+    const margin = 8;
+    const rect = anchorBtn.getBoundingClientRect();
+    let left = rect.left;
+    left = Math.max(margin, Math.min(left, window.innerWidth - pop.offsetWidth - margin));
+    let top = rect.bottom + 6;
+    if (top + pop.offsetHeight > window.innerHeight - margin) top = rect.top - pop.offsetHeight - 6;
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+    pop.addEventListener("mousedown", (e) => e.stopPropagation());
+    folderMovePopoverEl = pop;
+    folderMovePopoverOutsideHandler = (e) => {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) closeFolderMovePopover();
+    };
+    setTimeout(() => document.addEventListener("mousedown", folderMovePopoverOutsideHandler), 0);
+  }
+  function buildFolderMoveBtn(mgr, id, onChange) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "browser-row-folder-btn";
+    const current = mgr.folderOf(id);
+    btn.textContent = "📁";
+    btn.title = current ? `In "${current}" — click to move` : "Move to folder";
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openFolderMovePopover(btn, mgr, id, onChange);
+    });
+    return btn;
+  }
+
   // Lists every node-level note across the whole map (see getNodeNotes)
   // in one place — versus the Favorites browser above, which only shows
   // the subset you've starred. Sortable by date (most recently touched
@@ -17709,7 +17926,9 @@
   const notesBrowserModal = $("#notesbrowser-modal");
   const notesBrowserList = $("#notesbrowser-list");
   const notesBrowserSearch = $("#notesbrowser-search");
+  const notesBrowserFoldersEl = $("#notesbrowser-folders");
   const notesBrowserSortBtns = [$("#notesbrowser-sort-date"), $("#notesbrowser-sort-favorite"), $("#notesbrowser-sort-alpha")];
+  const notesFolderMgr = createFolderManager("notes");
   let notesBrowserItems = [];
 
 
@@ -17789,6 +18008,7 @@
     requestAnimationFrame(() => notesBrowserSearch.focus());
   }
   function closeNotesBrowserModal() {
+    closeFolderMovePopover();
     zoomModalClose(notesBrowserModal);
   }
 
@@ -17854,7 +18074,9 @@
       if (notesBrowserSortState.sort === "favorite") renderNotesBrowserList();
     });
 
-    li.append(icon, text, meta, star);
+    const folderBtn = buildFolderMoveBtn(notesFolderMgr, it.noteId, renderNotesBrowserList);
+
+    li.append(icon, text, meta, folderBtn, star);
     li.addEventListener("click", () => jumpToNoteBrowserItem(it));
     return li;
   }
@@ -17865,9 +18087,13 @@
   ];
 
   function renderNotesBrowserList() {
+    const allIds = notesBrowserItems.map((it) => it.noteId);
+    notesFolderMgr.prune(allIds);
+    renderFolderSidebar(notesBrowserFoldersEl, notesFolderMgr, allIds, renderNotesBrowserList);
     const q = notesBrowserSearch.value.trim().toLowerCase();
-    const filtered = !q ? notesBrowserItems : notesBrowserItems.filter(it =>
-      it.preview.toLowerCase().includes(q) || noteBrowserRowLabel(it).toLowerCase().includes(q));
+    const filtered = notesBrowserItems.filter((it) =>
+      notesFolderMgr.matches(it.noteId) &&
+      (!q || it.preview.toLowerCase().includes(q) || noteBrowserRowLabel(it).toLowerCase().includes(q)));
     const sorted = sortNotesBrowserItems(filtered);
     notesBrowserList.innerHTML = "";
     if (!sorted.length) {
@@ -17923,7 +18149,9 @@
   const photosBrowserModal = $("#photosbrowser-modal");
   const photosBrowserList = $("#photosbrowser-list");
   const photosBrowserSearch = $("#photosbrowser-search");
+  const photosBrowserFoldersEl = $("#photosbrowser-folders");
   const photosBrowserSortBtns = [$("#photosbrowser-sort-date"), $("#photosbrowser-sort-favorite"), $("#photosbrowser-sort-alpha")];
+  const photosFolderMgr = createFolderManager("photos");
   let photosBrowserItems = [];
 
   function collectAllPhotos() {
@@ -17976,6 +18204,7 @@
     requestAnimationFrame(() => photosBrowserSearch.focus());
   }
   function closePhotosBrowserModal() {
+    closeFolderMovePopover();
     zoomModalClose(photosBrowserModal);
   }
 
@@ -18008,9 +18237,13 @@
   }
 
   function renderPhotosBrowserList() {
+    const allIds = photosBrowserItems.map((it) => it.photoId);
+    photosFolderMgr.prune(allIds);
+    renderFolderSidebar(photosBrowserFoldersEl, photosFolderMgr, allIds, renderPhotosBrowserList);
     const q = photosBrowserSearch.value.trim().toLowerCase();
-    const filtered = !q ? photosBrowserItems : photosBrowserItems.filter(it =>
-      it.nodeLabel.toLowerCase().includes(q) || it.tag.toLowerCase().includes(q));
+    const filtered = photosBrowserItems.filter((it) =>
+      photosFolderMgr.matches(it.photoId) &&
+      (!q || it.nodeLabel.toLowerCase().includes(q) || it.tag.toLowerCase().includes(q)));
     const sorted = sortPhotosBrowserItems(filtered);
     photosBrowserList.innerHTML = "";
     if (!sorted.length) {
@@ -18070,7 +18303,7 @@
         if (photosBrowserSortState.sort === "favorite") renderPhotosBrowserList();
       });
 
-      li.append(icon, text, meta, star);
+      li.append(icon, text, meta, buildFolderMoveBtn(photosFolderMgr, it.photoId, renderPhotosBrowserList), star);
       li.addEventListener("click", () => jumpToPhotoBrowserItem(it));
       photosBrowserList.appendChild(li);
     });
@@ -18099,7 +18332,9 @@
   const videosBrowserModal = $("#videosbrowser-modal");
   const videosBrowserList = $("#videosbrowser-list");
   const videosBrowserSearch = $("#videosbrowser-search");
+  const videosBrowserFoldersEl = $("#videosbrowser-folders");
   const videosBrowserSortBtns = [$("#videosbrowser-sort-date"), $("#videosbrowser-sort-favorite"), $("#videosbrowser-sort-alpha")];
+  const videosFolderMgr = createFolderManager("videos");
   let videosBrowserItems = [];
 
   function collectAllVideos() {
@@ -18117,6 +18352,7 @@
         items.push({
           nodeId: node.id,
           url,
+          id: `${node.id}|${url}`,
           nodeLabel,
           title: getLinkTitle(node, url) || url,
           favorite: getLinkFavorite(node, url),
@@ -18149,6 +18385,7 @@
     requestAnimationFrame(() => videosBrowserSearch.focus());
   }
   function closeVideosBrowserModal() {
+    closeFolderMovePopover();
     zoomModalClose(videosBrowserModal);
   }
 
@@ -18181,9 +18418,13 @@
   }
 
   function renderVideosBrowserList() {
+    const allIds = videosBrowserItems.map((it) => it.id);
+    videosFolderMgr.prune(allIds);
+    renderFolderSidebar(videosBrowserFoldersEl, videosFolderMgr, allIds, renderVideosBrowserList);
     const q = videosBrowserSearch.value.trim().toLowerCase();
-    const filtered = !q ? videosBrowserItems : videosBrowserItems.filter(it =>
-      it.title.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q));
+    const filtered = videosBrowserItems.filter((it) =>
+      videosFolderMgr.matches(it.id) &&
+      (!q || it.title.toLowerCase().includes(q) || it.nodeLabel.toLowerCase().includes(q)));
     const sorted = sortVideosBrowserItems(filtered);
     videosBrowserList.innerHTML = "";
     if (!sorted.length) {
@@ -18233,7 +18474,7 @@
         if (videosBrowserSortState.sort === "favorite") renderVideosBrowserList();
       });
 
-      li.append(icon, text, meta, star);
+      li.append(icon, text, meta, buildFolderMoveBtn(videosFolderMgr, it.id, renderVideosBrowserList), star);
       li.addEventListener("click", () => jumpToVideoBrowserItem(it));
       videosBrowserList.appendChild(li);
     });

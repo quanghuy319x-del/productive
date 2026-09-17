@@ -376,7 +376,7 @@
 </div>
 
 <div id="notesbrowser-modal" class="modal hidden">
-  <div class="modal-card tagbrowser-modal-card">
+  <div class="modal-card tagbrowser-modal-card browser-with-folders">
     <div class="modal-back-row">
       <h2>Notes</h2>
       <span class="modal-back-row-gap"></span>
@@ -390,12 +390,15 @@
       <button type="button" id="notesbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite" title="Click again to reverse order">Favorite<span class="notesbrowser-sort-arrow"></span></button>
       <button type="button" id="notesbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha" title="Click again to reverse order">A–Z<span class="notesbrowser-sort-arrow"></span></button>
     </div>
-    <ul id="notesbrowser-list" class="favoritesbrowser-list"></ul>
+    <div class="browser-body">
+      <div id="notesbrowser-folders" class="browser-folder-sidebar"></div>
+      <ul id="notesbrowser-list" class="favoritesbrowser-list"></ul>
+    </div>
   </div>
 </div>
 
 <div id="photosbrowser-modal" class="modal hidden">
-  <div class="modal-card tagbrowser-modal-card">
+  <div class="modal-card tagbrowser-modal-card browser-with-folders">
     <div class="modal-back-row">
       <h2>Photos</h2>
       <span class="modal-back-row-gap"></span>
@@ -409,12 +412,15 @@
       <button type="button" id="photosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite" title="Click again to reverse order">Favorite<span class="notesbrowser-sort-arrow"></span></button>
       <button type="button" id="photosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha" title="Click again to reverse order">A–Z<span class="notesbrowser-sort-arrow"></span></button>
     </div>
-    <ul id="photosbrowser-list" class="favoritesbrowser-list"></ul>
+    <div class="browser-body">
+      <div id="photosbrowser-folders" class="browser-folder-sidebar"></div>
+      <ul id="photosbrowser-list" class="favoritesbrowser-list"></ul>
+    </div>
   </div>
 </div>
 
 <div id="videosbrowser-modal" class="modal hidden">
-  <div class="modal-card tagbrowser-modal-card">
+  <div class="modal-card tagbrowser-modal-card browser-with-folders">
     <div class="modal-back-row">
       <h2>Videos</h2>
       <span class="modal-back-row-gap"></span>
@@ -428,7 +434,10 @@
       <button type="button" id="videosbrowser-sort-favorite" class="notesbrowser-sort-btn" data-sort="favorite" title="Click again to reverse order">Favorite<span class="notesbrowser-sort-arrow"></span></button>
       <button type="button" id="videosbrowser-sort-alpha" class="notesbrowser-sort-btn" data-sort="alpha" title="Click again to reverse order">A–Z<span class="notesbrowser-sort-arrow"></span></button>
     </div>
-    <ul id="videosbrowser-list" class="favoritesbrowser-list"></ul>
+    <div class="browser-body">
+      <div id="videosbrowser-folders" class="browser-folder-sidebar"></div>
+      <ul id="videosbrowser-list" class="favoritesbrowser-list"></ul>
+    </div>
   </div>
 </div>
 
