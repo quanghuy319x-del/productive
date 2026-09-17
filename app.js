@@ -18023,6 +18023,9 @@
       const text = document.createElement("span");
       text.className = "browser-folder-row-label";
       text.textContent = label;
+      // Belt-and-braces for a name long enough to still be clipped after
+      // wrapping — hovering the row spells it out in full.
+      row.title = label;
       const badge = document.createElement("span");
       badge.className = "browser-folder-row-count";
       badge.textContent = String(count);
