@@ -3672,19 +3672,20 @@
   // deleted node, a crop/text-edit replacing an id, "Remove all photos"
   // racing an in-flight write, etc.).
   //
-  // NOT called automatically anymore (see runPersistNow below) — this
-  // used to run after every single autosave, which meant ANY moment
-  // where the in-memory node tree was transiently incomplete/stale right
-  // when a save fired (a race during map load/sync, a bug elsewhere, an
-  // interrupted operation, etc.) could make it look like photos were
-  // "orphaned" and permanently delete their bytes from PhotoDB — with no
-  // undo. Photos should only ever be deleted by a direct, explicit
-  // action (removing a specific photo, deleting/emptying-trash on a
-  // whole map — see deletePhotoRecord/permanentlyDeleteMap/emptyTrash),
-  // never as an automatic side effect of an ordinary save. The function
-  // is left here, unused, in case a genuinely manual "clean up unused
-  // photos" button gets added later — it would just need a real user
-  // click to call it, never a save.
+  // Called two ways: manually, from the Storage panel's "Clean up
+  // current map" button; and automatically, but only via
+  // scheduleAutoPhotoCleanup/runAutoPhotoCleanup below, which delay this
+  // until 60s after the map's last save with no further edits in
+  // between. That restriction is the fix for a real bug this used to
+  // have: this function used to run after every single autosave, so ANY
+  // moment where the in-memory node tree was transiently incomplete/
+  // stale right when a save fired (a race during map load/sync, a bug
+  // elsewhere, an interrupted operation, etc.) could make it look like
+  // photos were "orphaned" and permanently delete their bytes from
+  // PhotoDB — with no undo. Running it only after a full minute of
+  // settled quiet (and re-checking the map hasn't changed, nothing's
+  // syncing, etc. — see runAutoPhotoCleanup) avoids that same trap while
+  // still cleaning things up without a manual click every time.
   async function gcOrphanedPhotos(map) {
     if (!map) return;
     try {
@@ -3708,6 +3709,41 @@
     } catch (e) { /* best-effort cleanup, safe to skip on failure */ }
   }
 
+  // Photo rows only ever get orphaned by rare edge cases (an interrupted
+  // operation, a bug elsewhere) — the ordinary paths (deleting a node,
+  // replacing a photo via crop/text/combine) already delete the old
+  // photo id directly, right when it happens. So this doesn't need to
+  // run often; it just needs to run at a moment when the in-memory tree
+  // is guaranteed to be complete and settled, which the comment above
+  // used to rule out for every automatic call site. Idle-after-save is
+  // the one moment that's actually safe: scheduleAutoPhotoCleanup below
+  // is called every time a save finishes, and (re)starts a fresh 60s
+  // timer — so it only ever fires a full minute after the LAST edit,
+  // never mid-edit, never mid-sync, and never for a map that isn't the
+  // one still open (all checked again in runAutoPhotoCleanup itself,
+  // since 60s is long enough for any of that to have changed).
+  let autoCleanupTimer = null;
+  function scheduleAutoPhotoCleanup(mapId) {
+    if (autoCleanupTimer) clearTimeout(autoCleanupTimer);
+    autoCleanupTimer = setTimeout(() => runAutoPhotoCleanup(mapId), 60000);
+  }
+  function cancelAutoPhotoCleanup() {
+    if (autoCleanupTimer) { clearTimeout(autoCleanupTimer); autoCleanupTimer = null; }
+  }
+  async function runAutoPhotoCleanup(mapId) {
+    autoCleanupTimer = null;
+    // Re-check everything now, not just at schedule time: a full minute
+    // has passed, plenty of time for the user to have switched maps,
+    // started typing again, backgrounded the tab mid-sync, etc.
+    if (!state.current || state.current.id !== mapId) return;
+    if (unsavedEdits || persistTimer) return; // another edit landed since scheduling — wait for the next idle window instead
+    if (document.visibilityState !== "visible") return;
+    if (DriveDB.syncing) return;
+    try {
+      await gcOrphanedPhotos(state.current);
+    } catch (e) { /* best-effort — a normal manual cleanup can always catch anything missed */ }
+  }
+
   async function runPersistNow() {
     persistTimer = null;
     if (!state.current) { unsavedEdits = false; return; }
@@ -3719,10 +3755,6 @@
     try {
       await DB.put(mapToSave);
       await FolderDB.save(mapToSave);
-      // gcOrphanedPhotos(mapToSave) intentionally NOT called here anymore
-      // — see the comment on that function above. Photo rows now only
-      // ever get deleted by an explicit user action, never as a side
-      // effect of a routine save.
       // Local save (IndexedDB + connected folder) is the fast part and
       // is what this toolbar status is meant to reflect — flip it to
       // "Saved" here instead of waiting on Drive's network PUT below
@@ -3745,6 +3777,12 @@
       lastSavedAt = Date.now();
       saveStatus.className = "save-status saved";
       updateSaveStatusLabel();
+      // Local save landed clean, so the tree this save() call captured is
+      // complete and consistent — (re)start the 60s idle window that lets
+      // the automatic orphan-photo sweep run (see scheduleAutoPhotoCleanup
+      // above). Every subsequent save just pushes this back out, so it
+      // only actually fires once a full minute of quiet has passed.
+      scheduleAutoPhotoCleanup(mapToSave.id);
     } catch (e) {
       unsavedEdits = false;
       throw e;
@@ -4028,6 +4066,7 @@
     const m = state.maps.find(x => x.id === id);
     if (!m) return;
     commitEditIfActive();
+    cancelAutoPhotoCleanup(); // leaving the map it was scheduled for — never let it fire against the next one
     state.current = m;
     ensureTheme(state.current);
     ensureLinks(state.current);
