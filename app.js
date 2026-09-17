@@ -13600,7 +13600,7 @@
     e.preventDefault();
     const img = noteImageShrinkTarget;
     if (!img) return;
-    const NOTE_IMG_SHRINK_FACTOR = 0.8;
+    const NOTE_IMG_SHRINK_FACTOR = 0.2;
     const NOTE_IMG_MIN_WIDTH = 80;
     const NOTE_IMG_MIN_HEIGHT = 60;
     notePushUndo();
