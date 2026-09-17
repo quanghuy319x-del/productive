@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=68">
+<link rel="stylesheet" href="style.css?v=70">
 </head>
 <body>
 <div id="app">
@@ -60,6 +60,7 @@
       <button id="btn-import" class="btn-ghost">Import .json</button>
       <input type="file" id="file-import" accept=".json" hidden>
       <button id="btn-trash" class="btn-ghost" title="Trashed maps">🗑 Trash<span id="trash-count-badge" class="trash-count-badge hidden"></span></button>
+      <button id="btn-storage" class="btn-ghost" title="See what's using up browser storage">🗄 Storage</button>
       <button id="btn-tagbrowser" class="btn-ghost" title="Browse photos by tag">🏷 Tags</button>
       <button id="btn-commentbrowser" class="btn-ghost" title="Browse photo comments">💬 Comments</button>
       <button id="btn-favoritesbrowser" class="btn-ghost" title="Browse your favorites">⭐ Favorites</button>
@@ -215,6 +216,21 @@
     <div class="trash-modal-actions">
       <button id="trash-empty-btn" class="btn-ghost danger">Empty trash</button>
       <button id="trash-close" class="btn-primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="storage-modal" class="modal hidden">
+  <div class="modal-card trash-modal-card storage-modal-card">
+    <h2>Storage</h2>
+    <p class="trash-hint">What's actually using up this browser's storage for this site, broken down by map. Trashed maps still hold onto their full photo data until they're deleted forever below — that's the most common reason usage looks much bigger than your active maps alone.</p>
+    <p id="storage-total-line" class="storage-total-line">Calculating…</p>
+    <ul id="storage-list" class="trash-list storage-list"></ul>
+    <div class="trash-modal-actions">
+      <button id="storage-empty-trash-btn" class="btn-ghost danger">Empty trash</button>
+      <button id="storage-cleanup-btn" class="btn-ghost" title="Remove any photo bytes left behind by deleted nodes/replaced images on your currently open map">Clean up current map</button>
+      <button id="storage-orphan-btn" class="btn-ghost danger" title="Delete photo bytes left behind by maps that no longer exist at all — not visible in the trash">No unowned photos found</button>
+      <button id="storage-close" class="btn-primary">Done</button>
     </div>
   </div>
 </div>
@@ -754,6 +770,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=139"></script>
+<script src="app.js?v=141"></script>
 </body>
 </html>

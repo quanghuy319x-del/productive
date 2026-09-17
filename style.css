@@ -2035,6 +2035,44 @@ kbd{
 
 .note-symbol-swatch{ font-size: 15px; }
 
+/* Touch targets: note/brainstorm/DRC color pickers all reuse the same
+   #note-color-popover-style markup (.note-tool-btn swatches inside a
+   .note-color-popover), so one override sized by id covers all three —
+   but only the color swatch popovers, not the emoji/symbol popovers that
+   share the same .note-color-popover container class. Finger presses
+   need more room than a mouse pointer, and since each popover's position
+   is recalculated in JS right before it's shown (positionNoteColorPopover
+   / positionBrainstormColorPopover / positionDrcColorPopover all re-read
+   getBoundingClientRect at open time), it's safe to just grow the
+   swatches here and let that JS place the now-bigger popover correctly. */
+@media (pointer: coarse){
+  /* Bigger swatches in a single column would make the popover very tall
+     on a phone screen, so wrap into 2 columns here as well — same total
+     tap-target count, roughly half the height. Deliberately only touches
+     flex-direction/flex-wrap/width, never `display`: these are ID
+     selectors, which would otherwise outrank the .hidden class's
+     `display:none` (a class selector) and leave the popover stuck open,
+     the exact bug already fixed once for the photo-combine popover. */
+  #note-color-popover, #brainstorm-color-popover, #drc-color-popover{
+    flex-direction: row;
+    flex-wrap: wrap;
+    /* border-box, so this is 2×38px buttons + 1 gap (84px) plus the 8px
+       padding on each side, with a few px of slack against rounding —
+       enough to force a wrap after 2 per row without leaving room for 3. */
+    max-width: 104px;
+    gap:8px;
+    padding:8px;
+  }
+  #note-color-popover .note-tool-btn,
+  #brainstorm-color-popover .note-tool-btn,
+  #drc-color-popover .note-tool-btn{
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+}
+
 /* Brainstorm modal's own color/symbol swatches — same look as the note
    editor's (.note-color-swatch / .note-symbol-swatch above) but kept as
    separate classes so app.js's global note-swatch listeners don't also
@@ -3075,9 +3113,24 @@ kbd{
   display:flex;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .trash-modal-actions .btn-primary{ margin-top:0; flex:1; }
 .trash-modal-actions .btn-ghost{ flex:none; }
+.storage-total-line{
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 6px;
+}
+.storage-row-trashed .trash-row-name::after{
+  content: " (trashed)";
+  color: var(--text-faint);
+  font-weight: 400;
+}
+.storage-modal-actions-wrap{ display:flex; gap:8px; flex-wrap:wrap; }
 
 #tagbrowser-list-view.hidden, #tagbrowser-gallery-view.hidden{ display:none; }
 .tagbrowser-modal-card{

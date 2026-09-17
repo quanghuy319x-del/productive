@@ -355,6 +355,34 @@
         tx.oncomplete = () => resolve();
         tx.onerror = (e) => reject(e.target.error);
       });
+    },
+    // Every row in the store, regardless of which map (if any) it still
+    // claims to belong to — used only to hunt for rows whose mapId no
+    // longer matches any map this browser actually knows about (a map
+    // permanently deleted by an older build that didn't clean up its
+    // photos first, an interrupted permanentlyDeleteMap/emptyTrash call,
+    // etc.). Never used on the normal read path — that's getAllForMap,
+    // scoped to one map via the index so it stays fast even with a lot
+    // of rows.
+    async getAllRaw() {
+      const db = await DB.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_STORE, "readonly");
+        const req = tx.objectStore(PHOTO_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target.error);
+      });
+    },
+    async deleteMany(ids) {
+      if (!ids.length) return;
+      const db = await DB.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_STORE, "readwrite");
+        const store = tx.objectStore(PHOTO_STORE);
+        ids.forEach(id => store.delete(id));
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+      });
     }
   };
 
@@ -16885,6 +16913,187 @@
   document.addEventListener("keydown", (e) => {
     if (trashModal.classList.contains("hidden")) return;
     if (e.key === "Escape") closeTrashModal();
+  });
+
+  /* ---------------- storage modal ---------------- */
+  // Answers "why is this site using way more browser storage than my
+  // maps look like they should?" — almost always either (a) trashed
+  // maps, which are only ever soft-deleted (see deleteMap) and keep
+  // every one of their photo rows in PhotoDB until Empty Trash actually
+  // runs, or (b) leftover photo rows in PhotoDB that nothing in the
+  // current node tree references anymore (gcOrphanedPhotos above exists
+  // for exactly this, but is deliberately never called automatically —
+  // see the big comment on it — so it only ever runs from the button
+  // here, on the one map that's actually open).
+
+  const storageModal = $("#storage-modal");
+  const storageListEl = $("#storage-list");
+  const storageTotalLine = $("#storage-total-line");
+
+  function formatStorageBytes(n) {
+    if (!n) return "0 B";
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
+
+  // Blob rows report their own size directly; legacy pre-Blob rows only
+  // have a base64 `data:` string, whose raw byte count is ~3/4 of the
+  // string length minus the "data:image/...;base64," header — close
+  // enough for a usage estimate, not worth decoding just to measure.
+  async function estimateMapPhotoBytes(mapId) {
+    let total = 0;
+    try {
+      const rows = await PhotoDB.getAllForMap(mapId);
+      for (const r of rows) {
+        if (r.blob && typeof r.blob.size === "number") total += r.blob.size;
+        else if (typeof r.data === "string") {
+          const commaIdx = r.data.indexOf(",");
+          total += Math.floor((r.data.length - (commaIdx + 1)) * 0.75);
+        }
+      }
+    } catch (e) { /* best-effort estimate */ }
+    return total;
+  }
+
+  async function openStorageModal() {
+    zoomModalOpen(storageModal);
+    await renderStorageModal();
+  }
+  function closeStorageModal() {
+    zoomModalClose(storageModal);
+  }
+
+  async function renderStorageModal() {
+    storageListEl.innerHTML = "";
+    storageTotalLine.textContent = "Calculating…";
+    $("#storage-empty-trash-btn").disabled = trashedMapsList().length === 0;
+
+    const rows = await Promise.all(state.maps.map(async (m) => {
+      const photoBytes = await estimateMapPhotoBytes(m.id);
+      const treeBytes = JSON.stringify(m).length;
+      return { map: m, bytes: photoBytes + treeBytes };
+    }));
+    rows.sort((a, b) => b.bytes - a.bytes);
+
+    // Rows in PhotoDB whose mapId doesn't match ANY map this browser
+    // still knows about — active or trashed. These are invisible to
+    // every other view in the app (Trash included, since their owning
+    // map record is already gone) and can only ever have come from a
+    // map being deleted without its photos being cleaned up first: an
+    // older build's delete path, or a write that got interrupted
+    // partway through permanentlyDeleteMap/emptyTrash. Safe to delete
+    // outright — by definition nothing references them anymore.
+    const knownMapIds = new Set(state.maps.map(m => m.id));
+    let orphanBytes = 0;
+    let orphanIds = [];
+    try {
+      const allPhotoRows = await PhotoDB.getAllRaw();
+      for (const r of allPhotoRows) {
+        if (knownMapIds.has(r.mapId)) continue;
+        orphanIds.push(r.id);
+        if (r.blob && typeof r.blob.size === "number") orphanBytes += r.blob.size;
+        else if (typeof r.data === "string") {
+          const commaIdx = r.data.indexOf(",");
+          orphanBytes += Math.floor((r.data.length - (commaIdx + 1)) * 0.75);
+        }
+      }
+    } catch (e) { /* best-effort scan */ }
+    storageOrphanIds = orphanIds;
+    const orphanBtn = $("#storage-orphan-btn");
+    orphanBtn.disabled = orphanIds.length === 0;
+    orphanBtn.textContent = orphanIds.length
+      ? `Delete ${orphanIds.length} unowned photo${orphanIds.length === 1 ? "" : "s"} (${formatStorageBytes(orphanBytes)})`
+      : "No unowned photos found";
+
+    const trashedTotal = rows.filter(r => r.map.trashedAt).reduce((s, r) => s + r.bytes, 0);
+    const grandTotal = rows.reduce((s, r) => s + r.bytes, 0) + orphanBytes;
+
+    let quotaLine = "";
+    if (navigator.storage && navigator.storage.estimate) {
+      try {
+        const est = await navigator.storage.estimate();
+        if (typeof est.usage === "number") {
+          quotaLine = ` Chrome reports ${formatStorageBytes(est.usage)} actually on disk for this site — the gap from the estimate above is normal IndexedDB/browser overhead.`;
+        }
+      } catch (e) { /* estimate() not available in this context */ }
+    }
+    const parts = [`~${formatStorageBytes(grandTotal)} across ${rows.length} map${rows.length === 1 ? "" : "s"}`];
+    if (trashedTotal > 0) parts.push(`~${formatStorageBytes(trashedTotal)} of that is sitting in the trash`);
+    if (orphanBytes > 0) parts.push(`~${formatStorageBytes(orphanBytes)} more is photos left behind by maps that no longer exist at all — not shown in the trash, only below`);
+    storageTotalLine.textContent = parts.join(". ") + `.${quotaLine}`;
+
+    if (!rows.length) {
+      const empty = document.createElement("li");
+      empty.className = "trash-empty";
+      empty.textContent = "No maps yet.";
+      storageListEl.appendChild(empty);
+      return;
+    }
+
+    rows.forEach(({ map: m, bytes }) => {
+      const li = document.createElement("li");
+      li.className = "trash-row" + (m.trashedAt ? " storage-row-trashed" : "");
+
+      const text = document.createElement("div");
+      text.className = "trash-row-text";
+      const name = document.createElement("span");
+      name.className = "trash-row-name";
+      name.textContent = m.title || "Untitled map";
+      const meta = document.createElement("span");
+      meta.className = "trash-row-meta";
+      meta.textContent = formatStorageBytes(bytes);
+      text.append(name, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "trash-row-actions";
+      if (m.trashedAt) {
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "trash-row-delete";
+        delBtn.textContent = "Delete forever";
+        delBtn.addEventListener("click", async () => {
+          await permanentlyDeleteMap(m.id);
+          renderStorageModal();
+        });
+        actions.appendChild(delBtn);
+      }
+
+      li.append(text, actions);
+      storageListEl.appendChild(li);
+    });
+  }
+
+  let storageOrphanIds = [];
+
+  $("#btn-storage").addEventListener("click", openStorageModal);
+  $("#storage-close").addEventListener("click", closeStorageModal);
+  $("#storage-empty-trash-btn").addEventListener("click", async () => {
+    await emptyTrash();
+    renderStorageModal();
+  });
+  $("#storage-cleanup-btn").addEventListener("click", async () => {
+    if (!state.current) { showToast("Open a map first."); return; }
+    const before = await estimateMapPhotoBytes(state.current.id);
+    await gcOrphanedPhotos(state.current);
+    await loadPhotoCacheForMap(state.current.id); // refresh the in-tab cache to match what's left on disk
+    const after = await estimateMapPhotoBytes(state.current.id);
+    const freed = before - after;
+    showToast(freed > 0 ? `Freed ${formatStorageBytes(freed)} of unused photos on this map.` : "No unused photos found on this map.");
+    renderStorageModal();
+  });
+  $("#storage-orphan-btn").addEventListener("click", async () => {
+    if (!storageOrphanIds.length) return;
+    if (!confirm(`Permanently delete ${storageOrphanIds.length} photo${storageOrphanIds.length === 1 ? "" : "s"} left behind by maps that no longer exist? This can't be undone.`)) return;
+    await PhotoDB.deleteMany(storageOrphanIds);
+    storageOrphanIds = [];
+    renderStorageModal();
+  });
+  storageModal.addEventListener("click", (e) => { if (e.target === storageModal) closeStorageModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (storageModal.classList.contains("hidden")) return;
+    if (e.key === "Escape") closeStorageModal();
   });
 
   /* ---------------- photo tag browser ---------------- */
