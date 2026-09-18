@@ -2290,8 +2290,9 @@ kbd{
   max-height: 90vh;
   overflow-y:auto;
   /* Wider than the default modal-card so a task's controls (checkbox,
-     text, timer, subtask toggle, etc.) have room to sit on one line. */
-  width: 480px;
+     text, timer, subtask toggle, etc.) have room to sit on one line.
+     480px * 1.7 = 816px. */
+  width: 816px;
   max-width: 94vw;
 }
 .tasks-progress-row{
