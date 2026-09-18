@@ -2635,20 +2635,14 @@
     if ([r, g, b].some(Number.isNaN)) return null;
     return `rgba(${r}, ${g}, ${b}, 0.16)`;
   }
-  // Font color for a task and its subtasks — derived from whatever fill
-  // is actually behind the text, so the two always match/harmonize
-  // rather than picking an unrelated hue:
-  //  - Task has a color label (getTaskColor) → the row/panel background
-  //    is a low-alpha tint of that same swatch (see taskColorTint), so
-  //    the text uses that swatch at full strength — literally the color
-  //    the background fill was extracted from.
-  //  - No color label → background is the plain neutral --panel-2, so
-  //    there's no fill color to extract; fall back to a stable per-task
-  //    hash pick from the shared PALETTE instead, so tasks still read as
-  //    visually distinct at a glance.
+  // Font color for a task and its subtasks — always a stable per-task
+  // hash pick from the shared PALETTE, independent of the task's color
+  // label (getTaskColor)/background tint (taskColorTint). Two tasks that
+  // share the same color-label background fill still get different font
+  // colors this way, since the hash is keyed on the task's own id rather
+  // than on the shared label. Tasks with no id (shouldn't normally
+  // happen) fall back to the first palette entry.
   function taskAutoColor(t) {
-    const explicit = getTaskColor(t);
-    if (explicit) return explicit;
     if (!t || !t.id) return PALETTE[0];
     const id = String(t.id);
     let hash = 0;
