@@ -2366,6 +2366,11 @@ kbd{
   /* Keep an expanded task glued to its subtask panel right below it,
      rather than letting the column break land between them. */
   break-after: avoid-column;
+  /* No gap to the subtask panel directly below — the two are styled as
+     one continuous card (see .task-row.has-open-subtasks and
+     .subtask-panel below), so a margin here would reopen a visible seam. */
+  margin-bottom: 0;
+  border-radius: 6px 6px 0 0;
 }
 .tasks-list .subtask-panel{
   margin: 0 0 6px;
@@ -2547,6 +2552,9 @@ kbd{
   flex: 1 1 auto;
   min-width:0;
   font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
   color: var(--text);
   outline:none;
   padding: 2px 4px;
@@ -2707,13 +2715,17 @@ kbd{
 
 /* Subtasks — a small nested checklist on a single task. Opened/closed by
    double-clicking the task row itself (see the row's dblclick handler);
-   there is no separate expand button. Left padding here is trimmed down
-   to the task row's own 2px so the drag handle and checkbox below line
-   up in the same columns as the task row's (task row: 2px padding, then
-   handle/gap/checkbox — matched exactly by the subtask row below). */
+   there is no separate expand button. Same background + a matching
+   bottom radius as the task row above it (which loses its own bottom
+   radius while open, see .task-row.has-open-subtasks) — together they
+   read as one continuous card: task on top, its subtasks in the body
+   right below, with no visible seam between them. */
 .subtask-panel{
   list-style:none;
-  padding: 4px 4px 8px 2px;
+  padding: 6px 9px 9px 9px;
+  background: var(--panel-2);
+  border-radius: 0 0 6px 6px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
 }
 /* Pill bubbles that wrap left-to-right instead of one full-width row per
    subtask — several short subtasks now share a line, so a task with a
@@ -2726,16 +2738,18 @@ kbd{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  gap: 4px 6px;
+  gap: 3px 4px;
 }
 .subtask-row{
   display:inline-flex;
   align-items:center;
-  gap:3px;
+  gap:2px;
   max-width: 100%;
-  padding: 1px 4px 1px 7px;
+  padding: 1px 3px 1px 6px;
   border-radius: 999px;
-  background: var(--panel-2);
+  /* Card body (.subtask-panel) now shares the task row's own background,
+     so pills need their own tone to still stand out against it. */
+  background: var(--panel);
   border: 1px solid var(--border);
   position: relative;
 }
@@ -2783,7 +2797,7 @@ kbd{
 .subtask-text{
   flex:1 1 auto;
   min-width:0;
-  max-width: 150px;
+  max-width: 110px;
   font-size: 12px;
   color: var(--text-dim);
   outline:none;
@@ -2804,7 +2818,7 @@ kbd{
   text-overflow: unset;
   overflow-wrap: anywhere;
 }
-.subtask-text:focus{ background: var(--panel); }
+.subtask-text:focus{ background: var(--panel-2); }
 .subtask-row.done .subtask-text{
   color: var(--text-faint);
   opacity: 0.55;
@@ -2826,7 +2840,7 @@ kbd{
   visibility: hidden;
 }
 .subtask-row:hover .subtask-copy{ visibility: visible; }
-.subtask-copy:hover{ color: var(--text); background: var(--panel); }
+.subtask-copy:hover{ color: var(--text); background: var(--panel-2); }
 .subtask-copy.copied{ color: #33b3f0; visibility: visible; }
 .subtask-delete{
   flex:none;
@@ -2841,7 +2855,7 @@ kbd{
   visibility: hidden;
 }
 .subtask-row:hover .subtask-delete{ visibility: visible; }
-.subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel); }
+.subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel-2); }
 .subtask-add-row{ margin-top:2px; }
 .subtask-new-input{
   width:100%;
@@ -2919,7 +2933,8 @@ kbd{
 #tasks-modal .task-text{ color: #000000; }
 #tasks-modal .task-text:focus{ background: #f2f2f2; }
 #tasks-modal .task-row.done .task-text{ color: #c2c2c2; }
-#tasks-modal .task-row.has-open-subtasks{}
+#tasks-modal .task-row.has-open-subtasks{ border-radius: 6px 6px 0 0; }
+#tasks-modal .subtask-panel{ background: #f7f7f7; border-radius: 0 0 6px 6px; box-shadow: inset 0 1px 0 #ffffff; }
 #tasks-modal .task-timer-btn{ color: #444444; }
 #tasks-modal .task-timer-btn:hover{ background: #f0f0f0; }
 #tasks-modal .task-timer-extend{ color: #444444; }
@@ -4702,7 +4717,22 @@ kbd{
   #cal-day-modal .task-row:hover .task-source-node,
   #cal-day-modal .task-row:focus-within .task-source-node{ opacity:1; }
 }
-#cal-day-modal .subtask-panel{ margin: -2px 0 0 30px; }
+#cal-day-modal .task-row.has-open-subtasks{
+  border-radius: 10px 10px 0 0;
+  border-bottom: 1px dashed #e4e0d4;
+  box-shadow: none;
+}
+#cal-day-modal .subtask-panel{
+  /* Pull up over the flex list's own 8px gap (.today-task-list) so this
+     panel sits flush against the task row above it, reading as that
+     row's body rather than a separate list item. */
+  margin: -8px 0 0 0;
+  background: #ffffff;
+  border: 1px solid #e4e0d4;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
+}
 #cal-day-modal .subtask-row{ background:#f4f2ec; border-color:#e4e0d4; }
 #cal-day-modal .subtask-row.done{ background: transparent; border-color:#e4e0d4; }
 #cal-day-modal .subtask-checkbox{ accent-color: #3b6ef0; }
