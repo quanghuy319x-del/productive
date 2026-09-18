@@ -2354,18 +2354,11 @@ kbd{
      they're all visible at once without an inner scrollbar. The card
      itself (.tasks-modal-card) is the thing that scrolls, and only if the
      whole modal ends up taller than the browser window. */
-  column-count: 1;
 }
 .tasks-list .task-row{
   margin: 0 0 6px;
-  /* Never let a single task row itself be split across the column
-     break. */
-  break-inside: avoid;
 }
 .tasks-list .task-row.has-open-subtasks{
-  /* Keep an expanded task glued to its subtask panel right below it,
-     rather than letting the column break land between them. */
-  break-after: avoid-column;
   /* No gap to the subtask panel directly below — the two are styled as
      one continuous card (see .task-row.has-open-subtasks and
      .subtask-panel below), so a margin here would reopen a visible seam. */
@@ -2374,25 +2367,6 @@ kbd{
 }
 .tasks-list .subtask-panel{
   margin: 0 0 6px;
-  break-inside: avoid;
-  break-before: avoid-column;
-}
-@media (any-hover: hover) and (any-pointer: fine){
-  /* PC/desktop (a real mouse/trackpad is available): lay tasks out in
-     2 columns so a long list doesn't force a tall, narrow scroll.
-     Touch-only devices stay single-column (see column-count:1 above).
-     Uses any-hover/any-pointer rather than hover/pointer — those only
-     test the *primary* input, so a touchscreen laptop that also has a
-     mouse would otherwise report pointer:coarse and never get the
-     2-column layout even though it has a mouse plugged in. */
-  .tasks-list{
-    column-count: 2;
-    column-gap: 12px;
-  }
-  .tasks-modal-card{
-    /* Wide enough for two task columns side by side. */
-    width: 760px;
-  }
 }
 .task-row{
   display:flex;
