@@ -2347,10 +2347,6 @@ kbd{
 .tasks-sort-stars-btn:active{ transform: scale(0.96); }
 .tasks-sort-stars-btn:disabled{ opacity: 0.4; cursor: not-allowed; }
 .tasks-sort-stars-btn:disabled:hover{ color: var(--text-dim); border-color: var(--border); }
-/* Auto-color toggle: "active" (the default) means per-task auto colors
-   are on; clicking it while active switches everything to plain black,
-   at which point it just looks like a normal (inactive) button again. */
-.tasks-autocolor-btn.active{ color: var(--text); border-color: var(--accent, #7c9eff); }
 .tasks-list{
   list-style:none;
   margin:0 0 12px;
