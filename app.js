@@ -2661,6 +2661,23 @@
     }
     return PALETTE[Math.abs(hash) % PALETTE.length];
   }
+  // Global on/off switch for task font color: "dynamic" keeps the
+  // per-task hash color from taskAutoColor above; "black" flattens every
+  // task/subtask's font to plain black instead. Remembered across
+  // reloads via localStorage, same pattern as SIDEBAR_HIDDEN_KEY.
+  const TASK_FONT_BLACK_KEY = "branchline_task_font_black";
+  let taskFontBlackMode = false;
+  try { taskFontBlackMode = localStorage.getItem(TASK_FONT_BLACK_KEY) === "1"; } catch (e) {}
+  function setTaskFontBlackMode(on) {
+    taskFontBlackMode = !!on;
+    try { localStorage.setItem(TASK_FONT_BLACK_KEY, taskFontBlackMode ? "1" : "0"); } catch (e) {}
+  }
+  // Use this instead of calling taskAutoColor(t) directly anywhere a
+  // task/subtask's font color is applied, so the black-mode override
+  // above takes effect everywhere at once.
+  function taskFontColor(t) {
+    return taskFontBlackMode ? "#000000" : taskAutoColor(t);
+  }
   // Shared ordering for the "★ Sort" actions (Tasks modal + day popup):
   // starred tasks first, then grouped by color label (in PALETTE order,
   // so the grouping is stable and matches the order swatches are offered
@@ -14233,6 +14250,7 @@
   const tasksProgressBar = $("#tasks-progress-bar");
   const tasksProgressLabel = $("#tasks-progress-label");
   const tasksSortStarsBtn = $("#tasks-sort-stars");
+  const tasksFontColorToggleBtn = $("#tasks-font-color-toggle");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
   // Which tasks have their subtask checklist explicitly collapsed in the
@@ -14791,7 +14809,7 @@
       // Skip the auto color once done — the .subtask-row.done .subtask-text
       // rule (dim + strikethrough) is the done indicator and would
       // otherwise be masked by this inline color, which always wins.
-      if (!s.done) stext.style.color = taskAutoColor(t);
+      if (!s.done) stext.style.color = taskFontColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
@@ -15062,7 +15080,7 @@
       // Skip the auto color once done — .task-row.done .task-text (dim)
       // is the done indicator and would otherwise be masked by this
       // inline color, which always wins over a class-based rule.
-      if (!t.done) text.style.color = taskAutoColor(t);
+      if (!t.done) text.style.color = taskFontColor(t);
       text.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); text.blur(); }
@@ -15195,6 +15213,17 @@
     tasksProgressBar.classList.toggle("done", prog.pct >= 1);
     tasksProgressLabel.textContent = prog.total ? `${prog.done} of ${prog.total} done` : "No tasks yet";
     tasksSortStarsBtn.disabled = tasks.length < 2;
+    updateTaskFontColorToggleBtn();
+  }
+
+  // Reflects the current taskFontBlackMode on the toggle button itself
+  // (label + pressed state) — called whenever the tasks modal (re)renders.
+  function updateTaskFontColorToggleBtn() {
+    tasksFontColorToggleBtn.textContent = taskFontBlackMode ? "⚫ Font" : "🎨 Font";
+    tasksFontColorToggleBtn.title = taskFontBlackMode
+      ? "Task text is plain black — click to use dynamic per-task colors again"
+      : "Task text uses dynamic per-task colors — click to make it all black";
+    tasksFontColorToggleBtn.classList.toggle("active", taskFontBlackMode);
   }
 
   function addTaskFromModal() {
@@ -15240,6 +15269,14 @@
   $("#tasks-back").addEventListener("click", closeTasksModal);
   $("#tasks-close").addEventListener("click", closeTasksModal);
   tasksSortStarsBtn.addEventListener("click", sortTasksModal);
+  tasksFontColorToggleBtn.addEventListener("click", () => {
+    setTaskFontBlackMode(!taskFontBlackMode);
+    renderTasksModal();
+    // Keep the calendar day popup's task list (same task objects, same
+    // taskFontColor) in sync if it happens to be open at the same time.
+    const calDayModalEl = $("#cal-day-modal");
+    if (calDayModalEl && !calDayModalEl.classList.contains("hidden")) renderCalDayModal();
+  });
   tasksModal.addEventListener("click", (e) => { if (e.target === tasksModal) closeTasksModal(); });
   document.addEventListener("keydown", (e) => {
     if (tasksModal.classList.contains("hidden")) return;
@@ -15553,7 +15590,7 @@
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
-    if (!t.done) text.style.color = taskAutoColor(t);
+    if (!t.done) text.style.color = taskFontColor(t);
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
 
     // "+" — open (and expand, if collapsed) this task's subtask panel.
@@ -15736,7 +15773,7 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
-      if (!s.done) stext.style.color = taskAutoColor(t);
+      if (!s.done) stext.style.color = taskFontColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
