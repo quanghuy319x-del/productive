@@ -752,6 +752,17 @@
             const file = await handle.getFile();
             const data = JSON.parse(await file.text());
             if (!data || !data.id || !data.root) continue;
+            const existing = state.maps.find(m => m.id === data.id);
+            // Skip entirely if our copy is already current — otherwise
+            // ensurePhotosMigrated below still runs on every sync and
+            // re-migrates this file's inline photo bytes into brand-new
+            // PhotoDB records each time, even though `data` is about to
+            // be thrown away unused, silently duplicating photo storage
+            // on every refresh.
+            if (existing && (existing.updatedAt || 0) >= (data.updatedAt || 0)) {
+              this.lastFile[data.id] = name;
+              continue;
+            }
             ensureTheme(data);
             ensureLayout(data);
             ensureFavorite(data);
@@ -760,11 +771,10 @@
             // Folder files always carry inline photo bytes (see save()
             // above) — pull them into this browser's own photo store.
             await ensurePhotosMigrated(data);
-            const existing = state.maps.find(m => m.id === data.id);
             if (!existing) {
               state.maps.push(data);
               await DB.put(data);
-            } else if ((data.updatedAt || 0) > (existing.updatedAt || 0)) {
+            } else {
               Object.assign(existing, data);
               await DB.put(existing);
             }
@@ -17503,6 +17513,21 @@
     const after = await estimateMapPhotoBytes(state.current.id);
     const freed = before - after;
     showToast(freed > 0 ? `Freed ${formatStorageBytes(freed)} of unused photos on this map.` : "No unused photos found on this map.");
+    renderStorageModal();
+  });
+  $("#storage-cleanup-all-btn").addEventListener("click", async () => {
+    if (!confirm(`Scan all ${state.maps.length} map${state.maps.length === 1 ? "" : "s"} for unused photo bytes and delete them? This can't be undone.`)) return;
+    let before = 0;
+    for (const m of state.maps) before += await estimateMapPhotoBytes(m.id);
+    for (const m of state.maps) await gcOrphanedPhotos(m);
+    // Only the currently-open map's photos are cached in this tab (see
+    // photoCache/photoBlobCache) — refresh that one so anything just
+    // deleted from under it doesn't leave a dangling object URL around.
+    if (state.current) await loadPhotoCacheForMap(state.current.id);
+    let after = 0;
+    for (const m of state.maps) after += await estimateMapPhotoBytes(m.id);
+    const freed = before - after;
+    showToast(freed > 0 ? `Freed ${formatStorageBytes(freed)} of unused photos across all maps.` : "No unused photos found.");
     renderStorageModal();
   });
   $("#storage-orphan-btn").addEventListener("click", async () => {

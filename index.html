@@ -237,6 +237,7 @@
     <div class="trash-modal-actions">
       <button id="storage-empty-trash-btn" class="btn-ghost danger">Empty trash</button>
       <button id="storage-cleanup-btn" class="btn-ghost" title="Remove any photo bytes left behind by deleted nodes/replaced images on your currently open map">Clean up current map</button>
+      <button id="storage-cleanup-all-btn" class="btn-ghost" title="Run the same cleanup across every map, not just the one currently open — use this once to reclaim storage from the folder-sync duplication bug">Clean up all maps</button>
       <button id="storage-orphan-btn" class="btn-ghost danger" title="Delete photo bytes left behind by maps that no longer exist at all — not visible in the trash">No unowned photos found</button>
       <button id="storage-close" class="btn-primary">Done</button>
     </div>
@@ -782,6 +783,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=153"></script>
+<script src="app.js?v=154"></script>
 </body>
 </html>
