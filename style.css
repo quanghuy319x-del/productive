@@ -2896,7 +2896,7 @@ kbd{
 }
 #tasks-modal .tasks-sort-stars-btn:hover{ background: #f0f0f0; }
 #tasks-modal .tasks-sort-stars-btn:disabled{ opacity: 0.4; }
-#tasks-modal .task-row{ background: #f7f7f7; border-radius: 6px; }
+#tasks-modal .task-row{ background: #f7f7f7; border-radius: 6px; border: 1px solid #e0e0e0; }
 #tasks-modal .task-drag-handle{ color: #bbbbbb; }
 #tasks-modal .task-drag-handle:hover{ color: #5a5a5a; }
 #tasks-modal .task-checkbox{ accent-color: #5a5a5a; }
@@ -2907,8 +2907,8 @@ kbd{
 #tasks-modal .task-text{ color: #000000; }
 #tasks-modal .task-text:focus{ background: #f2f2f2; }
 #tasks-modal .task-row.done .task-text{ color: #c2c2c2; }
-#tasks-modal .task-row.has-open-subtasks{ border-radius: 6px 6px 0 0; }
-#tasks-modal .subtask-panel{ background: #f7f7f7; border-radius: 0 0 6px 6px; box-shadow: inset 0 1px 0 #ffffff; }
+#tasks-modal .task-row.has-open-subtasks{ border-radius: 6px 6px 0 0; border-bottom: none; }
+#tasks-modal .subtask-panel{ background: #f7f7f7; border-radius: 0 0 6px 6px; border: 1px solid #e0e0e0; border-top: none; }
 #tasks-modal .task-timer-btn{ color: #444444; }
 #tasks-modal .task-timer-btn:hover{ background: #f0f0f0; }
 #tasks-modal .task-timer-extend{ color: #444444; }
