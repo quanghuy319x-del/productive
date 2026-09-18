@@ -2635,6 +2635,28 @@
     if ([r, g, b].some(Number.isNaN)) return null;
     return `rgba(${r}, ${g}, ${b}, 0.16)`;
   }
+  // Font color for a task and its subtasks — derived from whatever fill
+  // is actually behind the text, so the two always match/harmonize
+  // rather than picking an unrelated hue:
+  //  - Task has a color label (getTaskColor) → the row/panel background
+  //    is a low-alpha tint of that same swatch (see taskColorTint), so
+  //    the text uses that swatch at full strength — literally the color
+  //    the background fill was extracted from.
+  //  - No color label → background is the plain neutral --panel-2, so
+  //    there's no fill color to extract; fall back to a stable per-task
+  //    hash pick from the shared PALETTE instead, so tasks still read as
+  //    visually distinct at a glance.
+  function taskAutoColor(t) {
+    const explicit = getTaskColor(t);
+    if (explicit) return explicit;
+    if (!t || !t.id) return PALETTE[0];
+    const id = String(t.id);
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+      hash = (hash * 31 + id.charCodeAt(i)) | 0;
+    }
+    return PALETTE[Math.abs(hash) % PALETTE.length];
+  }
   // Shared ordering for the "★ Sort" actions (Tasks modal + day popup):
   // starred tasks first, then grouped by color label (in PALETTE order,
   // so the grouping is stable and matches the order swatches are offered
@@ -14762,6 +14784,10 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
+      // Skip the auto color once done — the .subtask-row.done .subtask-text
+      // rule (dim + strikethrough) is the done indicator and would
+      // otherwise be masked by this inline color, which always wins.
+      if (!s.done) stext.style.color = taskAutoColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
@@ -15029,6 +15055,10 @@
       text.contentEditable = "true";
       text.spellcheck = false;
       text.textContent = t.text;
+      // Skip the auto color once done — .task-row.done .task-text (dim)
+      // is the done indicator and would otherwise be masked by this
+      // inline color, which always wins over a class-based rule.
+      if (!t.done) text.style.color = taskAutoColor(t);
       text.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); text.blur(); }
@@ -15519,6 +15549,7 @@
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
+    if (!t.done) text.style.color = taskAutoColor(t);
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
 
     // "+" — open (and expand, if collapsed) this task's subtask panel.
@@ -15701,6 +15732,7 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
+      if (!s.done) stext.style.color = taskAutoColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
