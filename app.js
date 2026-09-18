@@ -14692,6 +14692,10 @@
   function renderSubtaskPanel(node, t) {
     const wrap = document.createElement("li");
     wrap.className = "subtask-panel";
+    // Keep the panel's fill in sync with its task row's own color tint
+    // (rather than the flat --panel-2 default), so a colored task and
+    // its open subtask list read as one continuous, matching card.
+    wrap.style.background = taskColorTint(getTaskColor(t)) || "";
 
     const list = document.createElement("ul");
     list.className = "subtask-list";
@@ -15623,6 +15627,9 @@
   function renderCalDaySubtaskPanel(node, t) {
     const wrap = document.createElement("li");
     wrap.className = "subtask-panel";
+    // Same sync as renderSubtaskPanel: match the task row's own color
+    // tint instead of the flat default panel background.
+    wrap.style.background = taskColorTint(getTaskColor(t)) || "";
 
     const list = document.createElement("ul");
     list.className = "subtask-list";
