@@ -2661,6 +2661,40 @@
     }
     return PALETTE[Math.abs(hash) % PALETTE.length];
   }
+  // Toggle for the above: when off, every task/subtask just uses plain
+  // black text instead of the per-task hash color. Persisted across
+  // reloads (it's a display preference, not per-map data) since flipping
+  // it is meant to stick rather than reset every session.
+  const TASK_AUTOCOLOR_KEY = "bl_task_autocolor_enabled";
+  let taskAutoColorEnabled = true;
+  try {
+    const saved = localStorage.getItem(TASK_AUTOCOLOR_KEY);
+    if (saved !== null) taskAutoColorEnabled = saved === "1";
+  } catch (e) {}
+  // The single place every task/subtask text color goes through — swap
+  // taskAutoColor(t) call sites for this instead so the toggle covers all
+  // of them at once.
+  function taskFontColor(t) {
+    return taskAutoColorEnabled ? taskAutoColor(t) : "#000000";
+  }
+  function setTaskAutoColorEnabled(enabled) {
+    taskAutoColorEnabled = enabled;
+    try { localStorage.setItem(TASK_AUTOCOLOR_KEY, enabled ? "1" : "0"); } catch (e) {}
+    const btn = $("#tasks-autocolor-toggle");
+    if (btn) {
+      btn.classList.toggle("active", enabled);
+      btn.setAttribute("aria-pressed", String(enabled));
+      btn.textContent = enabled ? "🎨 Colors" : "⚫ Black";
+      btn.title = enabled
+        ? "Task text uses an auto color per task. Click to switch to plain black."
+        : "Task text is plain black. Click to switch back to auto colors.";
+    }
+    // Re-render whichever of these is currently open so the change is
+    // visible immediately instead of waiting for the next natural
+    // re-render.
+    if (typeof renderTasksModal === "function") renderTasksModal();
+    if (typeof renderCalDayModal === "function") renderCalDayModal();
+  }
   // Shared ordering for the "★ Sort" actions (Tasks modal + day popup):
   // starred tasks first, then grouped by color label (in PALETTE order,
   // so the grouping is stable and matches the order swatches are offered
@@ -12028,6 +12062,27 @@
   // into place, pick a color/size, add as many as you like, then Apply
   // bakes every label into the photo as real pixels (so it travels with
   // exports/screenshots like any other part of the image).
+  // Cross-browser "where in this text does (x, y) fall" lookup, used to
+  // drop the caret at the exact spot the mouse clicked instead of just
+  // focusing the element (which would land the caret at the start/end).
+  function placeCaretAtPoint(el, x, y) {
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y); // Chrome/Safari
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y); // Firefox
+      if (pos) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+      }
+    }
+    if (!range) return;
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   function isLightColor(hex) {
     const c = hex.replace("#", "");
     const r = parseInt(c.substring(0, 2), 16), g = parseInt(c.substring(2, 4), 16), b = parseInt(c.substring(4, 6), 16);
@@ -12305,8 +12360,41 @@
         document.addEventListener("pointerup", onDragEnd);
       }
       wrap.addEventListener("pointerdown", (e) => {
-        if (e.target === el && document.activeElement === el && activeBox === box) return; // already selected: allow text caret/selection
-        beginDrag(e);
+        if (e.target === el && document.activeElement === el && activeBox === box) return; // already selected & focused: allow text caret/selection
+
+        if (e.target === el) {
+          // First click into this box's text — either it's not the active
+          // box yet, or it lost focus since it was last edited. Select it
+          // and drop the caret exactly where the mouse landed, same as a
+          // plain text field would. Still upgrades to a drag if the
+          // pointer actually moves before release, so click-drag-to-move
+          // keeps working; a real click (no movement) just places the
+          // cursor and leaves the box in place.
+          e.stopPropagation();
+          selectBox(box);
+          placeCaretAtPoint(el, e.clientX, e.clientY);
+          el.focus();
+          const startX = e.clientX, startY = e.clientY;
+          let handedOff = false;
+          const onMaybeDrag = (ev) => {
+            if (handedOff) return;
+            if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
+              handedOff = true;
+              document.removeEventListener("pointermove", onMaybeDrag);
+              document.removeEventListener("pointerup", onMaybeDragEnd);
+              beginDrag(ev);
+            }
+          };
+          const onMaybeDragEnd = () => {
+            document.removeEventListener("pointermove", onMaybeDrag);
+            document.removeEventListener("pointerup", onMaybeDragEnd);
+          };
+          document.addEventListener("pointermove", onMaybeDrag);
+          document.addEventListener("pointerup", onMaybeDragEnd);
+          return;
+        }
+
+        beginDrag(e); // clicked the wrap itself (its padding/background), not the text
       });
       // The grab handle always starts a drag, even while the box is
       // selected and focused for editing — it's the escape hatch from
@@ -14791,7 +14879,7 @@
       // Skip the auto color once done — the .subtask-row.done .subtask-text
       // rule (dim + strikethrough) is the done indicator and would
       // otherwise be masked by this inline color, which always wins.
-      if (!s.done) stext.style.color = taskAutoColor(t);
+      if (!s.done) stext.style.color = taskFontColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
@@ -15062,7 +15150,7 @@
       // Skip the auto color once done — .task-row.done .task-text (dim)
       // is the done indicator and would otherwise be masked by this
       // inline color, which always wins over a class-based rule.
-      if (!t.done) text.style.color = taskAutoColor(t);
+      if (!t.done) text.style.color = taskFontColor(t);
       text.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); text.blur(); }
@@ -15240,6 +15328,12 @@
   $("#tasks-back").addEventListener("click", closeTasksModal);
   $("#tasks-close").addEventListener("click", closeTasksModal);
   tasksSortStarsBtn.addEventListener("click", sortTasksModal);
+  const tasksAutoColorBtn = $("#tasks-autocolor-toggle");
+  tasksAutoColorBtn.addEventListener("click", () => setTaskAutoColorEnabled(!taskAutoColorEnabled));
+  // Reflect whatever was loaded from localStorage (or the true default)
+  // on the button's initial label/state, in case it differs from the
+  // "active" class already baked into the HTML.
+  setTaskAutoColorEnabled(taskAutoColorEnabled);
   tasksModal.addEventListener("click", (e) => { if (e.target === tasksModal) closeTasksModal(); });
   document.addEventListener("keydown", (e) => {
     if (tasksModal.classList.contains("hidden")) return;
@@ -15553,7 +15647,7 @@
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
-    if (!t.done) text.style.color = taskAutoColor(t);
+    if (!t.done) text.style.color = taskFontColor(t);
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
 
     // "+" — open (and expand, if collapsed) this task's subtask panel.
@@ -15736,7 +15830,7 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
-      if (!s.done) stext.style.color = taskAutoColor(t);
+      if (!s.done) stext.style.color = taskFontColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
