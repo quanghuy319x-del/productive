@@ -2726,14 +2726,14 @@ kbd{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  gap: 6px 8px;
+  gap: 4px 6px;
 }
 .subtask-row{
   display:inline-flex;
   align-items:center;
-  gap:4px;
+  gap:3px;
   max-width: 100%;
-  padding: 3px 5px 3px 9px;
+  padding: 1px 4px 1px 7px;
   border-radius: 999px;
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -2746,14 +2746,14 @@ kbd{
 }
 .subtask-drag-handle{
   width:auto;
-  font-size: 14px;
+  font-size: 11px;
   line-height:1;
   visibility: hidden;
   cursor: grab;
 }
 .subtask-checkbox{
   flex:none;
-  width:13px; height:13px;
+  width:11px; height:11px;
   cursor:pointer;
   accent-color: #33b3f0;
   /* Stays out of the way until you hover the pill — including once it's
@@ -2777,17 +2777,17 @@ kbd{
   background: #33b3f0;
   border-radius:1px;
 }
-.subtask-row.drag-over-top::before{ left:-5px; }
-.subtask-row.drag-over-bottom::after{ right:-5px; }
+.subtask-row.drag-over-top::before{ left:-4px; }
+.subtask-row.drag-over-bottom::after{ right:-4px; }
 .subtask-row.task-dragging{ opacity:.4; }
 .subtask-text{
   flex:1 1 auto;
   min-width:0;
-  max-width: 200px;
-  font-size: 14px;
+  max-width: 150px;
+  font-size: 12px;
   color: var(--text-dim);
   outline:none;
-  padding: 1px 3px;
+  padding: 0 2px;
   border-radius: 4px;
   white-space: nowrap;
   overflow: hidden;
@@ -2798,7 +2798,7 @@ kbd{
    being typed stays visible instead of scrolling inside a fixed width. */
 .subtask-text[contenteditable="true"]{
   cursor: text;
-  max-width: 260px;
+  max-width: 220px;
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
@@ -2812,14 +2812,14 @@ kbd{
 }
 .subtask-copy{
   flex:none;
-  width:15px; height:15px;
+  width:12px; height:12px;
   display:flex;
   align-items:center;
   justify-content:center;
   border:none;
   background:transparent;
   color: var(--text-faint);
-  font-size:11px;
+  font-size:9px;
   line-height:1;
   cursor:pointer;
   border-radius:50%;
@@ -2830,11 +2830,11 @@ kbd{
 .subtask-copy.copied{ color: #33b3f0; visibility: visible; }
 .subtask-delete{
   flex:none;
-  width:15px; height:15px;
+  width:12px; height:12px;
   border:none;
   background:transparent;
   color: var(--text-faint);
-  font-size:17px;
+  font-size:13px;
   line-height:1;
   cursor:pointer;
   border-radius:50%;
