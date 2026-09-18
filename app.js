@@ -14707,7 +14707,7 @@
         e.stopPropagation(); // don't also trigger this task's row-level drop target below it
         e.dataTransfer.dropEffect = "move";
         const rect = row.getBoundingClientRect();
-        const before = (e.clientY - rect.top) < rect.height / 2;
+        const before = (e.clientX - rect.left) < rect.width / 2;
         row.classList.toggle("drag-over-top", before);
         row.classList.toggle("drag-over-bottom", !before);
       });
@@ -14721,7 +14721,7 @@
         e.preventDefault();
         e.stopPropagation();
         const rect = row.getBoundingClientRect();
-        const before = (e.clientY - rect.top) < rect.height / 2;
+        const before = (e.clientX - rect.left) < rect.width / 2;
         row.classList.remove("drag-over-top", "drag-over-bottom");
         moveSubtask(subtaskDragState.taskId, subtaskDragState.subtaskId, t.id, s.id, before);
       });
@@ -14758,6 +14758,9 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
+      // The pill ellipsizes long text, so the title tooltip is the only
+      // way to read it in full without double-clicking into edit mode.
+      stext.title = s.text;
 
       stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
@@ -14783,6 +14786,7 @@
         } else {
           stext.textContent = s.text;
         }
+        stext.title = s.text;
         stext.contentEditable = "false";
       });
 
@@ -15633,7 +15637,7 @@
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
         const rect = row.getBoundingClientRect();
-        const before = (e.clientY - rect.top) < rect.height / 2;
+        const before = (e.clientX - rect.left) < rect.width / 2;
         row.classList.toggle("drag-over-top", before);
         row.classList.toggle("drag-over-bottom", !before);
       });
@@ -15646,7 +15650,7 @@
         e.preventDefault();
         e.stopPropagation();
         const rect = row.getBoundingClientRect();
-        const before = (e.clientY - rect.top) < rect.height / 2;
+        const before = (e.clientX - rect.left) < rect.width / 2;
         row.classList.remove("drag-over-top", "drag-over-bottom");
         moveCalDaySubtask(t, calDaySubtaskDragState.subtaskId, s.id, before);
       });
@@ -15690,6 +15694,9 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
+      // The pill ellipsizes long text, so the title tooltip is the only
+      // way to read it in full without double-clicking into edit mode.
+      stext.title = s.text;
       stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
         stext.contentEditable = "true";
@@ -15714,6 +15721,7 @@
         } else {
           stext.textContent = s.text;
         }
+        stext.title = s.text;
         stext.contentEditable = "false";
       });
 

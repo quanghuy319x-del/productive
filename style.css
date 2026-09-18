@@ -2713,31 +2713,50 @@ kbd{
    handle/gap/checkbox — matched exactly by the subtask row below). */
 .subtask-panel{
   list-style:none;
-  padding: 2px 4px 8px 2px;
+  padding: 4px 4px 8px 2px;
 }
+/* Pill bubbles that wrap left-to-right instead of one full-width row per
+   subtask — several short subtasks now share a line, so a task with a
+   handful of small subtasks takes a fraction of the vertical space the
+   old stacked-row layout needed. */
 .subtask-list{
   list-style:none;
   margin:0;
   padding:0;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap: 6px 8px;
 }
 .subtask-row{
-  display:flex;
+  display:inline-flex;
   align-items:center;
-  gap:9px;
-  padding: 4px 2px;
+  gap:4px;
+  max-width: 100%;
+  padding: 3px 5px 3px 9px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   position: relative;
 }
+.subtask-row.done{
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--text-faint);
+}
 .subtask-drag-handle{
-  width:14px;
-  font-size: 19.5px;
+  width:auto;
+  font-size: 14px;
+  line-height:1;
   visibility: hidden;
+  cursor: grab;
 }
 .subtask-checkbox{
   flex:none;
-  width:14px; height:14px;
+  width:13px; height:13px;
   cursor:pointer;
   accent-color: #33b3f0;
-  /* Stays out of the way until you hover the row — including once it's
+  /* Stays out of the way until you hover the pill — including once it's
      checked, since the subtask's own faded/muted text already marks it
      as done at a glance (see .subtask-row.done .subtask-text below). */
   visibility: hidden;
@@ -2746,69 +2765,83 @@ kbd{
   visibility: visible;
 }
 .subtask-row:hover .subtask-drag-handle{ visibility: visible; }
-/* Same drop-line convention as the task list above, scoped to this one
-   task's own subtask list — a subtask only ever reorders within it. */
+/* Drop indicator is now a thin vertical bar on the pill's left/right edge
+   (pills sit side by side, not stacked, so "before/after" reads
+   left/right rather than top/bottom). */
 .subtask-row.drag-over-top::before,
 .subtask-row.drag-over-bottom::after{
   content:"";
   position:absolute;
-  left:0; right:0;
-  height:2px;
+  top:-2px; bottom:-2px;
+  width:2px;
   background: #33b3f0;
   border-radius:1px;
 }
-.subtask-row.drag-over-top::before{ top:0; }
-.subtask-row.drag-over-bottom::after{ bottom:0; }
+.subtask-row.drag-over-top::before{ left:-5px; }
+.subtask-row.drag-over-bottom::after{ right:-5px; }
 .subtask-row.task-dragging{ opacity:.4; }
 .subtask-text{
   flex:1 1 auto;
   min-width:0;
-  font-size: 15px;
+  max-width: 200px;
+  font-size: 14px;
   color: var(--text-dim);
   outline:none;
-  padding: 1px 4px;
+  padding: 1px 3px;
   border-radius: 4px;
-  overflow-wrap:anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
-.subtask-text[contenteditable="true"]{ cursor: text; }
-.subtask-text:focus{ background: var(--panel-2); }
+/* While actually editing, let the pill grow and wrap so the full text
+   being typed stays visible instead of scrolling inside a fixed width. */
+.subtask-text[contenteditable="true"]{
+  cursor: text;
+  max-width: 260px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  overflow-wrap: anywhere;
+}
+.subtask-text:focus{ background: var(--panel); }
 .subtask-row.done .subtask-text{
   color: var(--text-faint);
   opacity: 0.55;
+  text-decoration: line-through;
 }
 .subtask-copy{
   flex:none;
-  width:18px; height:18px;
+  width:15px; height:15px;
   display:flex;
   align-items:center;
   justify-content:center;
   border:none;
   background:transparent;
   color: var(--text-faint);
-  font-size:13px;
+  font-size:11px;
   line-height:1;
   cursor:pointer;
-  border-radius:4px;
+  border-radius:50%;
   visibility: hidden;
 }
 .subtask-row:hover .subtask-copy{ visibility: visible; }
-.subtask-copy:hover{ color: var(--text); background: var(--panel-2); }
+.subtask-copy:hover{ color: var(--text); background: var(--panel); }
 .subtask-copy.copied{ color: #33b3f0; visibility: visible; }
 .subtask-delete{
   flex:none;
-  width:18px; height:18px;
+  width:15px; height:15px;
   border:none;
   background:transparent;
   color: var(--text-faint);
-  font-size:21px;
+  font-size:17px;
   line-height:1;
   cursor:pointer;
-  border-radius:4px;
+  border-radius:50%;
   visibility: hidden;
 }
 .subtask-row:hover .subtask-delete{ visibility: visible; }
-.subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel-2); }
+.subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel); }
 .subtask-add-row{ margin-top:2px; }
 .subtask-new-input{
   width:100%;
@@ -2912,16 +2945,18 @@ kbd{
 }
 #tasks-modal .tasks-new-input:focus,
 #tasks-modal .subtask-new-input:focus{ border-color: #5a5a5a; }
+#tasks-modal .subtask-row{ background: #f0f0f0; border-color: #d5d5d5; }
+#tasks-modal .subtask-row.done{ background: transparent; border-color: #cccccc; }
 #tasks-modal .subtask-drag-handle{ color: #bbbbbb; }
 #tasks-modal .subtask-drag-handle:hover{ color: #5a5a5a; }
 #tasks-modal .subtask-text{ color: #000000; }
-#tasks-modal .subtask-text:focus{ background: #f2f2f2; }
+#tasks-modal .subtask-text:focus{ background: #ffffff; }
 #tasks-modal .subtask-row.done .subtask-text{ color: #c2c2c2; opacity: 0.6; }
 #tasks-modal .subtask-copy{ color: #bbbbbb; }
-#tasks-modal .subtask-copy:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .subtask-copy:hover{ color: #5a5a5a; background: #ffffff; }
 #tasks-modal .subtask-copy.copied{ color: #33b3f0; }
 #tasks-modal .subtask-delete{ color: #bbbbbb; }
-#tasks-modal .subtask-delete:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .subtask-delete:hover{ color: #5a5a5a; background: #ffffff; }
 #tasks-modal .subtask-add-btn{
   background: #ffffff;
   border: 1px solid #c9c9c9;
@@ -4668,14 +4703,16 @@ kbd{
   #cal-day-modal .task-row:focus-within .task-source-node{ opacity:1; }
 }
 #cal-day-modal .subtask-panel{ margin: -2px 0 0 30px; }
+#cal-day-modal .subtask-row{ background:#f4f2ec; border-color:#e4e0d4; }
+#cal-day-modal .subtask-row.done{ background: transparent; border-color:#e4e0d4; }
 #cal-day-modal .subtask-checkbox{ accent-color: #3b6ef0; }
 #cal-day-modal .subtask-drag-handle{ color:#c8c3b3; }
 #cal-day-modal .subtask-drag-handle:hover{ color:#6f6b5e; }
 #cal-day-modal .subtask-text{ color:#24231f; }
-#cal-day-modal .subtask-text:focus{ background:#f4f2ec; }
+#cal-day-modal .subtask-text:focus{ background:#ffffff; }
 #cal-day-modal .subtask-row.done .subtask-text{ color:#a29d8c; text-decoration: line-through; opacity:1; }
 #cal-day-modal .subtask-delete{ color:#c8c3b3; }
-#cal-day-modal .subtask-delete:hover{ color:#c0392b; background:#fbeceb; }
+#cal-day-modal .subtask-delete:hover{ color:#c0392b; background:#ffffff; }
 #cal-day-modal .subtask-new-input{
   background:#faf9f5; border:1px solid #e4e0d4; color:#24231f;
 }
