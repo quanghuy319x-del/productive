@@ -4825,26 +4825,83 @@ kbd{
 
 /* Hover controls (drag handle, checkbox, copy, delete) are overlaid on the
    pill's own ends instead of widening it, so a pill never changes size or
-   wraps to another line just because the mouse is on it. Each control
-   gets the pill's fill so it masks the text underneath. */
-.subtask-row{ --sub-bg: var(--panel); }
-#tasks-modal .subtask-row{ --sub-bg: #f0f0f0; }
-#cal-day-modal .subtask-row{ --sub-bg: #f4f2ec; }
-.subtask-row .subtask-drag-handle,
-.subtask-row .subtask-copy,
-.subtask-row .subtask-delete{ background: var(--sub-bg); }
-.subtask-row:hover .subtask-drag-handle,
-.subtask-row:hover .subtask-checkbox,
-.subtask-row:hover .subtask-copy,
-.subtask-row:hover .subtask-delete{
+   wraps to another line just because the mouse is on it. Each control is a
+   solid, bordered, high-contrast button so it stays easy to see and hit
+   over the text underneath. */
+.subtask-row{
+  --sub-bg: var(--panel);
+  --sub-ctl: var(--text);
+  --sub-ctl-border: var(--text-faint);
+  /* Wide enough that all four overlaid buttons fit side by side even on a
+     very short pill; the text is centred inside. */
+  min-width: 74px;
+  justify-content: center;
+}
+#tasks-modal .subtask-row{ --sub-bg: #f0f0f0; --sub-ctl: #2b2b2b; --sub-ctl-border: #8f8f8f; }
+#cal-day-modal .subtask-row{ --sub-bg: #f4f2ec; --sub-ctl: #24231f; --sub-ctl-border: #a9a493; }
+
+/* (:is() with an id just raises specificity above the per-modal colour
+   rules that made these icons very faint.) */
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle,
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy,
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete{
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   z-index: 2;
   margin: 0;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sub-bg);
+  color: var(--sub-ctl);
+  border: 1px solid var(--sub-ctl-border);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.22);
+  font-weight: 700;
+  cursor: pointer;
 }
-.subtask-row:hover .subtask-drag-handle{ left: 4px; }
-.subtask-row:hover .subtask-checkbox{ left: 15px; }
-.subtask-row:hover .subtask-delete{ right: 4px; }
-.subtask-row:hover .subtask-copy{ right: 18px; }
-.subtask-row .subtask-copy.copied{ background: var(--sub-bg); }
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle{
+  left: 3px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: grab;
+}
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy{
+  right: 21px;
+  font-size: 11px;
+}
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete{
+  right: 3px;
+  font-size: 15px;
+  padding-bottom: 1px;
+}
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle:hover{
+  background: var(--sub-ctl); color: var(--sub-bg);
+}
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy:hover{
+  background: #33b3f0; border-color: #33b3f0; color: #fff;
+}
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy.copied{
+  background: #2ea043; border-color: #2ea043; color: #fff;
+}
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete:hover{
+  background: #d64545; border-color: #d64545; color: #fff;
+}
+.subtask-row:hover .subtask-checkbox{
+  position: absolute;
+  top: 50%;
+  left: 22px;
+  transform: translateY(-50%);
+  z-index: 2;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--sub-ctl-border);
+  border-radius: 3px;
+}
