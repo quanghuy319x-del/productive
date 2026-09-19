@@ -2530,8 +2530,8 @@ kbd{
    collapsed) end up misaligned with each other. pointer-events is
    turned off while faded so it doesn't leave an invisible clickable
    gap. A checked checkbox stays visible regardless, so a done task
-   still reads as done at a glance without hovering. Subtask checkboxes
-   (.subtask-checkbox) are a separate rule below and are untouched. */
+   still reads as done at a glance without hovering. Subtasks have no
+   checkbox of their own — a click on the pill toggles them instead. */
 @media (any-hover: hover) and (any-pointer: fine) {
   .task-checkbox{ opacity: 0; pointer-events: none; transition: opacity .12s ease; }
   .task-checkbox:checked{ opacity: 1; pointer-events: auto; }
@@ -2539,7 +2539,6 @@ kbd{
   .task-star{ opacity: 0; transition: opacity .12s ease; }
   .task-star.starred{ opacity: 1; }
   .task-delete{ opacity: 0; transition: opacity .12s ease; }
-  .task-subtask-add-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-note-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-note-btn.has-note{ opacity: 1; }
   .task-due-btn{ opacity: 0; transition: opacity .12s ease; }
@@ -2552,8 +2551,6 @@ kbd{
   .task-row:focus-within .task-star,
   .task-row:hover .task-delete,
   .task-row:focus-within .task-delete,
-  .task-row:hover .task-subtask-add-btn,
-  .task-row:focus-within .task-subtask-add-btn,
   .task-row:hover .task-note-btn,
   .task-row:focus-within .task-note-btn,
   .task-row:hover .task-due-btn,
@@ -2622,20 +2619,6 @@ kbd{
   color: #33b3f0;
 }
 .task-timer-time.paused{ color: var(--text-dim); }
-.task-subtask-add-btn{
-  flex:none;
-  width:22px; height:22px;
-  display:flex; align-items:center; justify-content:center;
-  border:none;
-  background:transparent;
-  color: var(--text-faint);
-  font-size:22.5px;
-  line-height:1;
-  cursor:pointer;
-  border-radius:5px;
-}
-.task-subtask-add-btn:hover{ color: var(--text); background: var(--panel-2); }
-
 .task-note-btn{
   flex:none;
   width:22px; height:22px;
@@ -2775,6 +2758,7 @@ kbd{
   background: var(--panel);
   border: 1px solid var(--border);
   position: relative;
+  cursor: pointer; /* whole pill toggles done on a single click now */
 }
 .subtask-row.done{
   background: transparent;
@@ -2788,27 +2772,12 @@ kbd{
   cursor: grab;
   /* Collapsed out of the pill entirely (not just invisible) until
      hover, so an idle pill isn't padded out with blank reserved space
-     for handle/checkbox/copy/delete — see the same treatment on
-     .subtask-checkbox, .subtask-copy and .subtask-delete below. */
+     for handle/copy/delete — see the same treatment on .subtask-copy
+     and .subtask-delete below. */
   display: none;
   align-items: center;
 }
 .subtask-row:hover .subtask-drag-handle{ display: inline-flex; }
-.subtask-checkbox{
-  flex:none;
-  width:11px; height:11px;
-  cursor:pointer;
-  accent-color: #33b3f0;
-  /* Stays out of the way until you hover the pill — including once it's
-     checked, since the subtask's own faded/muted text already marks it
-     as done at a glance (see .subtask-row.done .subtask-text below).
-     display:none (not just visibility) so it doesn't leave blank
-     reserved space in an idle pill. */
-  display: none;
-}
-.subtask-row:hover .subtask-checkbox{
-  display: inline-block;
-}
 /* Drop indicator is now a thin vertical bar on the pill's left/right edge
    (pills sit side by side, not stacked, so "before/after" reads
    left/right rather than top/bottom). */
@@ -2889,6 +2858,15 @@ kbd{
 }
 .subtask-row:hover .subtask-delete{ display: flex; }
 .subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel-2); }
+/* "+" trigger that now lives at the end of the pill row itself (see
+   renderSubtaskPanel/renderCalDaySubtaskPanel) instead of on the main
+   task row — sits inline with the pills via the same margin so it
+   reads as the last item in the list, not a separate control. */
+.subtask-add-trigger{
+  margin: 1.5px 2px;
+  display:inline-flex;
+  align-items:center;
+}
 .subtask-add-row{ margin-top:2px; }
 .subtask-new-input{
   width:100%;
@@ -2906,15 +2884,15 @@ kbd{
 .subtask-new-input.autosize-input{ min-height: 30px; max-height: 140px; }
 .subtask-new-input:focus{ border-color: var(--accent); }
 .subtask-add-btn{
-  width:24px; height:24px;
+  width:20px; height:20px;
   display:flex;
   align-items:center;
   justify-content:center;
   border:1px solid var(--border);
-  border-radius:6px;
+  border-radius:50%;
   background: var(--panel-2);
   color: var(--text-faint);
-  font-size:21px;
+  font-size:15px;
   line-height:1;
   cursor:pointer;
 }
@@ -2959,7 +2937,6 @@ kbd{
 #tasks-modal .task-drag-handle{ color: #bbbbbb; }
 #tasks-modal .task-drag-handle:hover{ color: #5a5a5a; }
 #tasks-modal .task-checkbox{ accent-color: #5a5a5a; }
-#tasks-modal .subtask-checkbox{ accent-color: #5a5a5a; }
 #tasks-modal .task-star{ color: #bbbbbb; }
 #tasks-modal .task-star:hover,
 #tasks-modal .task-star.starred{ color: #f5c14b; }
@@ -2974,8 +2951,6 @@ kbd{
 #tasks-modal .task-timer-time{ color: #5a5a5a; }
 #tasks-modal .task-timer-time.paused{ color: #a0a0a0; }
 #tasks-modal .task-timer-done-label{ color: #5a5a5a; }
-#tasks-modal .task-subtask-add-btn{ color: #a0a0a0; }
-#tasks-modal .task-subtask-add-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-note-btn{ color: #a0a0a0; }
 #tasks-modal .task-note-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-note-btn.has-note{ color: #33b3f0; }
@@ -4728,8 +4703,6 @@ kbd{
   flex:1; min-width:0; font-size:14.5px; line-height:1.4;
   word-break: break-word; white-space: pre-wrap; color:#24231f; padding:0;
 }
-#cal-day-modal .task-subtask-add-btn{ color:#a0a0a0; }
-#cal-day-modal .task-subtask-add-btn:hover{ color:#3b6ef0; background:#eaf0ff; }
 #cal-day-modal .task-star{ color:#d8d4c6; }
 #cal-day-modal .task-star:hover,
 #cal-day-modal .task-star.starred{ color: #e0a52c; }
@@ -4768,7 +4741,6 @@ kbd{
 }
 #cal-day-modal .subtask-row{ background:#f4f2ec; border-color:#e4e0d4; }
 #cal-day-modal .subtask-row.done{ background: transparent; border-color:#e4e0d4; }
-#cal-day-modal .subtask-checkbox{ accent-color: #3b6ef0; }
 #cal-day-modal .subtask-drag-handle{ color:#c8c3b3; }
 #cal-day-modal .subtask-drag-handle:hover{ color:#6f6b5e; }
 #cal-day-modal .subtask-text{ color:#24231f; }
@@ -4891,17 +4863,4 @@ kbd{
 }
 :is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete:hover{
   background: #d64545; border-color: #d64545; color: #fff;
-}
-.subtask-row:hover .subtask-checkbox{
-  position: absolute;
-  top: 50%;
-  left: 22px;
-  transform: translateY(-50%);
-  z-index: 2;
-  margin: 0;
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-  box-shadow: 0 0 0 1px var(--sub-ctl-border);
-  border-radius: 3px;
 }

@@ -14967,24 +14967,6 @@
       shandle.addEventListener("dragstart", (e) => startSubtaskDrag(e, row, t.id, s.id));
       shandle.addEventListener("dragend", () => endSubtaskDrag(row));
 
-      const scb = document.createElement("input");
-      scb.type = "checkbox";
-      scb.className = "subtask-checkbox";
-      scb.checked = !!s.done;
-      scb.addEventListener("click", (e) => e.stopPropagation());
-      scb.addEventListener("change", () => {
-        pushUndo();
-        s.done = scb.checked;
-        syncTaskDoneFromSubtasks(t);
-        persist();
-        renderTasksModal();
-      });
-
-      // Only the checkbox toggles done — clicking/tapping the subtask
-      // text itself no longer marks it done (that used to double as a
-      // toggle, which made a plain tap while reading/scrolling
-      // accidentally complete a subtask). A single click here does
-      // nothing; double-click still opens text editing below.
       const stext = document.createElement("span");
       stext.className = "subtask-text";
       stext.contentEditable = "false";
@@ -14997,6 +14979,26 @@
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
+
+      // No more checkbox — a single click anywhere on the pill (other
+      // than its drag handle/copy/delete controls, or while its text is
+      // mid-edit) toggles done. A short timer tells a single click apart
+      // from the first half of a double-click, which opens text editing
+      // instead (see the dblclick handler right below).
+      let subtaskClickTimer = null;
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".subtask-drag-handle, .subtask-copy, .subtask-delete")) return;
+        if (stext.contentEditable === "true") return;
+        if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
+        subtaskClickTimer = setTimeout(() => {
+          subtaskClickTimer = null;
+          pushUndo();
+          s.done = !s.done;
+          syncTaskDoneFromSubtasks(t);
+          persist();
+          renderTasksModal();
+        }, 220);
+      });
 
       stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
@@ -15062,7 +15064,8 @@
       sdel.className = "subtask-delete";
       sdel.title = "Delete subtask";
       sdel.textContent = "×";
-      sdel.addEventListener("click", () => {
+      sdel.addEventListener("click", (e) => {
+        e.stopPropagation();
         if (!requireSignIn()) return;
         if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
         pushUndo();
@@ -15073,12 +15076,32 @@
       });
 
       row.appendChild(shandle);
-      row.appendChild(scb);
       row.appendChild(stext);
       row.appendChild(scopy);
       row.appendChild(sdel);
       list.appendChild(row);
     });
+
+    // "+" trigger for adding another subtask now lives at the end of
+    // this task's own subtask list (it used to sit on the main task
+    // row) — hidden while the add-input below is already open, so the
+    // two don't show at once.
+    if (!subtaskAddOpenFor.has(t.id)) {
+      const addTriggerLi = document.createElement("li");
+      addTriggerLi.className = "subtask-add-trigger";
+      const addTriggerBtn = document.createElement("button");
+      addTriggerBtn.type = "button";
+      addTriggerBtn.className = "subtask-add-btn";
+      addTriggerBtn.title = "Add a subtask";
+      addTriggerBtn.textContent = "+";
+      addTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        subtaskAddOpenFor.add(t.id);
+        renderTasksModal();
+      });
+      addTriggerLi.appendChild(addTriggerBtn);
+      list.appendChild(addTriggerLi);
+    }
 
     enhanceSubtaskList(list, t, () => renderTasksModal());
     wrap.appendChild(list);
@@ -15289,7 +15312,7 @@
         ? "Double-click to hide subtasks"
         : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
       li.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-note-btn, .task-due-btn, .task-text")) return;
+        if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-note-btn, .task-due-btn, .task-text")) return;
         if (subExpanded) {
           collapsedSubtaskIds.add(t.id);
         } else {
@@ -15298,22 +15321,6 @@
           // like pressing the + button: open the add-subtask input.
           if (!subProg.total) subtaskAddOpenFor.add(t.id);
         }
-        renderTasksModal();
-      });
-
-      // "+" trigger for adding a subtask — sits right in the main row so
-      // it's reachable without opening the subtask panel first. Clicking
-      // it opens (and expands, if collapsed) the panel with its
-      // add-input focused and ready to type.
-      const subtaskAddBtn = document.createElement("button");
-      subtaskAddBtn.type = "button";
-      subtaskAddBtn.className = "task-subtask-add-btn";
-      subtaskAddBtn.title = "Add a subtask";
-      subtaskAddBtn.textContent = "+";
-      subtaskAddBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        collapsedSubtaskIds.delete(t.id);
-        subtaskAddOpenFor.add(t.id);
         renderTasksModal();
       });
 
@@ -15382,7 +15389,6 @@
       li.appendChild(handle);
       li.appendChild(cb);
       li.appendChild(text);
-      li.appendChild(subtaskAddBtn);
       li.appendChild(dueBtn);
       li.appendChild(noteBtn);
       li.appendChild(star);
@@ -15778,19 +15784,6 @@
     if (!t.done) text.style.color = taskFontColor(t);
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
 
-    // "+" — open (and expand, if collapsed) this task's subtask panel.
-    const subtaskAddBtn = document.createElement("button");
-    subtaskAddBtn.type = "button";
-    subtaskAddBtn.className = "task-subtask-add-btn";
-    subtaskAddBtn.title = "Add a subtask";
-    subtaskAddBtn.textContent = "+";
-    subtaskAddBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      collapsedSubtaskIds.delete(t.id);
-      subtaskAddOpenFor.add(t.id);
-      renderCalDayModal();
-    });
-
     // ★ priority — same 0/1 star toggle as the Tasks modal.
     const stars = getTaskStars(t);
     const star = document.createElement("button");
@@ -15842,7 +15835,7 @@
       ? "Double-click to hide subtasks"
       : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
     li.addEventListener("dblclick", (e) => {
-      if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-subtask-add-btn, .task-source-node")) return;
+      if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-source-node")) return;
       if (subExpanded) {
         collapsedSubtaskIds.add(t.id);
       } else {
@@ -15855,7 +15848,6 @@
     li.appendChild(handle);
     li.appendChild(cb);
     li.appendChild(text);
-    li.appendChild(subtaskAddBtn);
     li.appendChild(star);
     li.appendChild(colorBtn);
     li.appendChild(del);
@@ -15939,20 +15931,6 @@
         calDayModalList.querySelectorAll(".subtask-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
       });
 
-      const scb = document.createElement("input");
-      scb.type = "checkbox";
-      scb.className = "subtask-checkbox";
-      scb.checked = !!s.done;
-      scb.addEventListener("click", (e) => e.stopPropagation());
-      scb.addEventListener("change", () => {
-        pushUndo();
-        s.done = scb.checked;
-        syncTaskDoneFromSubtasks(t);
-        persist();
-        renderCalDayModal();
-        renderCalendar();
-      });
-
       const stext = document.createElement("span");
       stext.className = "subtask-text";
       stext.contentEditable = "false";
@@ -15962,6 +15940,28 @@
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
+
+      // No more checkbox — a single click anywhere on the pill (other
+      // than its drag handle/delete control, or while its text is
+      // mid-edit) toggles done. A short timer tells a single click apart
+      // from the first half of a double-click, which opens text editing
+      // instead (see the dblclick handler right below).
+      let subtaskClickTimer = null;
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".subtask-drag-handle, .subtask-delete")) return;
+        if (stext.contentEditable === "true") return;
+        if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
+        subtaskClickTimer = setTimeout(() => {
+          subtaskClickTimer = null;
+          pushUndo();
+          s.done = !s.done;
+          syncTaskDoneFromSubtasks(t);
+          persist();
+          renderCalDayModal();
+          renderCalendar();
+        }, 220);
+      });
+
       stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
         stext.contentEditable = "true";
@@ -15995,7 +15995,8 @@
       sdel.className = "subtask-delete";
       sdel.title = "Delete subtask";
       sdel.textContent = "×";
-      sdel.addEventListener("click", () => {
+      sdel.addEventListener("click", (e) => {
+        e.stopPropagation();
         if (!requireSignIn()) return;
         if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
         pushUndo();
@@ -16007,11 +16008,30 @@
       });
 
       row.appendChild(shandle);
-      row.appendChild(scb);
       row.appendChild(stext);
       row.appendChild(sdel);
       list.appendChild(row);
     });
+
+    // "+" trigger for adding another subtask now lives at the end of
+    // this task's own subtask list (it used to sit on the main task
+    // row) — hidden while the add-input below is already open.
+    if (!subtaskAddOpenFor.has(t.id)) {
+      const addTriggerLi = document.createElement("li");
+      addTriggerLi.className = "subtask-add-trigger";
+      const addTriggerBtn = document.createElement("button");
+      addTriggerBtn.type = "button";
+      addTriggerBtn.className = "subtask-add-btn";
+      addTriggerBtn.title = "Add a subtask";
+      addTriggerBtn.textContent = "+";
+      addTriggerBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        subtaskAddOpenFor.add(t.id);
+        renderCalDayModal();
+      });
+      addTriggerLi.appendChild(addTriggerBtn);
+      list.appendChild(addTriggerLi);
+    }
 
     enhanceSubtaskList(list, t, () => renderCalDayModal());
     wrap.appendChild(list);
