@@ -6537,7 +6537,7 @@
       // renderNode) — click jumps straight into the scratchpad for this cell.
       const bIcon = document.createElement("span");
       bIcon.className = "node-table-cell-icon node-table-cell-brainstorm";
-      bIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+      bIcon.textContent = "🧠";
       bIcon.title = `Brainstorm — ${cellBrainstormPts} point${cellBrainstormPts === 1 ? "" : "s"} (${brainstormLineCount(a)} lines). Click to keep writing.`;
       bIcon.addEventListener("click", () => openBrainstormModal(node.id, r, c));
       if (cellBrainstormPts > 1) {
@@ -7207,7 +7207,7 @@
         // scratchpad to keep writing.
         const bIcon = document.createElement("span");
         bIcon.className = "node-photo-thumb node-brainstorm-marker";
-        bIcon.innerHTML = NODE_BRAINSTORM_ICON_SVG;
+        bIcon.textContent = "🧠";
         bIcon.title = `Brainstorm — ${brainstormPts} point${brainstormPts === 1 ? "" : "s"} (${brainstormLineCount(node)} lines). Click to keep writing.`;
         bIcon.addEventListener("click", (e) => {
           e.stopPropagation();

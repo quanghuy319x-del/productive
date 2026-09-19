@@ -951,6 +951,8 @@ body.signed-out #title-input{ visibility:hidden; }
   background: rgba(179, 136, 245, 0.18);
   border: 1px solid rgba(179, 136, 245, 0.45);
   color: #c39bf5;
+  font-size: 9px;
+  line-height: 1;
 }
 .node-table-cell-brainstorm:hover{
   background: rgba(179, 136, 245, 0.32);
@@ -1330,9 +1332,14 @@ body.signed-out #title-input{ visibility:hidden; }
    lightbulb glyph (see NODE_BRAINSTORM_ICON_SVG in app.js) plus the usual
    .node-marker-count badge once more than 1 point has been earned. */
 .node-brainstorm-marker{
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(179, 136, 245, 0.18);
   border-color: rgba(179, 136, 245, 0.45);
   color: #c39bf5;
+  font-size: 9px;
+  line-height: 1;
 }
 .node-brainstorm-marker:hover{
   background: rgba(179, 136, 245, 0.32);
