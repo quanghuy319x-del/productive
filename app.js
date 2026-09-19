@@ -14245,6 +14245,8 @@
 
   const tasksModal = $("#tasks-modal");
   const tasksModalTitle = $("#tasks-modal-title");
+  const tasksCard = $(".tasks-modal-card");
+  const tasksResizeHandle = $("#tasks-resize-handle");
   const tasksListEl = $("#tasks-list");
   const tasksNewInput = $("#tasks-new-input");
   const tasksProgressBar = $("#tasks-progress-bar");
@@ -14253,6 +14255,67 @@
   const tasksFontColorToggleBtn = $("#tasks-font-color-toggle");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
+  // Guards the same race as noteIsResizing above: dragging the resize
+  // handle and releasing the mouse past the card's edge fires a "click"
+  // on the modal backdrop right after mouseup, which would otherwise
+  // close the tasks modal mid-drag.
+  let tasksIsResizing = false;
+  // Custom two-axis resize grip, same approach as setupNoteResize, but
+  // the chosen size is also remembered across reloads (localStorage),
+  // which the note editor's resize doesn't do.
+  const TASKS_CARD_SIZE_KEY = "branchline_tasks_card_size";
+  (function setupTasksResize() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TASKS_CARD_SIZE_KEY) || "null");
+      if (saved && saved.w && saved.h) {
+        tasksCard.style.width = saved.w + "px";
+        tasksCard.style.height = saved.h + "px";
+      }
+    } catch (e) {}
+
+    let startX, startY, startW, startH;
+
+    function onMove(e) {
+      const dw = e.clientX - startX;
+      const dh = e.clientY - startY;
+      const maxW = window.innerWidth * 0.94;
+      const maxH = window.innerHeight * 0.9;
+      tasksCard.style.width = clamp(startW + dw, 480, maxW) + "px";
+      tasksCard.style.height = clamp(startH + dh, 320, maxH) + "px";
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      const rect = tasksCard.getBoundingClientRect();
+      try {
+        localStorage.setItem(TASKS_CARD_SIZE_KEY, JSON.stringify({ w: Math.round(rect.width), h: Math.round(rect.height) }));
+      } catch (e) {}
+      setTimeout(() => { tasksIsResizing = false; }, 0);
+    }
+    function onResizeStart(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      tasksIsResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = tasksCard.getBoundingClientRect();
+      startW = rect.width;
+      startH = rect.height;
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    }
+    tasksResizeHandle.addEventListener("mousedown", onResizeStart);
+    tasksResizeHandle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      onResizeStart(e);
+    });
+  })();
   // Which tasks have their subtask checklist explicitly collapsed in the
   // tasks modal — subtasks are expanded by default, so this only tracks
   // the ones someone has double-clicked closed. Keyed by task id, kept
@@ -15277,7 +15340,7 @@
     const calDayModalEl = $("#cal-day-modal");
     if (calDayModalEl && !calDayModalEl.classList.contains("hidden")) renderCalDayModal();
   });
-  tasksModal.addEventListener("click", (e) => { if (e.target === tasksModal) closeTasksModal(); });
+  tasksModal.addEventListener("click", (e) => { if (!tasksIsResizing && e.target === tasksModal) closeTasksModal(); });
   document.addEventListener("keydown", (e) => {
     if (tasksModal.classList.contains("hidden")) return;
     if (e.key === "Escape" && document.activeElement !== tasksNewInput) closeTasksModal();
