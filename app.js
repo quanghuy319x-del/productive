@@ -6897,6 +6897,12 @@
     // same icon as a node's own notes, so a note tucked away inside a
     // task's checklist isn't invisible from the mindmap itself.
     const tasksWithNotes = getNodeTasks(node).filter(taskHasNotes);
+    // Every subtask that has its own note(s) — same idea as tasksWithNotes,
+    // just one level down (see getTaskSubtasks/taskHasNotes, which work on
+    // a subtask object exactly like a task one).
+    const subtasksWithNotes = getNodeTasks(node).flatMap((t) =>
+      getTaskSubtasks(t).filter(taskHasNotes).map((s) => ({ t, s }))
+    );
     const affirmationWins = nodeAffirmationWins(node);
     const taskProg = nodeTaskProgress(node);
 
@@ -6910,7 +6916,7 @@
     // attachment/status indicator for a node lives in one place, all at
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
-    const stripIconCount = stripBucketCount(nodeNotes.length) + stripBucketCount(nodeUrls.length) + tasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0) + (brainstormPts > 0 ? 1 : 0);
+    const stripIconCount = stripBucketCount(nodeNotes.length) + stripBucketCount(nodeUrls.length) + tasksWithNotes.length + subtasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0) + (brainstormPts > 0 ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
@@ -7051,6 +7057,36 @@
           openTasksModal(node.id);
         });
         strip.appendChild(taskNoteIcon);
+      });
+
+      // Same again, one per subtask that has its own note(s) — a subtask
+      // named "DRC" shares the node's single DRC note instead (see the
+      // redirect in openNoteModal), so it never shows up here on its own;
+      // it already reads on the node as part of the DRC note above.
+      subtasksWithNotes.forEach(({ t, s }) => {
+        const subtaskNoteIcon = document.createElement("span");
+        const firstSubtaskNote = getTaskNotes(s)[0];
+        const subtaskNoteIsDRC = isDRCNote(firstSubtaskNote);
+        subtaskNoteIcon.className = "node-photo-thumb node-note-marker node-subtask-note-marker" + (subtaskNoteIsDRC ? " node-drc-marker" : "");
+        subtaskNoteIcon.innerHTML = subtaskNoteIsDRC ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
+        if (subtaskNoteIsDRC) {
+          const status = drcNoteIsFilled(firstSubtaskNote) ? "filled in (5 pts)" : "not filled in yet";
+          subtaskNoteIcon.title = `Subtask "${s.text || "(untitled subtask)"}" (in "${t.text || "(untitled task)"}") — DRC, ${status}`;
+        } else {
+          const noteTitle = (firstSubtaskNote.title || "").trim();
+          const titleSuffix = noteTitle ? ` — ${noteTitle.length > 40 ? noteTitle.slice(0, 39) + "…" : noteTitle}` : "";
+          subtaskNoteIcon.title = `Subtask "${s.text || "(untitled subtask)"}" (in "${t.text || "(untitled task)"}")${titleSuffix}`;
+        }
+        subtaskNoteIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openNoteModal(node.id, undefined, null, t.id, undefined, false, s.id);
+        });
+        subtaskNoteIcon.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openTasksModal(node.id);
+        });
+        strip.appendChild(subtaskNoteIcon);
       });
 
       // One icon per link (instead of a single icon plus a count/chooser
@@ -12969,20 +13005,24 @@
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
-    // A task literally named "DRC" shares the exact same single per-node
-    // DRC note as the right-click "📋 DRC…" shortcut below, instead of
-    // owning a separate note of its own — otherwise a node could end up
-    // showing two DRC clipboard icons at once (one from the node's own
-    // notes, one from this task). Only redirect on a genuinely fresh
-    // click (this task doesn't have a note of its own yet); a task that
-    // already has previously-written note content of its own keeps
-    // opening that note untouched, so nothing existing gets silently
-    // orphaned.
-    if (taskId && !subtaskId) {
+    // A task — or now a subtask — literally named "DRC" shares the exact
+    // same single per-node DRC note as the right-click "📋 DRC…" shortcut
+    // below, instead of owning a separate note of its own — otherwise a
+    // node could end up showing multiple DRC clipboard icons at once (one
+    // from the node's own notes, one from this task/subtask). Only
+    // redirect on a genuinely fresh click (this task/subtask doesn't have
+    // a note of its own yet); one that already has previously-written
+    // note content of its own keeps opening that note untouched, so
+    // nothing existing gets silently orphaned.
+    if (taskId) {
       const taskHostForRedirect = cellPos ? getCellAttach(node, cellPos.r, cellPos.c) : node;
-      const drcTask = getNodeTasks(taskHostForRedirect).find(x => x.id === taskId);
-      if (drcTask && (drcTask.text || "").trim().toUpperCase() === "DRC" && !getTaskNotes(drcTask).length) {
+      const parentTaskForRedirect = getNodeTasks(taskHostForRedirect).find(x => x.id === taskId);
+      const drcOwner = subtaskId
+        ? (parentTaskForRedirect ? getTaskSubtasks(parentTaskForRedirect).find(x => x.id === subtaskId) : null)
+        : parentTaskForRedirect;
+      if (drcOwner && (drcOwner.text || "").trim().toUpperCase() === "DRC" && !getTaskNotes(drcOwner).length) {
         taskId = null;
+        subtaskId = null;
         cellPos = null;
         photoId = null;
         forceDRCTemplate = true;
@@ -15157,14 +15197,21 @@
         if (!target) return;
         openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null, false, s.id);
       };
-      const subNoteCount = getTaskNotes(s).length;
+      const subtaskNotesForS = getTaskNotes(s);
+      // A subtask literally named "DRC" behaves exactly like a task named
+      // "DRC" (see the redirect in openNoteModal above): it shares the
+      // node's single DRC note rather than owning one of its own, so the
+      // icon shows up front — before any note exists — the same way a
+      // DRC task's note button always shows the DRC image (see
+      // taskNotes/noteBtn above).
+      const subtaskIsDRC = isDRCNote(subtaskNotesForS[0]) || (s.text || "").trim().toUpperCase() === "DRC";
       let snote = null;
-      if (subNoteCount) {
+      if (subtaskNotesForS.length || subtaskIsDRC) {
         snote = document.createElement("span");
         snote.className = "subtask-note-icon";
-        if (isDRCNote(getTaskNotes(s)[0])) snote.appendChild(drcIconEl(13));
+        if (subtaskIsDRC) snote.appendChild(drcIconEl(13));
         else snote.innerHTML = CELL_NOTE_ICON_SVG; // same sticky-note icon as everywhere else
-        snote.title = `Notes (${subNoteCount})`;
+        snote.title = subtaskNotesForS.length ? `Notes (${subtaskNotesForS.length})` : "Add note";
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
       }
 
