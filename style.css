@@ -2554,7 +2554,6 @@ kbd{
   .task-color-dot{ opacity: 0; transition: opacity .12s ease; }
   .task-subtask-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-subtask-btn.has-subtasks{ opacity: 1; }
-  .task-template-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-row:hover .task-checkbox,
   .task-row:focus-within .task-checkbox,
   .task-row:hover .task-drag-handle,
@@ -2570,9 +2569,7 @@ kbd{
   .task-row:hover .task-color-dot,
   .task-row:focus-within .task-color-dot,
   .task-row:hover .task-subtask-btn,
-  .task-row:focus-within .task-subtask-btn,
-  .task-row:hover .task-template-btn,
-  .task-row:focus-within .task-template-btn{ opacity: 1; pointer-events: auto; }
+  .task-row:focus-within .task-subtask-btn{ opacity: 1; pointer-events: auto; }
 }
 .task-text{
   flex: 1 1 auto;
@@ -2677,22 +2674,28 @@ kbd{
    (The first-subtask "+" on empty tasks is unaffected.) */
 .task-subtask-btn.has-subtasks{ display: none; }
 
-/* ---- Save-as-template icon (🔖) on the main task row — see
-   saveTaskAsTemplate/getTaskTemplates in app.js. ---- */
-.task-template-btn{
-  flex:none;
-  width:22px; height:22px;
-  display:flex; align-items:center; justify-content:center;
+/* ---- "Save this list as a template" button at the top of the
+   templates popover — see saveTaskListAsTemplate in app.js. ---- */
+.task-template-save-btn{
+  width:100%;
+  text-align:left;
   border:none;
   background:transparent;
+  color: var(--text);
   cursor:pointer;
-  border-radius:5px;
-  padding:0;
+  border-radius:7px;
+  padding:7px 8px;
   font-size:13px;
-  opacity:.55;
-  transition: opacity .12s ease, background .12s ease;
+  font-weight:600;
 }
-.task-template-btn:hover{ opacity:1; background: var(--panel-2); }
+.task-template-save-btn:hover{ background: var(--panel-2); }
+.task-template-save-btn:disabled{ opacity:.4; cursor:default; }
+.task-template-save-btn:disabled:hover{ background:transparent; }
+.task-templates-divider{
+  height:1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
 
 /* ---- Due date icon (calendar) — opens a native date picker inline for
    the task; feeds the Calendar toolbar button's month view. ---- */
@@ -2998,7 +3001,6 @@ kbd{
 #tasks-modal .task-subtask-btn{ color: #a0a0a0; }
 #tasks-modal .task-subtask-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-subtask-btn.has-subtasks{ color: #33b3f0; }
-#tasks-modal .task-template-btn:hover{ background: #f0f0f0; }
 #tasks-modal .task-due-btn{ color: #a0a0a0; }
 #tasks-modal .task-due-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-due-btn.has-due{ color: #33b3f0; }

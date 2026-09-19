@@ -2680,14 +2680,14 @@
   // task/subtask's font to plain black instead. Remembered across
   // reloads via localStorage, same pattern as SIDEBAR_HIDDEN_KEY.
   const TASK_FONT_BLACK_KEY = "branchline_task_font_black";
-  // Saved task templates (see the 🔖 button on each task row and the
-  // "📋 Templates" toolbar button in the tasks modal) — a task's text and
-  // subtasks can be saved here once, then dropped onto any other node's
-  // task list as a fresh copy. Shared across every map/node (not per-map
-  // data), same as the quote banner lines below, since a template like
-  // "Morning routine" is just as useful on a different node or a
-  // different map.
-  const TASK_TEMPLATES_KEY = "branchlineTaskTemplates_v1";
+  // Saved task-list templates (see the "📋 Templates" toolbar button in
+  // the tasks modal) — a node's *entire* task list (every task's text,
+  // color, and subtask text) can be saved here once, under a name, then
+  // dropped onto any other node as a fresh set of tasks. Shared across
+  // every map/node (not per-map data), same as the quote banner lines
+  // below, since a template like "Morning routine" is just as useful on
+  // a different node or a different map.
+  const TASK_TEMPLATES_KEY = "branchlineTaskListTemplates_v1";
   let taskFontBlackMode = false;
   try { taskFontBlackMode = localStorage.getItem(TASK_FONT_BLACK_KEY) === "1"; } catch (e) {}
   function setTaskFontBlackMode(on) {
@@ -2812,53 +2812,64 @@
     if (subs.length) t.done = subs.every(s => s.done);
   }
 
-  // Task templates — a task's text, color and subtask *text* (not their
-  // done state, ids, due date or notes: a template is a reusable shape,
-  // not a snapshot of one specific in-progress task) saved once from the
-  // 🔖 button on any task row, then insertable onto any other node's task
-  // list from the tasks modal's "📋 Templates" button. Stored the same
-  // way as the quote banner lines (a flat JSON array under one
-  // localStorage key), shared across every map since a template is
-  // just as useful on a different node or map as the one it came from.
-  function getTaskTemplates() {
+  // Task-list templates — a whole node's task list, saved as one named
+  // template (each task's text, color and subtask text — not done state,
+  // ids, due dates or notes: a template is a reusable shape, not a
+  // snapshot of one specific in-progress list) from the tasks modal's
+  // "📋 Templates" button, then insertable onto any other node's task
+  // list from that same button. Stored the same way as the quote banner
+  // lines (a flat JSON array under one localStorage key), shared across
+  // every map since a template is just as useful on a different node or
+  // map as the one it came from.
+  function getTaskListTemplates() {
     try {
       const saved = JSON.parse(localStorage.getItem(TASK_TEMPLATES_KEY));
       if (Array.isArray(saved)) return saved;
     } catch (e) {}
     return [];
   }
-  function saveTaskTemplates(list) {
+  function saveTaskListTemplates(list) {
     try { localStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(list)); } catch (e) {}
   }
-  // Saves a copy of `t` as a new template. Returns the saved template.
-  function saveTaskAsTemplate(t) {
+  // Saves a copy of every task on `host` as a new named template. Returns
+  // the saved template, or null if the list was empty (nothing to save).
+  function saveTaskListAsTemplate(host, name) {
+    const tasks = getNodeTasks(host);
+    if (!tasks.length) return null;
     const tpl = {
       id: uid(),
-      text: (t.text || "").trim() || "Untitled task",
-      color: getTaskColor(t) || null,
-      subtasks: getTaskSubtasks(t).map(s => ({ text: s.text || "" })).filter(s => s.text.trim())
+      name: (name || "").trim() || "Untitled template",
+      tasks: tasks.map(t => ({
+        text: (t.text || "").trim() || "Untitled task",
+        color: getTaskColor(t) || null,
+        subtasks: getTaskSubtasks(t).map(s => ({ text: s.text || "" })).filter(s => s.text.trim())
+      }))
     };
-    const list = getTaskTemplates();
+    const list = getTaskListTemplates();
     list.push(tpl);
-    saveTaskTemplates(list);
+    saveTaskListTemplates(list);
     return tpl;
   }
-  function deleteTaskTemplate(id) {
-    saveTaskTemplates(getTaskTemplates().filter(tpl => tpl.id !== id));
+  function deleteTaskListTemplate(id) {
+    saveTaskListTemplates(getTaskListTemplates().filter(tpl => tpl.id !== id));
   }
-  // Drops a fresh copy of a saved template onto `host`'s task list — its
-  // own id and every subtask id are regenerated so it's a fully
-  // independent task from here on, same as any other newly added one.
-  function insertTaskTemplate(tpl, host) {
-    if (!tpl || !host) return;
+  // Appends a fresh copy of every task in a saved template onto `host`'s
+  // existing task list — every task/subtask id is regenerated so they're
+  // fully independent from here on, same as any other newly added task.
+  // Existing tasks on `host` are left untouched.
+  function insertTaskListTemplate(tpl, host) {
+    if (!tpl || !host || !Array.isArray(tpl.tasks) || !tpl.tasks.length) return;
     pushUndo();
     if (!Array.isArray(host.tasks)) host.tasks = [];
-    const task = {
-      id: uid(), text: tpl.text, done: false, stars: 0, due: null,
-      subtasks: (tpl.subtasks || []).map(s => ({ id: uid(), text: s.text, done: false }))
-    };
-    if (tpl.color) task.color = tpl.color;
-    host.tasks = host.tasks.concat([task]);
+    const newTasks = tpl.tasks.map(t => {
+      const task = {
+        id: uid(), text: t.text, done: false, stars: 0, due: null,
+        subtasks: (t.subtasks || []).map(s => ({ id: uid(), text: s.text, done: false }))
+      };
+      if (t.color) task.color = t.color;
+      return task;
+    });
+    host.tasks = host.tasks.concat(newTasks);
     persist();
   }
 
@@ -14621,36 +14632,63 @@
   });
 
   // Templates popover — opened from the tasks modal's "📋 Templates"
-  // button, lists every task saved via the 🔖 button on a task row (see
-  // saveTaskAsTemplate/getTaskTemplates above) so one can be dropped onto
-  // whichever node's task list is currently open. Same fixed-viewport
-  // popover pattern as the task-color one just above.
+  // button. Its top row saves the *entire* current task list under a
+  // name (see saveTaskListAsTemplate above); below that is every
+  // previously saved list-template, each insertable onto whichever
+  // node's task list is currently open. Same fixed-viewport popover
+  // pattern as the task-color one just above.
   const taskTemplatesPopover = document.createElement("div");
   taskTemplatesPopover.className = "task-templates-popover hidden";
   document.body.appendChild(taskTemplatesPopover);
 
   function renderTaskTemplatesPopover() {
     taskTemplatesPopover.innerHTML = "";
-    const templates = getTaskTemplates();
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    const currentTaskCount = host ? getNodeTasks(host).length : 0;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "task-template-save-btn";
+    saveBtn.textContent = "💾 Save this list as a template…";
+    saveBtn.disabled = !currentTaskCount;
+    saveBtn.title = currentTaskCount
+      ? `Save all ${currentTaskCount} task(s) here as a reusable template`
+      : "This list is empty — add a task first";
+    saveBtn.addEventListener("click", () => {
+      if (!host) return;
+      const name = window.prompt("Name this task-list template:", "");
+      if (name === null) return; // cancelled
+      saveTaskListAsTemplate(host, name);
+      renderTaskTemplatesPopover();
+      showToast("Saved task list as a template");
+    });
+    taskTemplatesPopover.appendChild(saveBtn);
+
+    const templates = getTaskListTemplates();
     if (!templates.length) {
       const empty = document.createElement("div");
       empty.className = "task-templates-empty";
-      empty.textContent = "No templates yet — tap 🔖 on a task to save one.";
+      empty.textContent = "No saved templates yet.";
       taskTemplatesPopover.appendChild(empty);
       return;
     }
+    const divider = document.createElement("div");
+    divider.className = "task-templates-divider";
+    taskTemplatesPopover.appendChild(divider);
     templates.forEach((tpl) => {
       const row = document.createElement("div");
       row.className = "task-template-row";
       const label = document.createElement("span");
       label.className = "task-template-row-label";
-      label.textContent = tpl.text + (tpl.subtasks && tpl.subtasks.length ? ` (${tpl.subtasks.length})` : "");
-      label.title = `Insert "${tpl.text}"` + (tpl.subtasks && tpl.subtasks.length ? ` with ${tpl.subtasks.length} subtask(s)` : "");
+      const count = (tpl.tasks || []).length;
+      label.textContent = `${tpl.name} (${count} task${count === 1 ? "" : "s"})`;
+      label.title = `Add these ${count} task(s) to the current list`;
       label.addEventListener("click", () => {
-        const target = tasksEditingTarget;
-        const host = target && resolveHost(target.nodeId, target.r, target.c);
-        if (!host) return;
-        insertTaskTemplate(tpl, host);
+        const t2 = tasksEditingTarget;
+        const h2 = t2 && resolveHost(t2.nodeId, t2.r, t2.c);
+        if (!h2) return;
+        insertTaskListTemplate(tpl, h2);
         closeTaskTemplatesPopover();
         renderTasksModal();
       });
@@ -14661,7 +14699,8 @@
       del.textContent = "×";
       del.addEventListener("click", (e) => {
         e.stopPropagation();
-        deleteTaskTemplate(tpl.id);
+        if (!confirm(`Delete the template "${tpl.name}"?`)) return;
+        deleteTaskListTemplate(tpl.id);
         renderTaskTemplatesPopover();
       });
       row.appendChild(label);
@@ -15745,22 +15784,6 @@
         renderTasksModal();
       });
 
-      // Save this task (text + subtask text) as a reusable template —
-      // see saveTaskAsTemplate/insertTaskTemplate above and the
-      // "📋 Templates" toolbar button below, which is how it comes back
-      // out onto another node's list.
-      const templateBtn = document.createElement("button");
-      templateBtn.type = "button";
-      templateBtn.className = "task-template-btn";
-      templateBtn.title = "Save as a reusable template";
-      templateBtn.textContent = "🔖";
-      templateBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-      templateBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        saveTaskAsTemplate(t);
-        showToast(`Saved "${t.text || "Untitled task"}" as a template`);
-      });
-
       const del = document.createElement("button");
       del.className = "task-delete";
       del.title = "Delete task";
@@ -15780,7 +15803,6 @@
       li.appendChild(dueBtn);
       li.appendChild(noteBtn);
       li.appendChild(subtaskBtn);
-      li.appendChild(templateBtn);
       li.appendChild(star);
       li.appendChild(colorBtn);
       li.appendChild(del);
