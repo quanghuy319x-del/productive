@@ -2831,24 +2831,41 @@
   function saveTaskListTemplates(list) {
     try { localStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(list)); } catch (e) {}
   }
+  // The reusable "shape" of `host`'s current task list — same array
+  // saveTaskListAsTemplate/updateTaskListTemplate both store, factored
+  // out so a fresh save and an overwrite of an existing template snapshot
+  // the list identically.
+  function snapshotTasksForTemplate(host) {
+    return getNodeTasks(host).map(t => ({
+      text: (t.text || "").trim() || "Untitled task",
+      color: getTaskColor(t) || null,
+      subtasks: getTaskSubtasks(t).map(s => ({ text: s.text || "" })).filter(s => s.text.trim())
+    }));
+  }
   // Saves a copy of every task on `host` as a new named template. Returns
   // the saved template, or null if the list was empty (nothing to save).
   function saveTaskListAsTemplate(host, name) {
-    const tasks = getNodeTasks(host);
+    const tasks = snapshotTasksForTemplate(host);
     if (!tasks.length) return null;
-    const tpl = {
-      id: uid(),
-      name: (name || "").trim() || "Untitled template",
-      tasks: tasks.map(t => ({
-        text: (t.text || "").trim() || "Untitled task",
-        color: getTaskColor(t) || null,
-        subtasks: getTaskSubtasks(t).map(s => ({ text: s.text || "" })).filter(s => s.text.trim())
-      }))
-    };
+    const tpl = { id: uid(), name: (name || "").trim() || "Untitled template", tasks };
     const list = getTaskListTemplates();
     list.push(tpl);
     saveTaskListTemplates(list);
     return tpl;
+  }
+  // Overwrites an existing template's task snapshot in place (same id and
+  // name) with `host`'s current task list — used by the 🔁 button on a
+  // saved template row, so updating a template doesn't leave a stray
+  // duplicate behind. Returns true if a matching template was found.
+  function updateTaskListTemplate(id, host) {
+    const tasks = snapshotTasksForTemplate(host);
+    if (!tasks.length) return false;
+    const list = getTaskListTemplates();
+    const tpl = list.find(t => t.id === id);
+    if (!tpl) return false;
+    tpl.tasks = tasks;
+    saveTaskListTemplates(list);
+    return true;
   }
   function deleteTaskListTemplate(id) {
     saveTaskListTemplates(getTaskListTemplates().filter(tpl => tpl.id !== id));
@@ -14659,9 +14676,20 @@
       if (!host) return;
       const name = window.prompt("Name this task-list template:", "");
       if (name === null) return; // cancelled
-      saveTaskListAsTemplate(host, name);
+      const clean = name.trim();
+      // Saving under a name that already exists would otherwise leave two
+      // near-identical templates behind — offer to replace that one's
+      // tasks in place instead of always creating a new entry.
+      const existing = clean && getTaskListTemplates().find(t => t.name.trim().toLowerCase() === clean.toLowerCase());
+      if (existing) {
+        if (!confirm(`A template named "${existing.name}" already exists. Replace it with the current list?`)) return;
+        updateTaskListTemplate(existing.id, host);
+        showToast(`Replaced template "${existing.name}"`);
+      } else {
+        saveTaskListAsTemplate(host, name);
+        showToast("Saved task list as a template");
+      }
       renderTaskTemplatesPopover();
-      showToast("Saved task list as a template");
     });
     taskTemplatesPopover.appendChild(saveBtn);
 
@@ -14692,6 +14720,25 @@
         closeTaskTemplatesPopover();
         renderTasksModal();
       });
+      // Overwrites this template's saved tasks with whatever's on the
+      // currently open list — the explicit way to update a template
+      // without retyping its exact name into the save prompt above.
+      const replace = document.createElement("button");
+      replace.type = "button";
+      replace.className = "task-template-row-replace";
+      replace.title = currentTaskCount
+        ? `Replace "${tpl.name}" with the current list (${currentTaskCount} task${currentTaskCount === 1 ? "" : "s"})`
+        : "This list is empty — add a task first";
+      replace.textContent = "🔁";
+      replace.disabled = !currentTaskCount;
+      replace.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!host || !currentTaskCount) return;
+        if (!confirm(`Replace template "${tpl.name}" with the current list?`)) return;
+        updateTaskListTemplate(tpl.id, host);
+        renderTaskTemplatesPopover();
+        showToast(`Replaced template "${tpl.name}"`);
+      });
       const del = document.createElement("button");
       del.type = "button";
       del.className = "task-template-row-del";
@@ -14704,6 +14751,7 @@
         renderTaskTemplatesPopover();
       });
       row.appendChild(label);
+      row.appendChild(replace);
       row.appendChild(del);
       taskTemplatesPopover.appendChild(row);
     });

@@ -2583,6 +2583,11 @@ kbd{
   padding: 2px 4px;
   border-radius: 4px;
   overflow-wrap:anywhere;
+  /* Same reasoning as .subtask-text above: without pre-wrap, a task
+     added with a Shift+Enter line break (or one that came in through a
+     task-list template) would render with that break silently
+     collapsed into a space. */
+  white-space: pre-wrap;
 }
 .task-text:focus{ background: var(--panel-2); }
 .task-row.done .task-text{
@@ -2864,20 +2869,21 @@ kbd{
   outline:none;
   padding: 0 2px;
   border-radius: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* pre-wrap (not nowrap/normal, which would silently collapse a typed
+     line break into a single space) so a subtask added with Shift+Enter
+     — or one that arrived with line breaks via a task-list template,
+     see saveTaskListAsTemplate/insertTaskListTemplate — actually shows
+     its line breaks instead of losing them visually. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
-/* While actually editing, let the pill grow and wrap so the full text
-   being typed stays visible instead of scrolling inside a fixed width. */
+/* While actually editing, let the pill grow past its normal max-width so
+   the full text being typed stays visible instead of scrolling inside a
+   fixed width — line breaks already show either way via pre-wrap above. */
 .subtask-text[contenteditable="true"]{
   cursor: text;
   max-width: 220px;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
-  overflow-wrap: anywhere;
 }
 .subtask-text:focus{ background: var(--panel-2); }
 .subtask-row.done .subtask-text{
@@ -4479,6 +4485,21 @@ kbd{
   white-space:nowrap;
   font-size: 13px;
 }
+.task-template-row-replace{
+  flex:none;
+  width:20px; height:20px;
+  display:flex; align-items:center; justify-content:center;
+  border:none;
+  background:transparent;
+  cursor:pointer;
+  border-radius:5px;
+  padding:0;
+  font-size:12px;
+  opacity:.6;
+}
+.task-template-row-replace:hover{ opacity:1; background: var(--panel-2); }
+.task-template-row-replace:disabled{ opacity:.25; cursor:default; }
+.task-template-row-replace:disabled:hover{ background:transparent; }
 .task-template-row-del{
   flex:none;
   width:18px; height:18px;
