@@ -2680,6 +2680,14 @@
   // task/subtask's font to plain black instead. Remembered across
   // reloads via localStorage, same pattern as SIDEBAR_HIDDEN_KEY.
   const TASK_FONT_BLACK_KEY = "branchline_task_font_black";
+  // Saved task templates (see the 🔖 button on each task row and the
+  // "📋 Templates" toolbar button in the tasks modal) — a task's text and
+  // subtasks can be saved here once, then dropped onto any other node's
+  // task list as a fresh copy. Shared across every map/node (not per-map
+  // data), same as the quote banner lines below, since a template like
+  // "Morning routine" is just as useful on a different node or a
+  // different map.
+  const TASK_TEMPLATES_KEY = "branchlineTaskTemplates_v1";
   let taskFontBlackMode = false;
   try { taskFontBlackMode = localStorage.getItem(TASK_FONT_BLACK_KEY) === "1"; } catch (e) {}
   function setTaskFontBlackMode(on) {
@@ -2802,6 +2810,56 @@
   function syncTaskDoneFromSubtasks(t) {
     const subs = getTaskSubtasks(t);
     if (subs.length) t.done = subs.every(s => s.done);
+  }
+
+  // Task templates — a task's text, color and subtask *text* (not their
+  // done state, ids, due date or notes: a template is a reusable shape,
+  // not a snapshot of one specific in-progress task) saved once from the
+  // 🔖 button on any task row, then insertable onto any other node's task
+  // list from the tasks modal's "📋 Templates" button. Stored the same
+  // way as the quote banner lines (a flat JSON array under one
+  // localStorage key), shared across every map since a template is
+  // just as useful on a different node or map as the one it came from.
+  function getTaskTemplates() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TASK_TEMPLATES_KEY));
+      if (Array.isArray(saved)) return saved;
+    } catch (e) {}
+    return [];
+  }
+  function saveTaskTemplates(list) {
+    try { localStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  // Saves a copy of `t` as a new template. Returns the saved template.
+  function saveTaskAsTemplate(t) {
+    const tpl = {
+      id: uid(),
+      text: (t.text || "").trim() || "Untitled task",
+      color: getTaskColor(t) || null,
+      subtasks: getTaskSubtasks(t).map(s => ({ text: s.text || "" })).filter(s => s.text.trim())
+    };
+    const list = getTaskTemplates();
+    list.push(tpl);
+    saveTaskTemplates(list);
+    return tpl;
+  }
+  function deleteTaskTemplate(id) {
+    saveTaskTemplates(getTaskTemplates().filter(tpl => tpl.id !== id));
+  }
+  // Drops a fresh copy of a saved template onto `host`'s task list — its
+  // own id and every subtask id are regenerated so it's a fully
+  // independent task from here on, same as any other newly added one.
+  function insertTaskTemplate(tpl, host) {
+    if (!tpl || !host) return;
+    pushUndo();
+    if (!Array.isArray(host.tasks)) host.tasks = [];
+    const task = {
+      id: uid(), text: tpl.text, done: false, stars: 0, due: null,
+      subtasks: (tpl.subtasks || []).map(s => ({ id: uid(), text: s.text, done: false }))
+    };
+    if (tpl.color) task.color = tpl.color;
+    host.tasks = host.tasks.concat([task]);
+    persist();
   }
 
   // The affirmation typing game lives on its own per node — reached from
@@ -14424,6 +14482,7 @@
   const tasksProgressLabel = $("#tasks-progress-label");
   const tasksSortStarsBtn = $("#tasks-sort-stars");
   const tasksFontColorToggleBtn = $("#tasks-font-color-toggle");
+  const tasksTemplatesBtn = $("#tasks-templates-btn");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
   // Guards the same race as noteIsResizing above: dragging the resize
@@ -14558,6 +14617,92 @@
         !taskColorPopover.contains(e.target) &&
         !e.target.closest(".task-color-dot")) {
       closeTaskColorPopover();
+    }
+  });
+
+  // Templates popover — opened from the tasks modal's "📋 Templates"
+  // button, lists every task saved via the 🔖 button on a task row (see
+  // saveTaskAsTemplate/getTaskTemplates above) so one can be dropped onto
+  // whichever node's task list is currently open. Same fixed-viewport
+  // popover pattern as the task-color one just above.
+  const taskTemplatesPopover = document.createElement("div");
+  taskTemplatesPopover.className = "task-templates-popover hidden";
+  document.body.appendChild(taskTemplatesPopover);
+
+  function renderTaskTemplatesPopover() {
+    taskTemplatesPopover.innerHTML = "";
+    const templates = getTaskTemplates();
+    if (!templates.length) {
+      const empty = document.createElement("div");
+      empty.className = "task-templates-empty";
+      empty.textContent = "No templates yet — tap 🔖 on a task to save one.";
+      taskTemplatesPopover.appendChild(empty);
+      return;
+    }
+    templates.forEach((tpl) => {
+      const row = document.createElement("div");
+      row.className = "task-template-row";
+      const label = document.createElement("span");
+      label.className = "task-template-row-label";
+      label.textContent = tpl.text + (tpl.subtasks && tpl.subtasks.length ? ` (${tpl.subtasks.length})` : "");
+      label.title = `Insert "${tpl.text}"` + (tpl.subtasks && tpl.subtasks.length ? ` with ${tpl.subtasks.length} subtask(s)` : "");
+      label.addEventListener("click", () => {
+        const target = tasksEditingTarget;
+        const host = target && resolveHost(target.nodeId, target.r, target.c);
+        if (!host) return;
+        insertTaskTemplate(tpl, host);
+        closeTaskTemplatesPopover();
+        renderTasksModal();
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "task-template-row-del";
+      del.title = "Delete this template";
+      del.textContent = "×";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteTaskTemplate(tpl.id);
+        renderTaskTemplatesPopover();
+      });
+      row.appendChild(label);
+      row.appendChild(del);
+      taskTemplatesPopover.appendChild(row);
+    });
+  }
+  function openTaskTemplatesPopover(btn) {
+    renderTaskTemplatesPopover();
+    taskTemplatesPopover.classList.remove("hidden");
+    positionTaskTemplatesPopover(btn);
+  }
+  function closeTaskTemplatesPopover() {
+    taskTemplatesPopover.classList.add("hidden");
+  }
+  function positionTaskTemplatesPopover(btn) {
+    const margin = 8;
+    const btnRect = btn.getBoundingClientRect();
+    const popRect = taskTemplatesPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6;
+    }
+    taskTemplatesPopover.style.left = `${left}px`;
+    taskTemplatesPopover.style.top = `${top}px`;
+  }
+  if (tasksTemplatesBtn) {
+    tasksTemplatesBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (taskTemplatesPopover.classList.contains("hidden")) openTaskTemplatesPopover(tasksTemplatesBtn);
+      else closeTaskTemplatesPopover();
+    });
+  }
+  taskTemplatesPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!taskTemplatesPopover.classList.contains("hidden") &&
+        !taskTemplatesPopover.contains(e.target) &&
+        e.target !== tasksTemplatesBtn) {
+      closeTaskTemplatesPopover();
     }
   });
 
@@ -15081,6 +15226,7 @@
   function closeTasksModal() {
     tasksEditingTarget = null;
     subtaskAddOpenFor.clear();
+    closeTaskTemplatesPopover();
     renderAll();
     zoomModalClose(tasksModal);
   }
@@ -15599,6 +15745,22 @@
         renderTasksModal();
       });
 
+      // Save this task (text + subtask text) as a reusable template —
+      // see saveTaskAsTemplate/insertTaskTemplate above and the
+      // "📋 Templates" toolbar button below, which is how it comes back
+      // out onto another node's list.
+      const templateBtn = document.createElement("button");
+      templateBtn.type = "button";
+      templateBtn.className = "task-template-btn";
+      templateBtn.title = "Save as a reusable template";
+      templateBtn.textContent = "🔖";
+      templateBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+      templateBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        saveTaskAsTemplate(t);
+        showToast(`Saved "${t.text || "Untitled task"}" as a template`);
+      });
+
       const del = document.createElement("button");
       del.className = "task-delete";
       del.title = "Delete task";
@@ -15618,6 +15780,7 @@
       li.appendChild(dueBtn);
       li.appendChild(noteBtn);
       li.appendChild(subtaskBtn);
+      li.appendChild(templateBtn);
       li.appendChild(star);
       li.appendChild(colorBtn);
       li.appendChild(del);
