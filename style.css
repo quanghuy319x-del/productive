@@ -2636,9 +2636,13 @@ kbd{
   border-radius:5px;
   padding:0;
 }
-.task-note-btn svg{ width:15px; height:15px; }
-.task-note-btn:hover{ color: var(--text); background: var(--panel-2); }
-.task-note-btn.has-note{ color: #33b3f0; }
+.task-note-btn svg{ width:16px; height:16px; }
+/* The sticky-note icon is full-color: dimmed while the task has no notes,
+   full color once it does. */
+.task-note-btn svg{ filter: grayscale(1); opacity: .55; transition: opacity .12s ease, filter .12s ease; }
+.task-note-btn:hover{ background: var(--panel-2); }
+.task-note-btn:hover svg{ filter: none; opacity: 1; }
+.task-note-btn.has-note svg{ filter: none; opacity: 1; }
 
 /* ---- Add-subtask icon on the main task row — always reachable, even
    for a brand-new task with no subtasks yet, without needing the
@@ -2851,18 +2855,18 @@ kbd{
   opacity: 0.55;
   text-decoration: line-through;
 }
-/* Small 📝 on a subtask pill that has notes — click opens them (see
+/* Small note icon on a subtask pill that has notes — click opens them (see
    openSubtaskNotes in app.js). Adding the first note is done from the
    pill's right-click menu. */
 .subtask-note-icon{
   flex:none;
-  font-size: 10px;
-  line-height: 1;
+  display: inline-flex;
+  width: 13px; height: 13px;
   cursor: pointer;
-  opacity: 0.85;
   margin-left: 4px;
 }
-.subtask-note-icon:hover{ opacity: 1; }
+.subtask-note-icon svg{ width: 100%; height: 100%; }
+.subtask-note-icon:hover{ transform: scale(1.15); }
 /* "+" trigger that now lives at the end of the pill row itself (see
    renderSubtaskPanel/renderCalDaySubtaskPanel) instead of on the main
    task row — sits inline with the pills via the same margin so it
@@ -2963,9 +2967,7 @@ kbd{
 #tasks-modal .task-timer-time{ color: #5a5a5a; }
 #tasks-modal .task-timer-time.paused{ color: #a0a0a0; }
 #tasks-modal .task-timer-done-label{ color: #5a5a5a; }
-#tasks-modal .task-note-btn{ color: #a0a0a0; }
-#tasks-modal .task-note-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
-#tasks-modal .task-note-btn.has-note{ color: #33b3f0; }
+#tasks-modal .task-note-btn:hover{ background: #f0f0f0; }
 #tasks-modal .task-subtask-btn{ color: #a0a0a0; }
 #tasks-modal .task-subtask-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-subtask-btn.has-subtasks{ color: #33b3f0; }
@@ -4853,3 +4855,20 @@ kbd{
 :is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle:hover{
   background: var(--sub-ctl); color: var(--sub-bg);
 }
+
+/* DRC notebook+pencil image used inline in text rows (see drcIconEl in
+   app.js) — the same picture as the DRC marker on a node. */
+.drc-icon-inline{
+  display: inline-block;
+  flex: none;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+.favoritesbrowser-row-icon .drc-icon-inline{ margin-right: 0; vertical-align: middle; }
+
+/* DRC image inside the task-row note button / subtask note icon — same
+   dim-until-it-has-notes treatment as the sticky-note icon. */
+.task-note-btn .drc-icon-inline{ margin-right: 0; vertical-align: middle; filter: grayscale(1); opacity: .55; transition: opacity .12s ease, filter .12s ease; }
+.task-note-btn:hover .drc-icon-inline,
+.task-note-btn.has-note .drc-icon-inline{ filter: none; opacity: 1; }
+.subtask-note-icon .drc-icon-inline{ margin-right: 0; vertical-align: top; }
