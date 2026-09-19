@@ -12289,6 +12289,28 @@
         textShadow: "0 1px 3px rgba(0,0,0,0.65), 0 0 8px rgba(0,0,0,0.35)"
       });
       el.textContent = "Text";
+      // Contenteditable's default Enter behavior inserts a wrapping <div>
+      // or a <br> element rather than an actual newline character — so
+      // el.textContent (what Apply reads, see the bake loop below) loses
+      // every line break the browser drew, collapsing multi-line labels
+      // back to one line. Inserting a literal "\n" text node ourselves
+      // keeps textContent's line breaks in sync with what's on screen
+      // (white-space: pre-wrap above is what renders that character as
+      // a visible break).
+      el.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const br = document.createTextNode("\n");
+        range.insertNode(br);
+        range.setStartAfter(br);
+        range.setEndAfter(br);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
       wrap.appendChild(el);
 
       const del = document.createElement("button");
@@ -12393,6 +12415,12 @@
       }
 
       let dragging = false, dragStart = null;
+      // Whenever the text itself gains focus — whether from the native
+      // click below, Tab, or a programmatic .focus() elsewhere — show it
+      // as selected. Previously selectBox() only ran from inside
+      // beginDrag()/dblclick, so a plain click that the browser handled
+      // natively (see DRAG_CLICK_PX below) never lit up the handles.
+      el.addEventListener("focus", () => selectBox(box));
       function beginDrag(e) {
         e.preventDefault(); e.stopPropagation();
         selectBox(box);
@@ -12401,13 +12429,50 @@
         document.addEventListener("pointermove", onDrag);
         document.addEventListener("pointerup", onDragEnd);
       }
+      // A plain mouse click on the label text is ambiguous: it might mean
+      // "put the caret here" or "start dragging this box". We used to
+      // resolve that by always dragging unless the box was already
+      // focused — which meant a click on any box you weren't mid-edit in
+      // could never just move the caret with the mouse. Now we let the
+      // browser handle the click natively (so it focuses the box and
+      // places the caret exactly where you clicked) and only hijack it
+      // into a drag once the pointer actually travels past a small
+      // threshold — the same click-vs-drag distinction most editors use.
+      const DRAG_CLICK_PX = 4;
       wrap.addEventListener("pointerdown", (e) => {
-        if (e.target === el && document.activeElement === el && activeBox === box) return; // already selected: allow text caret/selection
-        beginDrag(e);
+        if (e.target !== el) { beginDrag(e); return; } // clicked the box's own frame, not its text — always drag
+        e.stopPropagation();
+        const startX = e.clientX, startY = e.clientY;
+        const bx = box.x, by = box.y;
+        let candidate = true;
+        function onCandidateMove(ev) {
+          if (!candidate) return;
+          if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_CLICK_PX) return;
+          candidate = false;
+          document.removeEventListener("pointermove", onCandidateMove);
+          document.removeEventListener("pointerup", onCandidateUp);
+          // The browser may have started selecting text during the moved
+          // mousedown; a real drag shouldn't leave a text selection behind.
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount && !sel.isCollapsed) sel.removeAllRanges();
+          selectBox(box);
+          dragging = true;
+          dragStart = { x: startX, y: startY, bx, by };
+          document.addEventListener("pointermove", onDrag);
+          document.addEventListener("pointerup", onDragEnd);
+          onDrag(ev); // apply this move immediately so the box doesn't jump on the next event
+        }
+        function onCandidateUp() {
+          candidate = false;
+          document.removeEventListener("pointermove", onCandidateMove);
+          document.removeEventListener("pointerup", onCandidateUp);
+        }
+        document.addEventListener("pointermove", onCandidateMove);
+        document.addEventListener("pointerup", onCandidateUp);
       });
-      // The grab handle always starts a drag, even while the box is
-      // selected and focused for editing — it's the escape hatch from
-      // the caret-vs-move ambiguity above.
+      // The grab handle always starts a drag immediately, even while the
+      // box is selected and focused for editing — a guaranteed way to
+      // move a label without needing to clear the caret first.
       grab.addEventListener("pointerdown", beginDrag);
       function onDrag(e) {
         if (!dragging) return;
