@@ -2657,6 +2657,9 @@ kbd{
 }
 .task-subtask-btn:hover{ color: var(--text); background: var(--panel-2); }
 .task-subtask-btn.has-subtasks{ color: #33b3f0; }
+/* "Add another subtask" button — hidden once a task already has subtasks.
+   (The first-subtask "+" on empty tasks is unaffected.) */
+.task-subtask-btn.has-subtasks{ display: none; }
 
 /* ---- Due date icon (calendar) — opens a native date picker inline for
    the task; feeds the Calendar toolbar button's month view. ---- */
