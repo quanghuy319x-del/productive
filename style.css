@@ -2745,14 +2745,20 @@ kbd{
    old stacked-row layout needed. */
 .subtask-list{
   list-style:none;
-  margin:0;
   padding:0;
   display:flex;
   flex-wrap:wrap;
   align-items:center;
-  gap: 3px 4px;
+  /* Spacing between pills is a margin on each pill (below) instead of a
+     flex gap, so a zero-height line-break spacer doesn't add an extra gap
+     of its own. The negative margin cancels the pills' outer margin. */
+  gap: 0;
+  margin: -1.5px -2px;
+  cursor: text; /* the empty space between pills is clickable (line-break caret) */
 }
+.subtask-list:focus{ outline: none; }
 .subtask-row{
+  margin: 1.5px 2px;
   display:inline-flex;
   align-items:center;
   gap:2px;
@@ -4791,3 +4797,28 @@ kbd{
 @media (prefers-reduced-motion: reduce){
   .modal, .modal-card, .video-modal-card, .day-modal-backdrop, .day-modal{ transition: none !important; }
 }
+
+
+/* ---- Line breaks between subtask pills ---- */
+.subtask-break{
+  flex: 0 0 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.subtask-break.subtask-break-extra{ height: 22px; }
+.subtask-caret{
+  flex: none;
+  width: 2px;
+  height: 18px;
+  margin: 0 1px;
+  padding: 0;
+  list-style: none;
+  border-radius: 1px;
+  background: #33b3f0;
+  animation: subtask-caret-blink 1s steps(1) infinite;
+}
+@keyframes subtask-caret-blink{ 50%{ opacity: 0; } }
+#tasks-modal .subtask-caret{ background: #5a5a5a; }
+#cal-day-modal .subtask-caret{ background: #3b6ef0; }

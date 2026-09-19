@@ -14711,6 +14711,127 @@
   // click, collapsing back once you click away with nothing typed.
   let subtaskAddOpenFor = new Set();
 
+  // ---- Line breaks between subtask pills ----------------------------
+  // Click in the gap between two pills (or in the empty space beside
+  // one) to drop a blinking caret there, then press Enter to force the
+  // pill after the caret onto a new line. Enter again adds a blank line;
+  // Backspace takes a break back out; ←/→ walk the caret between pills;
+  // Esc (or clicking away) hides it. The break is stored on the pill it
+  // sits in front of as `brBefore` (a small count), so the subtask data
+  // model — and progress counting — is untouched.
+  let subtaskCaret = null;        // { taskId, beforeId } while a caret is showing
+  let subtaskCaretBusy = false;   // true while a re-render is swapping the list out
+
+  function clearSubtaskCaret() {
+    subtaskCaret = null;
+    document.querySelectorAll(".subtask-caret").forEach(el => el.remove());
+  }
+
+  function enhanceSubtaskList(list, t, rerender) {
+    const subs = getTaskSubtasks(t);
+    const rows = Array.from(list.children).filter(el => el.classList.contains("subtask-row"));
+    if (rows.length !== subs.length) return;
+    list.tabIndex = -1;
+
+    // Line-break spacers: the first forces a wrap, any extras are blank lines.
+    rows.forEach((row, i) => {
+      const n = Math.max(0, Math.min(5, subs[i].brBefore | 0));
+      for (let k = 0; k < n; k++) {
+        const br = document.createElement("li");
+        br.className = "subtask-break" + (k > 0 ? " subtask-break-extra" : "");
+        list.insertBefore(br, row);
+      }
+    });
+
+    function placeCaret() {
+      list.querySelectorAll(".subtask-caret").forEach(el => el.remove());
+      if (!subtaskCaret || subtaskCaret.taskId !== t.id) return;
+      const i = subs.findIndex(x => x.id === subtaskCaret.beforeId);
+      if (i === -1) return;
+      const caret = document.createElement("li");
+      caret.className = "subtask-caret";
+      list.insertBefore(caret, rows[i]);
+    }
+    placeCaret();
+    if (subtaskCaret && subtaskCaret.taskId === t.id) {
+      requestAnimationFrame(() => { if (list.isConnected) list.focus({ preventScroll: true }); });
+    }
+
+    // Which gap did the click land in? Nearest pill wins (vertical
+    // distance weighted more so a click beside a line stays on that
+    // line); left half of it = before, right half = after.
+    function gapIndexFor(e) {
+      let best = -1, bestD = Infinity;
+      rows.forEach((row, i) => {
+        const r = row.getBoundingClientRect();
+        const dx = e.clientX < r.left ? r.left - e.clientX : (e.clientX > r.right ? e.clientX - r.right : 0);
+        const dy = e.clientY < r.top ? r.top - e.clientY : (e.clientY > r.bottom ? e.clientY - r.bottom : 0);
+        const d = dx * dx + dy * dy * 4;
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      if (best === -1) return -1;
+      const r = rows[best].getBoundingClientRect();
+      return e.clientX < (r.left + r.right) / 2 ? best : best + 1;
+    }
+
+    list.addEventListener("mousedown", (e) => {
+      const c = e.target.classList;
+      const isGap = e.target === list || (c && (c.contains("subtask-row") || c.contains("subtask-break") || c.contains("subtask-caret")));
+      if (!isGap) { if (subtaskCaret) clearSubtaskCaret(); return; }
+      e.preventDefault();
+      const idx = gapIndexFor(e);
+      document.querySelectorAll(".subtask-caret").forEach(el => el.remove());
+      // Nothing follows the very end of the list, so there's nothing to break.
+      if (idx < 0 || idx >= subs.length) { subtaskCaret = null; return; }
+      subtaskCaret = { taskId: t.id, beforeId: subs[idx].id };
+      placeCaret();
+      list.focus({ preventScroll: true });
+    });
+
+    function commit() {
+      persist();
+      subtaskCaretBusy = true;
+      rerender();
+      requestAnimationFrame(() => { subtaskCaretBusy = false; });
+    }
+
+    list.addEventListener("keydown", (e) => {
+      if (!subtaskCaret || subtaskCaret.taskId !== t.id) return;
+      const i = subs.findIndex(x => x.id === subtaskCaret.beforeId);
+      if (i === -1) return;
+      if (e.key === "Enter") {
+        e.preventDefault(); e.stopPropagation();
+        if (!requireSignIn()) return;
+        pushUndo();
+        subs[i].brBefore = Math.min(5, (subs[i].brBefore | 0) + 1);
+        commit();
+      } else if (e.key === "Backspace") {
+        e.preventDefault(); e.stopPropagation();
+        if (!(subs[i].brBefore > 0)) return;
+        if (!requireSignIn()) return;
+        pushUndo();
+        subs[i].brBefore -= 1;
+        if (!subs[i].brBefore) delete subs[i].brBefore;
+        commit();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault(); e.stopPropagation();
+        const j = i + (e.key === "ArrowLeft" ? -1 : 1);
+        if (j < 0 || j >= subs.length) return;
+        subtaskCaret = { taskId: t.id, beforeId: subs[j].id };
+        placeCaret();
+      } else if (e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation();
+        clearSubtaskCaret();
+        list.blur();
+      }
+    });
+
+    list.addEventListener("blur", () => {
+      if (subtaskCaretBusy) return;
+      if (subtaskCaret && subtaskCaret.taskId === t.id) clearSubtaskCaret();
+    });
+  }
+
   function startSubtaskDrag(e, row, taskId, subtaskId) {
     e.stopPropagation();
     if (!requireSignIn()) { e.preventDefault(); return; }
@@ -14959,6 +15080,7 @@
       list.appendChild(row);
     });
 
+    enhanceSubtaskList(list, t, () => renderTasksModal());
     wrap.appendChild(list);
 
     // The "+" trigger itself now lives on the main task row, next to its
@@ -15891,6 +16013,7 @@
       list.appendChild(row);
     });
 
+    enhanceSubtaskList(list, t, () => renderCalDayModal());
     wrap.appendChild(list);
 
     if (subtaskAddOpenFor.has(t.id)) {
