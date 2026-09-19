@@ -4866,6 +4866,32 @@ kbd{
 }
 .favoritesbrowser-row-icon .drc-icon-inline{ margin-right: 0; vertical-align: middle; }
 
+/* Sticky-note image used inline in text rows (see noteIconEl in app.js)
+   — the same picture as the note marker on a node/cell, so a favorited
+   or browsed note always reads as the same yellow note as everywhere
+   else instead of a generic emoji. Mirrors .drc-icon-inline above. */
+.note-icon-inline{
+  display: inline-block;
+  flex: none;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+.note-icon-inline svg{ width: 100%; height: 100%; }
+.favoritesbrowser-row-icon .note-icon-inline{ margin-right: 0; vertical-align: middle; }
+
+/* Favorites-browser group headings ("Notes", "Links", ...) — a small
+   copy of the same note/link icon shown on the rows in that section,
+   so the heading never shows a different glyph than the items under it. */
+.favoritesbrowser-heading-icon{
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+  margin-right: 5px;
+  font-size: 11px;
+}
+.favoritesbrowser-heading-icon svg{ width: 100%; height: 100%; }
+
 /* DRC image inside the task-row note button / subtask note icon — same
    dim-until-it-has-notes treatment as the sticky-note icon. */
 .task-note-btn .drc-icon-inline{ margin-right: 0; vertical-align: middle; filter: grayscale(1); opacity: .55; transition: opacity .12s ease, filter .12s ease; }

@@ -5965,6 +5965,19 @@
     return el;
   }
   const CELL_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
+  // Small inline sticky-note icon sized for text rows (Notes/Favorites
+  // browser list rows) — the exact same SVG as the node/cell note
+  // markers (CELL_NOTE_ICON_SVG), so a plain note reads as the same
+  // yellow note everywhere instead of falling back to a generic emoji.
+  // Mirrors drcIconEl's shape/sizing convention above.
+  function noteIconEl(px) {
+    const el = document.createElement("span");
+    el.className = "note-icon-inline";
+    el.style.width = px + "px";
+    el.style.height = px + "px";
+    el.innerHTML = CELL_NOTE_ICON_SVG;
+    return el;
+  }
 
   // Same brain glyph the node-level brainstorm marker uses (see the
   // photo/note/link strip in renderNode) — shared here so a cell's own
@@ -18162,7 +18175,7 @@
 
       getNodeNotes(node).forEach((n) => {
         if (!n.favorite) return;
-        items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n) });
+        items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n), isDRC: isDRCNote(n) });
       });
 
       // A task's own notes (see getTaskNotes) are a separate list from
@@ -18181,6 +18194,7 @@
             noteId: n.id,
             nodeLabel: `${nodeLabel} → ${t.text || "Untitled task"}`,
             preview: notePreviewText(n),
+            isDRC: isDRCNote(n),
           });
         });
       });
@@ -18220,6 +18234,21 @@
   }
 
   const FAVORITE_TYPE_ICON = { note: "📝", photo: "🖼", link: "🔗", video: "📺" };
+
+  // Section-heading icon for the Favorites browser groups — reuses the
+  // same true note/link icons as the rows below each heading (and as
+  // the rest of the app) rather than the FAVORITE_TYPE_ICON emoji, so a
+  // heading never shows a different "note" or "link" glyph than the
+  // items filed under it. Photo/video keep their emoji since there's no
+  // single app-wide icon for those types to match against.
+  function favoriteTypeIconEl(type) {
+    const el = document.createElement("span");
+    el.className = "favoritesbrowser-heading-icon";
+    if (type === "note") el.innerHTML = CELL_NOTE_ICON_SVG;
+    else if (type === "link") el.innerHTML = LINK_ICON_SVGS.link;
+    else el.textContent = FAVORITE_TYPE_ICON[type];
+    return el;
+  }
 
   function openFavoritesBrowserModal() {
     favoritesBrowserItems = collectFavoriteItems();
@@ -18320,6 +18349,14 @@
       } else {
         icon.textContent = FAVORITE_TYPE_ICON.photo;
       }
+    } else if (it.type === "note") {
+      // Same yellow sticky-note / DRC notebook icons as everywhere else
+      // in the app (see noteIconEl/drcIconEl), instead of a generic emoji.
+      icon.appendChild(it.isDRC ? drcIconEl(22) : noteIconEl(22));
+    } else if (it.type === "link") {
+      // Same recognizable per-destination icon as the link menus/markers
+      // elsewhere (see linkIconFor), instead of a generic 🔗 emoji.
+      icon.innerHTML = linkIconFor(it.url);
     } else {
       icon.textContent = FAVORITE_TYPE_ICON[it.type];
     }
@@ -18369,7 +18406,8 @@
       if (!group.length) return;
       const heading = document.createElement("li");
       heading.className = "favoritesbrowser-heading";
-      heading.textContent = `${FAVORITE_TYPE_ICON[type]} ${FAVORITE_TYPE_LABEL[type]} (${group.length})`;
+      heading.appendChild(favoriteTypeIconEl(type));
+      heading.appendChild(document.createTextNode(`${FAVORITE_TYPE_LABEL[type]} (${group.length})`));
       favoritesBrowserList.appendChild(heading);
       group.forEach((it) => {
         const node = findNode(it.nodeId);
@@ -18814,7 +18852,7 @@
     const icon = document.createElement("span");
     icon.className = "favoritesbrowser-row-icon";
     if (it.isDRC) icon.appendChild(drcIconEl(22));
-    else icon.textContent = "📝";
+    else icon.appendChild(noteIconEl(22));
 
     // A single combined line — "node → task → title", each segment
     // skipped when empty (see noteBrowserRowLabel) — rather than the
