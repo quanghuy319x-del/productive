@@ -2869,13 +2869,14 @@ kbd{
   outline:none;
   padding: 0 2px;
   border-radius: 4px;
-  /* pre-wrap (not nowrap/normal, which would silently collapse a typed
-     line break into a single space) so a subtask added with Shift+Enter
-     — or one that arrived with line breaks via a task-list template,
-     see saveTaskListAsTemplate/insertTaskListTemplate — actually shows
-     its line breaks instead of losing them visually. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  /* One line only: long subtask text is trimmed with an ellipsis instead
+     of wrapping the pill onto several lines. Any line breaks in the
+     stored text just render as spaces here; the full text (with its
+     breaks) is still shown while editing (see the contenteditable rule
+     below) and in the title tooltip. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 /* While actually editing, let the pill grow past its normal max-width so
@@ -2884,6 +2885,11 @@ kbd{
 .subtask-text[contenteditable="true"]{
   cursor: text;
   max-width: 220px;
+  /* Editing shows the full text again (wrapping, with line breaks). */
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
 }
 .subtask-text:focus{ background: var(--panel-2); }
 .subtask-row.done .subtask-text{
