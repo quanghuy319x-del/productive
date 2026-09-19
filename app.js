@@ -2616,10 +2616,18 @@
     if (typeof t.stars === "number" && !Number.isNaN(t.stars)) return clamp(Math.round(t.stars), 0, 1);
     return t.starred ? 1 : 0;
   }
-  // Star priority is uncapped — any number of tasks on a node/cell can
-  // be starred.
-  function taskStarCapReached() {
-    return false;
+  // At most 3 tasks per task list (node or table cell) can be starred at
+  // once — starring a 4th is blocked until one of the others is unstarred.
+  // Lists saved before this limit that already hold more than 3 stars are
+  // left as they are; they just can't add another until they're under it.
+  const MAX_STARRED_TASKS = 3;
+  function taskStarCapReached(host) {
+    return getNodeTasks(host).filter(x => getTaskStars(x) > 0).length >= MAX_STARRED_TASKS;
+  }
+  function blockedByStarCap(host, t) {
+    if (getTaskStars(t) > 0 || !taskStarCapReached(host)) return false;
+    showToast(`Only ${MAX_STARRED_TASKS} starred tasks allowed — unstar one first`);
+    return true;
   }
   // A task's optional color label — one swatch from the same shared
   // PALETTE used for node/branch/font colors, shown as a light tinted
@@ -15264,6 +15272,7 @@
         : "Star this task for priority — counts 3x toward progress";
       star.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (blockedByStarCap(host, t)) return;
         const next = stars > 0 ? 0 : 1;
         pushUndo();
         t.stars = next;
@@ -15820,6 +15829,7 @@
     star.title = stars > 0 ? "Starred — click to clear" : "Star this task for priority";
     star.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (blockedByStarCap(host, t)) return;
       const next = stars > 0 ? 0 : 1;
       pushUndo();
       t.stars = next;
