@@ -13892,6 +13892,12 @@
   document.body.appendChild(noteImageGrowBtn);
 
   let noteImageShrinkTarget = null;
+  // Which editor the hovered photo belongs to — the note editor by default,
+  // or the Brainstorm scratchpad (see the brainstormTextarea listeners
+  // below) — so the same floating −/+ pair can snapshot undo and autosave
+  // through the right editor.
+  const NOTE_IMG_HOST_NOTE = { pushUndo: () => notePushUndo(), save: () => scheduleNoteAutosave() };
+  let noteImageShrinkHost = NOTE_IMG_HOST_NOTE;
 
   function positionNoteImageShrinkBtn(img) {
     const rect = img.getBoundingClientRect();
@@ -13900,8 +13906,9 @@
     noteImageShrinkBtn.style.left = `${rect.right - 52}px`;
     noteImageShrinkBtn.style.top = `${rect.top + 4}px`;
   }
-  function showNoteImageShrinkBtn(img) {
+  function showNoteImageShrinkBtn(img, host) {
     noteImageShrinkTarget = img;
+    noteImageShrinkHost = host || NOTE_IMG_HOST_NOTE;
     positionNoteImageShrinkBtn(img);
     noteImageShrinkBtn.classList.remove("hidden");
     noteImageGrowBtn.classList.remove("hidden");
@@ -13912,7 +13919,7 @@
     noteImageGrowBtn.classList.add("hidden");
   }
   noteTextarea.addEventListener("mouseover", (e) => {
-    if (e.target && e.target.tagName === "IMG") showNoteImageShrinkBtn(e.target);
+    if (e.target && e.target.tagName === "IMG") showNoteImageShrinkBtn(e.target, NOTE_IMG_HOST_NOTE);
   });
   noteTextarea.addEventListener("mouseout", (e) => {
     if (e.target && e.target.tagName === "IMG" &&
@@ -13939,13 +13946,13 @@
     const img = noteImageShrinkTarget;
     if (!img) return;
     const NOTE_IMG_SHRINK_FACTOR = 0.2;
-    notePushUndo();
+    noteImageShrinkHost.pushUndo();
     const w = Math.max(NOTE_IMG_MIN_WIDTH, Math.round(img.offsetWidth * NOTE_IMG_SHRINK_FACTOR));
     const h = Math.max(NOTE_IMG_MIN_HEIGHT, Math.round(img.offsetHeight * NOTE_IMG_SHRINK_FACTOR));
     img.style.width = `${w}px`;
     img.style.height = `${h}px`;
     positionNoteImageShrinkBtn(img);
-    scheduleNoteAutosave();
+    noteImageShrinkHost.save();
   });
   // Grows back by the shrink button's inverse (5x), capped at the photo's
   // own natural resolution so it never upscales past its real pixel size.
@@ -13954,7 +13961,7 @@
     const img = noteImageShrinkTarget;
     if (!img) return;
     const NOTE_IMG_GROW_FACTOR = 5;
-    notePushUndo();
+    noteImageShrinkHost.pushUndo();
     const maxW = img.naturalWidth || Infinity;
     const maxH = img.naturalHeight || Infinity;
     const w = Math.min(maxW, Math.round(img.offsetWidth * NOTE_IMG_GROW_FACTOR));
@@ -13962,7 +13969,7 @@
     img.style.width = `${w}px`;
     img.style.height = `${h}px`;
     positionNoteImageShrinkBtn(img);
-    scheduleNoteAutosave();
+    noteImageShrinkHost.save();
   });
 
   // Clicking directly on a checklist glyph toggles it, like a real checkbox.
@@ -14914,6 +14921,51 @@
     zoomModalClose(tasksModal);
   }
 
+  // Right-click (or long-press on touch) menu for a single subtask pill —
+  // replaces the hover-only copy (⧉) and delete (×) buttons that used to
+  // sit inside every pill. Reuses the shared ctx-menu element.
+  function copySubtaskText(text) {
+    const done = () => showToast("Subtask copied");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(done);
+    } else {
+      // Fallback for contexts without the async clipboard API.
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (err) {}
+      document.body.removeChild(ta);
+      done();
+    }
+  }
+  function openSubtaskContextMenu(x, y, t, s, rerender) {
+    resetContextMenu();
+    const addItem = (label, cls, fn) => {
+      const it = document.createElement("div");
+      it.className = "ctx-item" + (cls ? " " + cls : "");
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "ctx-item-label";
+      labelSpan.textContent = label;
+      it.appendChild(labelSpan);
+      it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
+      ctxMenu.appendChild(it);
+    };
+    addItem("Copy text", "", () => copySubtaskText(s.text));
+    addItem("Delete subtask", "danger", () => {
+      if (!requireSignIn()) return;
+      if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
+      pushUndo();
+      t.subtasks = getTaskSubtasks(t).filter(x => x !== s);
+      syncTaskDoneFromSubtasks(t);
+      persist();
+      rerender();
+    });
+    positionContextMenu(x, y);
+  }
+
   // Builds the expanded subtask checklist panel for one task — a nested
   // <li> (so it sits inline in the same <ul> right under its task row)
   // holding a checkbox list plus a small "add subtask" input.
@@ -14987,7 +15039,7 @@
       // instead (see the dblclick handler right below).
       let subtaskClickTimer = null;
       row.addEventListener("click", (e) => {
-        if (e.target.closest(".subtask-drag-handle, .subtask-copy, .subtask-delete")) return;
+        if (e.target.closest(".subtask-drag-handle")) return;
         if (stext.contentEditable === "true") return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
@@ -15028,57 +15080,14 @@
         stext.contentEditable = "false";
       });
 
-      const scopy = document.createElement("button");
-      scopy.type = "button";
-      scopy.className = "subtask-copy";
-      scopy.title = "Copy subtask text";
-      scopy.textContent = "⧉";
-      scopy.addEventListener("click", (e) => {
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        const finish = () => {
-          scopy.classList.add("copied");
-          scopy.textContent = "✓";
-          setTimeout(() => {
-            scopy.classList.remove("copied");
-            scopy.textContent = "⧉";
-          }, 1000);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(s.text).then(finish).catch(finish);
-        } else {
-          // Fallback for contexts without the async clipboard API.
-          const ta = document.createElement("textarea");
-          ta.value = s.text;
-          ta.style.position = "fixed";
-          ta.style.opacity = "0";
-          document.body.appendChild(ta);
-          ta.select();
-          try { document.execCommand("copy"); } catch (err) {}
-          document.body.removeChild(ta);
-          finish();
-        }
-      });
-
-      const sdel = document.createElement("button");
-      sdel.type = "button";
-      sdel.className = "subtask-delete";
-      sdel.title = "Delete subtask";
-      sdel.textContent = "×";
-      sdel.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (!requireSignIn()) return;
-        if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
-        pushUndo();
-        t.subtasks = getTaskSubtasks(t).filter(x => x !== s);
-        syncTaskDoneFromSubtasks(t);
-        persist();
-        renderTasksModal();
+        openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => renderTasksModal());
       });
 
       row.appendChild(shandle);
       row.appendChild(stext);
-      row.appendChild(scopy);
-      row.appendChild(sdel);
       list.appendChild(row);
     });
 
@@ -15982,7 +15991,7 @@
       // instead (see the dblclick handler right below).
       let subtaskClickTimer = null;
       row.addEventListener("click", (e) => {
-        if (e.target.closest(".subtask-drag-handle, .subtask-delete")) return;
+        if (e.target.closest(".subtask-drag-handle")) return;
         if (stext.contentEditable === "true") return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
@@ -16024,26 +16033,14 @@
         stext.contentEditable = "false";
       });
 
-      const sdel = document.createElement("button");
-      sdel.type = "button";
-      sdel.className = "subtask-delete";
-      sdel.title = "Delete subtask";
-      sdel.textContent = "×";
-      sdel.addEventListener("click", (e) => {
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        if (!requireSignIn()) return;
-        if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
-        pushUndo();
-        t.subtasks = getTaskSubtasks(t).filter(x => x !== s);
-        syncTaskDoneFromSubtasks(t);
-        persist();
-        renderCalDayModal();
-        renderCalendar();
+        openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => { renderCalDayModal(); renderCalendar(); });
       });
 
       row.appendChild(shandle);
       row.appendChild(stext);
-      row.appendChild(sdel);
       list.appendChild(row);
     });
 
@@ -17110,6 +17107,8 @@
   let brainstormImageInsertLine = null;
   let brainstormImageInsertAtStart = false;
 
+  // Same small starting size as photos dropped into a note (see
+  // NOTE_IMG_DEFAULT_INSERT_WIDTH/HEIGHT) — the ➖/➕ buttons resize from there.
   function brainstormInsertImages(dataUrls, targetLine, atStart) {
     brainstormTextarea.focus();
     brainstormPushUndo();
@@ -17122,6 +17121,8 @@
         const imgLine = document.createElement("div");
         const img = document.createElement("img");
         img.src = dataUrl;
+        img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
+        img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
         imgLine.appendChild(img);
         parent.insertBefore(imgLine, lineDiv);
       });
@@ -17138,6 +17139,8 @@
         const imgLine = document.createElement("div");
         const img = document.createElement("img");
         img.src = dataUrl;
+        img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
+        img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
         imgLine.appendChild(img);
         parent.insertBefore(imgLine, cursor ? cursor.nextSibling : null);
         cursor = imgLine;
@@ -17164,7 +17167,9 @@
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => { hadError = true; resolve(null); };
       reader.readAsDataURL(file);
-    }))).then((dataUrls) => {
+    })))
+      .then((dataUrls) => Promise.all(dataUrls.map(downscaleNoteImageDataUrl)))
+      .then((dataUrls) => {
       const loaded = dataUrls.filter(Boolean);
       if (loaded.length) brainstormInsertImages(loaded, targetLine, atStart);
       if (hadError) alert("Some images couldn't be read.");
@@ -17228,6 +17233,23 @@
     } else {
       brainstormTextarea.classList.remove("drag-over");
     }
+  });
+
+  // Hover −/+ buttons on photos — the same floating pair the note editor
+  // uses (see showNoteImageShrinkBtn), wired to this editor's own undo and
+  // autosave.
+  const NOTE_IMG_HOST_BRAINSTORM = { pushUndo: () => brainstormPushUndo(), save: () => scheduleBrainstormAutosave() };
+  brainstormTextarea.addEventListener("mouseover", (e) => {
+    if (e.target && e.target.tagName === "IMG") showNoteImageShrinkBtn(e.target, NOTE_IMG_HOST_BRAINSTORM);
+  });
+  brainstormTextarea.addEventListener("mouseout", (e) => {
+    if (e.target && e.target.tagName === "IMG" &&
+        !noteImageShrinkBtn.contains(e.relatedTarget) && !noteImageGrowBtn.contains(e.relatedTarget)) {
+      hideNoteImageShrinkBtn();
+    }
+  });
+  brainstormTextarea.addEventListener("scroll", () => {
+    if (noteImageShrinkTarget && brainstormTextarea.contains(noteImageShrinkTarget)) positionNoteImageShrinkBtn(noteImageShrinkTarget);
   });
 
   // Clicking directly on a checklist glyph toggles it, or on an image

@@ -1545,7 +1545,9 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .ctx-menu{
   position:fixed;
-  z-index: 50;
+  /* Above every modal (tasks 100, note 150, photo 160, day popup 1000) so
+     the subtask right-click menu can open from inside them. */
+  z-index: 2000;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -2799,8 +2801,7 @@ kbd{
   cursor: grab;
   /* Collapsed out of the pill entirely (not just invisible) until
      hover, so an idle pill isn't padded out with blank reserved space
-     for handle/copy/delete — see the same treatment on .subtask-copy
-     and .subtask-delete below. */
+     for the drag handle. */
   display: none;
   align-items: center;
 }
@@ -2850,41 +2851,6 @@ kbd{
   opacity: 0.55;
   text-decoration: line-through;
 }
-.subtask-copy{
-  flex:none;
-  width:12px; height:12px;
-  align-items:center;
-  justify-content:center;
-  border:none;
-  background:transparent;
-  color: var(--text-faint);
-  font-size:9px;
-  line-height:1;
-  cursor:pointer;
-  border-radius:50%;
-  /* Collapsed (display:none) rather than just invisible, same reasoning
-     as the handle/checkbox above. */
-  display: none;
-}
-.subtask-row:hover .subtask-copy{ display: flex; }
-.subtask-copy:hover{ color: var(--text); background: var(--panel-2); }
-.subtask-copy.copied{ display: flex; color: #33b3f0; }
-.subtask-delete{
-  flex:none;
-  width:12px; height:12px;
-  align-items:center;
-  justify-content:center;
-  border:none;
-  background:transparent;
-  color: var(--text-faint);
-  font-size:13px;
-  line-height:1;
-  cursor:pointer;
-  border-radius:50%;
-  display: none;
-}
-.subtask-row:hover .subtask-delete{ display: flex; }
-.subtask-delete:hover{ color: var(--danger, #d16a6a); background: var(--panel-2); }
 /* "+" trigger that now lives at the end of the pill row itself (see
    renderSubtaskPanel/renderCalDaySubtaskPanel) instead of on the main
    task row — sits inline with the pills via the same margin so it
@@ -3012,11 +2978,6 @@ kbd{
 #tasks-modal .subtask-text{ color: #000000; }
 #tasks-modal .subtask-text:focus{ background: #ffffff; }
 #tasks-modal .subtask-row.done .subtask-text{ color: #c2c2c2; opacity: 0.6; }
-#tasks-modal .subtask-copy{ color: #bbbbbb; }
-#tasks-modal .subtask-copy:hover{ color: #5a5a5a; background: #ffffff; }
-#tasks-modal .subtask-copy.copied{ color: #33b3f0; }
-#tasks-modal .subtask-delete{ color: #bbbbbb; }
-#tasks-modal .subtask-delete:hover{ color: #5a5a5a; background: #ffffff; }
 #tasks-modal .subtask-add-btn{
   background: #ffffff;
   border: 1px solid #c9c9c9;
@@ -4783,8 +4744,6 @@ kbd{
 #cal-day-modal .subtask-text{ color:#24231f; }
 #cal-day-modal .subtask-text:focus{ background:#ffffff; }
 #cal-day-modal .subtask-row.done .subtask-text{ color:#a29d8c; text-decoration: line-through; opacity:1; }
-#cal-day-modal .subtask-delete{ color:#c8c3b3; }
-#cal-day-modal .subtask-delete:hover{ color:#c0392b; background:#ffffff; }
 #cal-day-modal .subtask-new-input{
   background:#faf9f5; border:1px solid #e4e0d4; color:#24231f;
 }
@@ -4832,7 +4791,7 @@ kbd{
 #tasks-modal .subtask-caret{ background: #5a5a5a; }
 #cal-day-modal .subtask-caret{ background: #3b6ef0; }
 
-/* Hover controls (drag handle, checkbox, copy, delete) are overlaid on the
+/* The hover drag handle is overlaid on the
    pill's own ends instead of widening it, so a pill never changes size or
    wraps to another line just because the mouse is on it. Each control is a
    solid, bordered, high-contrast button so it stays easy to see and hit
@@ -4841,9 +4800,10 @@ kbd{
   --sub-bg: var(--panel);
   --sub-ctl: var(--text);
   --sub-ctl-border: var(--text-faint);
-  /* Wide enough that all four overlaid buttons fit side by side even on a
-     very short pill; the text is centred inside. */
-  min-width: 74px;
+  /* Wide enough that the overlaid drag handle fits even on a very short
+     pill; the text is centred inside. Copy/delete now live in the
+     right-click menu (see openSubtaskContextMenu in app.js). */
+  min-width: 44px;
   justify-content: center;
 }
 #tasks-modal .subtask-row{ --sub-bg: #f0f0f0; --sub-ctl: #2b2b2b; --sub-ctl-border: #8f8f8f; }
@@ -4851,9 +4811,7 @@ kbd{
 
 /* (:is() with an id just raises specificity above the per-modal colour
    rules that made these icons very faint.) */
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle,
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy,
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete{
+:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle{
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
@@ -4880,24 +4838,6 @@ kbd{
   font-size: 12px;
   cursor: grab;
 }
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy{
-  right: 21px;
-  font-size: 11px;
-}
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete{
-  right: 3px;
-  font-size: 15px;
-  padding-bottom: 1px;
-}
 :is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle:hover{
   background: var(--sub-ctl); color: var(--sub-bg);
-}
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy:hover{
-  background: #33b3f0; border-color: #33b3f0; color: #fff;
-}
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-copy.copied{
-  background: #2ea043; border-color: #2ea043; color: #fff;
-}
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-delete:hover{
-  background: #d64545; border-color: #d64545; color: #fff;
 }
