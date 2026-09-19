@@ -12628,6 +12628,10 @@
   // live in that task's own `notes` array — see getTaskNotes). Mutually
   // exclusive with noteEditingPhotoId; at most one of the two is set.
   let noteEditingTaskId = null;
+  // When set alongside noteEditingTaskId, the editor is scoped to one
+  // *subtask* of that task instead (its notes live in the subtask's own
+  // `notes` array, same shape as a task's — see getTaskNotes).
+  let noteEditingSubtaskId = null;
   // Same idea again, but scoped to one table cell on the node instead
   // (its notes live in that cell's attach record — see getCellNotes).
   // {r, c}, or null. Mutually exclusive with the photo/task cases above —
@@ -12908,6 +12912,14 @@
     return raw.split("\n").map(l => l.trim()).filter(Boolean);
   }
 
+  // The task — or, when noteEditingSubtaskId is set, the subtask of that
+  // task — whose `notes` the editor is currently reading/writing.
+  function noteEditingNoteOwner(taskHost) {
+    const t = taskHost && getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
+    if (t && noteEditingSubtaskId) return getTaskSubtasks(t).find(x => x.id === noteEditingSubtaskId) || null;
+    return t || null;
+  }
+
   // Opens the note editor for a node, or (with `photoId`) for one photo
   // on that node, or (with `taskId`) for one task on that node, or (with
   // `cellPos`, {r, c}) for one table cell on that node instead — same
@@ -12917,7 +12929,7 @@
   // last (most recently added) one, or pass notes.length (or any
   // out-of-range index) to start a brand-new blank note instead of an
   // existing one.
-  function openNoteModal(nodeId, index, photoId, taskId, cellPos, forceDRCTemplate) {
+  function openNoteModal(nodeId, index, photoId, taskId, cellPos, forceDRCTemplate, subtaskId) {
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
@@ -12930,7 +12942,7 @@
     // already has previously-written note content of its own keeps
     // opening that note untouched, so nothing existing gets silently
     // orphaned.
-    if (taskId) {
+    if (taskId && !subtaskId) {
       const taskHostForRedirect = cellPos ? getCellAttach(node, cellPos.r, cellPos.c) : node;
       const drcTask = getNodeTasks(taskHostForRedirect).find(x => x.id === taskId);
       if (drcTask && (drcTask.text || "").trim().toUpperCase() === "DRC" && !getTaskNotes(drcTask).length) {
@@ -12943,6 +12955,7 @@
     noteEditingId = nodeId;
     noteEditingPhotoId = photoId || null;
     noteEditingTaskId = taskId || null;
+    noteEditingSubtaskId = (taskId && subtaskId) || null;
     noteEditingCellPos = cellPos || null;
     // A task's own notes take priority over the cellPos check below even
     // when both are set — that combination means "a task living inside
@@ -12951,7 +12964,7 @@
     // cellPos still gets used to resolve which task list to search.
     const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
     const existing = noteEditingTaskId
-      ? getTaskNotes(getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId))
+      ? getTaskNotes(noteEditingNoteOwner(taskHost))
       : noteEditingCellPos
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
@@ -13014,9 +13027,10 @@
     noteTitleInput.value = current.title || "";
     if (noteEditingTaskId) {
       const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
-      const t = taskHost && getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
-      noteTextarea.dataset.placeholder = `Note for task "${t ? (t.text || "(untitled task)") : ""}"…`;
-      noteNavAdd.title = "Start a new note on this task";
+      const t = noteEditingNoteOwner(taskHost);
+      const kind = noteEditingSubtaskId ? "subtask" : "task";
+      noteTextarea.dataset.placeholder = `Note for ${kind} "${t ? (t.text || `(untitled ${kind})`) : ""}"…`;
+      noteNavAdd.title = `Start a new note on this ${kind}`;
     } else if (noteEditingCellPos) {
       noteTextarea.dataset.placeholder = "Note for this cell…";
       noteNavAdd.title = "Start a new note on this cell";
@@ -13170,6 +13184,7 @@
     noteEditingId = null;
     noteEditingPhotoId = null;
     noteEditingTaskId = null;
+    noteEditingSubtaskId = null;
     noteEditingCellPos = null;
     noteWorkingList = [];
     noteActiveIndex = 0;
@@ -13206,7 +13221,7 @@
     const cleaned = noteWorkingList.filter(n => (n.title && n.title.trim()) || (n.html && n.html.trim()));
     if (noteEditingTaskId) {
       const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
-      const t = getNodeTasks(taskHost).find(x => x.id === noteEditingTaskId);
+      const t = noteEditingNoteOwner(taskHost);
       if (!t) return;
       const before = JSON.stringify(getTaskNotes(t));
       const after = JSON.stringify(cleaned);
@@ -14949,7 +14964,7 @@
       done();
     }
   }
-  function openSubtaskContextMenu(x, y, t, s, rerender) {
+  function openSubtaskContextMenu(x, y, t, s, rerender, openNotes) {
     resetContextMenu();
     const addItem = (label, cls, fn) => {
       const it = document.createElement("div");
@@ -14961,6 +14976,10 @@
       it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     };
+    if (openNotes) {
+      const n = getTaskNotes(s).length;
+      addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", openNotes);
+    }
     addItem("Copy text", "", () => copySubtaskText(s.text));
     addItem("Delete subtask", "danger", () => {
       if (!requireSignIn()) return;
@@ -15091,11 +15110,30 @@
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => renderTasksModal());
+        openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => renderTasksModal(), openSubtaskNotes);
       });
+
+      // Notes on a subtask — same editor as a task's notes (see
+      // openNoteModal's subtaskId). Added from the right-click menu; once
+      // a subtask has notes, a small 📝 on the pill opens them directly.
+      const openSubtaskNotes = () => {
+        const target = tasksEditingTarget;
+        if (!target) return;
+        openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null, false, s.id);
+      };
+      const subNoteCount = getTaskNotes(s).length;
+      let snote = null;
+      if (subNoteCount) {
+        snote = document.createElement("span");
+        snote.className = "subtask-note-icon";
+        snote.textContent = "📝";
+        snote.title = `Notes (${subNoteCount})`;
+        snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
+      }
 
       row.appendChild(shandle);
       row.appendChild(stext);
+      if (snote) row.appendChild(snote);
       list.appendChild(row);
     });
 

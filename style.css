@@ -2851,6 +2851,18 @@ kbd{
   opacity: 0.55;
   text-decoration: line-through;
 }
+/* Small 📝 on a subtask pill that has notes — click opens them (see
+   openSubtaskNotes in app.js). Adding the first note is done from the
+   pill's right-click menu. */
+.subtask-note-icon{
+  flex:none;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.85;
+  margin-left: 4px;
+}
+.subtask-note-icon:hover{ opacity: 1; }
 /* "+" trigger that now lives at the end of the pill row itself (see
    renderSubtaskPanel/renderCalDaySubtaskPanel) instead of on the main
    task row — sits inline with the pills via the same margin so it
