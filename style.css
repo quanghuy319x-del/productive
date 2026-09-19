@@ -4823,11 +4823,28 @@ kbd{
 #tasks-modal .subtask-caret{ background: #5a5a5a; }
 #cal-day-modal .subtask-caret{ background: #3b6ef0; }
 
-
-/* A hovered pill grows over its neighbours (see giveHoverRoom in app.js),
-   so it needs to sit on top and have a solid fill even when it's a
-   "done" pill, which is transparent when idle. */
-.subtask-row:hover{ z-index: 3; }
-.subtask-row.done:hover{ background: var(--panel); }
-#tasks-modal .subtask-row.done:hover{ background: #f0f0f0; }
-#cal-day-modal .subtask-row.done:hover{ background: #f4f2ec; }
+/* Hover controls (drag handle, checkbox, copy, delete) are overlaid on the
+   pill's own ends instead of widening it, so a pill never changes size or
+   wraps to another line just because the mouse is on it. Each control
+   gets the pill's fill so it masks the text underneath. */
+.subtask-row{ --sub-bg: var(--panel); }
+#tasks-modal .subtask-row{ --sub-bg: #f0f0f0; }
+#cal-day-modal .subtask-row{ --sub-bg: #f4f2ec; }
+.subtask-row .subtask-drag-handle,
+.subtask-row .subtask-copy,
+.subtask-row .subtask-delete{ background: var(--sub-bg); }
+.subtask-row:hover .subtask-drag-handle,
+.subtask-row:hover .subtask-checkbox,
+.subtask-row:hover .subtask-copy,
+.subtask-row:hover .subtask-delete{
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  margin: 0;
+}
+.subtask-row:hover .subtask-drag-handle{ left: 4px; }
+.subtask-row:hover .subtask-checkbox{ left: 15px; }
+.subtask-row:hover .subtask-delete{ right: 4px; }
+.subtask-row:hover .subtask-copy{ right: 18px; }
+.subtask-row .subtask-copy.copied{ background: var(--sub-bg); }

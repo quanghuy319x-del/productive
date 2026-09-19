@@ -14830,44 +14830,6 @@
       if (subtaskCaretBusy) return;
       if (subtaskCaret && subtaskCaret.taskId === t.id) clearSubtaskCaret();
     });
-
-    // Hovering a pill reveals its hidden controls (drag handle, checkbox,
-    // copy, delete), which used to widen the pill in the flow. A pill near
-    // the right border then no longer fit on its line, wrapped away from
-    // the mouse, lost its hover, shrank back, and repeated — a flicker
-    // loop. Now the extra width is cancelled out with negative margins, so
-    // the pill's footprint in the layout never changes: it just grows over
-    // its neighbours' edges. Near the right border it grows leftward
-    // instead of past the edge.
-    function giveHoverRoom(row) {
-      let left = 0, right = 0, pastText = false;
-      Array.from(row.children).forEach((ch) => {
-        if (ch.classList.contains("subtask-text")) { pastText = true; return; }
-        if (getComputedStyle(ch).display === "none") return;
-        const w = ch.offsetWidth + 2; // + the row's own 2px gap
-        if (pastText) right += w; else left += w;
-      });
-      if (!left && !right) return;
-      row.style.marginLeft = (2 - left) + "px";
-      row.style.marginRight = (2 - right) + "px";
-      if (row.getBoundingClientRect().right > list.getBoundingClientRect().right + 0.5) {
-        row.style.marginLeft = (2 - left - right) + "px";
-        row.style.marginRight = "2px";
-      }
-    }
-    function releaseHoverRoom(row) {
-      row.style.marginLeft = "";
-      row.style.marginRight = "";
-    }
-    rows.forEach((row) => {
-      row.addEventListener("mouseenter", () => giveHoverRoom(row));
-      row.addEventListener("mouseleave", () => releaseHoverRoom(row));
-    });
-    // A re-render can leave the mouse resting on a fresh pill without a
-    // new mouseenter, so catch that case too.
-    requestAnimationFrame(() => {
-      rows.forEach((row) => { if (row.isConnected && row.matches(":hover")) giveHoverRoom(row); });
-    });
   }
 
   function startSubtaskDrag(e, row, taskId, subtaskId) {
