@@ -2543,6 +2543,8 @@ kbd{
   .task-note-btn.has-note{ opacity: 1; }
   .task-due-btn{ opacity: 0; transition: opacity .12s ease; }
   .task-color-dot{ opacity: 0; transition: opacity .12s ease; }
+  .task-subtask-btn{ opacity: 0; transition: opacity .12s ease; }
+  .task-subtask-btn.has-subtasks{ opacity: 1; }
   .task-row:hover .task-checkbox,
   .task-row:focus-within .task-checkbox,
   .task-row:hover .task-drag-handle,
@@ -2556,7 +2558,9 @@ kbd{
   .task-row:hover .task-due-btn,
   .task-row:focus-within .task-due-btn,
   .task-row:hover .task-color-dot,
-  .task-row:focus-within .task-color-dot{ opacity: 1; pointer-events: auto; }
+  .task-row:focus-within .task-color-dot,
+  .task-row:hover .task-subtask-btn,
+  .task-row:focus-within .task-subtask-btn{ opacity: 1; pointer-events: auto; }
 }
 .task-text{
   flex: 1 1 auto;
@@ -2633,6 +2637,26 @@ kbd{
 .task-note-btn svg{ width:15px; height:15px; }
 .task-note-btn:hover{ color: var(--text); background: var(--panel-2); }
 .task-note-btn.has-note{ color: #33b3f0; }
+
+/* ---- Add-subtask icon on the main task row — always reachable, even
+   for a brand-new task with no subtasks yet, without needing the
+   double-click gesture first. ---- */
+.task-subtask-btn{
+  flex:none;
+  width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  border:none;
+  background:transparent;
+  color: var(--text-faint);
+  cursor:pointer;
+  border-radius:5px;
+  padding:0;
+  font-size:16px;
+  font-weight:700;
+  line-height:1;
+}
+.task-subtask-btn:hover{ color: var(--text); background: var(--panel-2); }
+.task-subtask-btn.has-subtasks{ color: #33b3f0; }
 
 /* ---- Due date icon (calendar) — opens a native date picker inline for
    the task; feeds the Calendar toolbar button's month view. ---- */
@@ -2961,6 +2985,9 @@ kbd{
 #tasks-modal .task-note-btn{ color: #a0a0a0; }
 #tasks-modal .task-note-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-note-btn.has-note{ color: #33b3f0; }
+#tasks-modal .task-subtask-btn{ color: #a0a0a0; }
+#tasks-modal .task-subtask-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
+#tasks-modal .task-subtask-btn.has-subtasks{ color: #33b3f0; }
 #tasks-modal .task-due-btn{ color: #a0a0a0; }
 #tasks-modal .task-due-btn:hover{ color: #5a5a5a; background: #f0f0f0; }
 #tasks-modal .task-due-btn.has-due{ color: #33b3f0; }

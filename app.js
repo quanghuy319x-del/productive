@@ -15373,6 +15373,23 @@
         openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null);
       });
 
+      // Add-subtask icon — reachable straight from the row, even for a
+      // brand-new task with no subtasks yet, without needing the
+      // double-click gesture first. Clicking it opens (or reveals) this
+      // task's subtask panel with the "add" input already focused.
+      const subtaskBtn = document.createElement("button");
+      subtaskBtn.type = "button";
+      subtaskBtn.className = "task-subtask-btn" + (subProg.total ? " has-subtasks" : "");
+      subtaskBtn.title = subProg.total ? "Add another subtask" : "Add a subtask";
+      subtaskBtn.textContent = "+";
+      subtaskBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+      subtaskBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        collapsedSubtaskIds.delete(t.id);
+        subtaskAddOpenFor.add(t.id);
+        renderTasksModal();
+      });
+
       const del = document.createElement("button");
       del.className = "task-delete";
       del.title = "Delete task";
@@ -15391,6 +15408,7 @@
       li.appendChild(text);
       li.appendChild(dueBtn);
       li.appendChild(noteBtn);
+      li.appendChild(subtaskBtn);
       li.appendChild(star);
       li.appendChild(colorBtn);
       li.appendChild(del);
@@ -15801,6 +15819,21 @@
       renderCalDayModal();
     });
 
+    // Add-subtask icon — same reachable-without-double-click affordance
+    // as the Tasks modal row.
+    const subtaskBtn = document.createElement("button");
+    subtaskBtn.type = "button";
+    subtaskBtn.className = "task-subtask-btn" + (subProg.total ? " has-subtasks" : "");
+    subtaskBtn.title = subProg.total ? "Add another subtask" : "Add a subtask";
+    subtaskBtn.textContent = "+";
+    subtaskBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    subtaskBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      collapsedSubtaskIds.delete(t.id);
+      subtaskAddOpenFor.add(t.id);
+      renderCalDayModal();
+    });
+
     const del = document.createElement("button");
     del.type = "button";
     del.className = "task-delete";
@@ -15848,6 +15881,7 @@
     li.appendChild(handle);
     li.appendChild(cb);
     li.appendChild(text);
+    li.appendChild(subtaskBtn);
     li.appendChild(star);
     li.appendChild(colorBtn);
     li.appendChild(del);
