@@ -2861,11 +2861,18 @@ kbd{
 /* "+" trigger that now lives at the end of the pill row itself (see
    renderSubtaskPanel/renderCalDaySubtaskPanel) instead of on the main
    task row — sits inline with the pills via the same margin so it
-   reads as the last item in the list, not a separate control. */
+   reads as the last item in the list, not a separate control. Hidden
+   until the subtask panel is hovered (see the any-hover media query
+   below), same reveal-on-hover treatment as the task row's own
+   controls; stays visible on touch devices, which have no hover. */
 .subtask-add-trigger{
   margin: 1.5px 2px;
   display:inline-flex;
   align-items:center;
+}
+@media (any-hover: hover) and (any-pointer: fine) {
+  .subtask-add-trigger{ display: none; }
+  .subtask-panel:hover .subtask-add-trigger{ display: inline-flex; }
 }
 .subtask-add-row{ margin-top:2px; }
 .subtask-new-input{
