@@ -10417,8 +10417,10 @@
     drcTemplateTextarea.addEventListener("input", scheduleDrcTemplateCards);
     drcTemplateTextarea.addEventListener("compositionstart", () => { drcTemplateComposing = true; });
     drcTemplateTextarea.addEventListener("compositionend", () => { drcTemplateComposing = false; scheduleDrcTemplateCards(); });
-    // No card-color ring in the template editor (hidden in CSS), so
-    // nothing here binds bindDRCCardColorDot to it — DRC notes still do.
+    bindDRCCardColorDot(drcTemplateTextarea, () => true, (head, color) => {
+      head.setAttribute("data-card-color", color);
+      decorateDRCCards(drcTemplateTextarea, "template");
+    });
     $("#drc-template-close").addEventListener("click", () => {
       saveDRCTemplateFromTextarea();
       zoomModalClose(drcTemplateModal);
@@ -14900,14 +14902,10 @@
     }
   });
   noteTextarea.addEventListener("input", () => { noteAutoColorParagraphs(); scheduleNoteAutosave(); refreshDRCCardsSoon(); });
-  // Recolor a DRC card from the ring on its heading (undoable with the
-  // editor's own undo, autosaved like any other edit).
-  bindDRCCardColorDot(noteTextarea, () => noteTextarea.contentEditable !== "false", (head, color) => {
-    notePushUndo();
-    head.setAttribute("data-card-color", color);
-    refreshDRCCards();
-    scheduleNoteAutosave();
-  });
+  // No card-color ring in DRC notes (hidden in CSS) — card colors are
+  // chosen in the DRC Template editor, which still binds
+  // bindDRCCardColorDot to its own ring. Existing data-card-color values
+  // on a note's headings keep being honored by decorateDRCCards.
   noteTextarea.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Tab/Enter/Delete trigger the canvas shortcuts while typing a note
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {

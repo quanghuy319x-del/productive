@@ -4117,12 +4117,13 @@ kbd{
   border-left: none;
   padding-left: 18px;
 }
-/* ...and no card-color ring at the heading's right edge here either (see
-   also the missing bindDRCCardColorDot for the template in app.js, which
+/* DRC *notes* have no card-color ring at the heading's right edge (it
+   stays in the template editor above, where card colors are chosen — see
+   also the missing bindDRCCardColorDot for noteTextarea in app.js, which
    would otherwise still open the swatch popover on a click there). The
    46px of right padding only existed to make room for that ring. */
-.drc-template-textarea.drc-cards > .drc-card-head::after{ display: none; }
-.drc-template-textarea.drc-cards > .drc-card-head{ padding-right: 14px; }
+#note-textarea.drc-cards > .drc-card-head::after{ display: none; }
+#note-textarea.drc-cards > .drc-card-head{ padding-right: 14px; }
 /* Blank lines under a card's last filled line stay INSIDE that card (they
    used to be a card-less ".drc-card-gap" spacer, which left the caret
    outside every card). The space between cards comes from the heading's
