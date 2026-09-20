@@ -274,7 +274,10 @@
   // Used to get incoming photos (file upload, paste, crop, label-bake —
   // all of which still hand over a data: URL) into Blob form before they
   // ever touch PhotoDB or the in-memory cache.
-  function dataUrlToBlob(dataUrl) {
+  // The decode half of dataUrlToBlob on its own — addPhotoRecord needs the
+  // raw bytes to fingerprint them before deciding whether an identical
+  // photo is already stored.
+  function dataUrlToBytes(dataUrl) {
     const commaIdx = dataUrl.indexOf(",");
     const header = dataUrl.slice(0, commaIdx);
     const body = dataUrl.slice(commaIdx + 1);
@@ -283,6 +286,10 @@
     const binary = atob(body);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return { bytes, mime };
+  }
+  function dataUrlToBlob(dataUrl) {
+    const { bytes, mime } = dataUrlToBytes(dataUrl);
     return new Blob([bytes], { type: mime });
   }
 
@@ -405,6 +412,88 @@
   let photoCache = new Map();
   let photoBlobCache = new Map();
 
+  // ---- Identical photos share one id ---------------------------------
+  // Every stored photo is fingerprinted (length + a 64-bit hash of its
+  // bytes). addPhotoRecord looks the fingerprint up before creating a
+  // record: if the very same photo is already stored on this map, the
+  // existing id is handed back instead of storing the bytes a second
+  // time — so two nodes showing the same picture reference one id, one
+  // Blob and one PhotoDB row. Rules that keep that safe:
+  //  - the bytes are only dropped once NOTHING in the map still points at
+  //    the id (see deletePhotoRecord / photoIsReferenced);
+  //  - an owner (a node, a cell, one link's photo list) never holds the
+  //    same id twice — it gets its own id, sharing the same in-memory Blob;
+  //  - edits (crop / text / combine) always get a fresh id (noDedupe).
+  // Photos already stored when a map opens are fingerprinted in the
+  // background (indexPhotoFingerprints), so until that finishes a
+  // duplicate can still slip through as a separate record — harmless, and
+  // "Merge identical photos" in the Storage panel folds those together.
+  let photoFpById = new Map();   // id -> fingerprint
+  let photoIdsByFp = new Map();  // fingerprint -> Set of ids
+  let photoFpGeneration = 0;     // bumped whenever the cache is reloaded, cancelling a stale index pass
+  let photoFpIndexPromise = Promise.resolve();
+
+  function fingerprintBytes(bytes) {
+    let u8 = bytes;
+    if (u8.byteOffset % 4 !== 0) u8 = u8.slice(); // Uint32Array needs a 4-byte aligned start
+    const len = u8.length;
+    const nWords = len >>> 2;
+    const words = new Uint32Array(u8.buffer, u8.byteOffset, nWords);
+    const C1 = 0xcc9e2d51, C2 = 0x1b873593;
+    let h1 = 0x9747b28c, h2 = 0x5bd1e995;
+    for (let i = 0; i < nWords; i++) {
+      const w = words[i];
+      let k = Math.imul(w, C1); k = (k << 15) | (k >>> 17); k = Math.imul(k, C2);
+      h1 ^= k; h1 = (h1 << 13) | (h1 >>> 19); h1 = (Math.imul(h1, 5) + 0xe6546b64) | 0;
+      let k2 = Math.imul(w ^ 0x9e3779b9, C2); k2 = (k2 << 16) | (k2 >>> 16); k2 = Math.imul(k2, C1);
+      h2 ^= k2; h2 = (h2 << 11) | (h2 >>> 21); h2 = (Math.imul(h2, 5) + 0x52dce729) | 0;
+    }
+    let tail = 0;
+    for (let i = nWords << 2; i < len; i++) tail = (tail << 8) | u8[i];
+    if (tail) {
+      let k = Math.imul(tail, C1); k = (k << 15) | (k >>> 17); k = Math.imul(k, C2); h1 ^= k;
+      let k2 = Math.imul(tail ^ 0x9e3779b9, C2); k2 = (k2 << 16) | (k2 >>> 16); k2 = Math.imul(k2, C1); h2 ^= k2;
+    }
+    const fmix = (h) => {
+      h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+      h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+      h ^= h >>> 16; return h >>> 0;
+    };
+    return `${len}-${fmix(h1 ^ len).toString(36)}${fmix(h2 ^ len).toString(36)}`;
+  }
+  function rememberPhotoFingerprint(id, fp) {
+    if (!id || !fp) return;
+    photoFpById.set(id, fp);
+    let set = photoIdsByFp.get(fp);
+    if (!set) { set = new Set(); photoIdsByFp.set(fp, set); }
+    set.add(id);
+  }
+  function forgetPhotoFingerprint(id) {
+    const fp = photoFpById.get(id);
+    if (!fp) return;
+    photoFpById.delete(id);
+    const set = photoIdsByFp.get(fp);
+    if (set) { set.delete(id); if (!set.size) photoIdsByFp.delete(fp); }
+  }
+  // Fingerprints every photo that was already stored when the map opened.
+  // One photo at a time with a yield in between, and after a short pause
+  // so it never competes with the map's first render.
+  async function indexPhotoFingerprints(gen) {
+    await new Promise((r) => setTimeout(r, 1200));
+    const entries = Array.from(photoBlobCache.entries());
+    for (let i = 0; i < entries.length; i++) {
+      if (gen !== photoFpGeneration) return;
+      const [id, blob] = entries[i];
+      if (photoFpById.has(id) || photoBlobCache.get(id) !== blob) continue;
+      try {
+        const buf = await blob.arrayBuffer();
+        if (gen !== photoFpGeneration) return;
+        if (photoBlobCache.get(id) === blob) rememberPhotoFingerprint(id, fingerprintBytes(new Uint8Array(buf)));
+      } catch (e) { /* unreadable photo — just leave it out of the index */ }
+      if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
   function revokePhotoCache() {
     photoCache.forEach((url) => { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } });
   }
@@ -413,6 +502,10 @@
     revokePhotoCache();
     photoCache = new Map();
     photoBlobCache = new Map();
+    photoFpGeneration++;
+    photoFpById = new Map();
+    photoIdsByFp = new Map();
+    photoFpIndexPromise = Promise.resolve();
     if (!mapId) return;
     try {
       const rows = await PhotoDB.getAllForMap(mapId);
@@ -433,6 +526,7 @@
       });
       if (migrations.length) Promise.all(migrations).catch(e => console.error("Migrating photo storage failed", e));
     } catch (e) { console.error("Loading photos failed", e); }
+    photoFpIndexPromise = indexPhotoFingerprints(photoFpGeneration);
   }
 
   // Adds a brand-new photo (from a file/paste) to the store + cache for
@@ -441,11 +535,34 @@
   // never has to wait on it. Still takes a data: URL, same as every
   // existing caller (file upload, paste, crop apply, label bake) already
   // produces — only the storage/display form changes, right here.
-  function addPhotoRecord(dataUrl) {
+  //
+  // If an identical photo is already stored on this map, that photo's id is
+  // returned and nothing new is stored (see "Identical photos share one id"
+  // above). `opts.avoid` — the ids the caller's owner (node/cell/link)
+  // already holds — keeps one owner from getting the same id twice; in that
+  // case a separate id is made that still shares the existing Blob in
+  // memory. `opts.noDedupe` always makes a fresh record (edits).
+  function addPhotoRecord(dataUrl, opts) {
+    const o = opts || {};
+    const { bytes, mime } = dataUrlToBytes(dataUrl);
+    const fp = fingerprintBytes(bytes);
+    let shareBlob = null;
+    if (!o.noDedupe) {
+      const twins = photoIdsByFp.get(fp);
+      if (twins) {
+        const avoid = o.avoid || [];
+        for (const twinId of twins) {
+          if (!photoBlobCache.has(twinId)) continue;
+          if (!avoid.includes(twinId)) return twinId;
+          if (!shareBlob) shareBlob = photoBlobCache.get(twinId);
+        }
+      }
+    }
     const id = uid();
-    const blob = dataUrlToBlob(dataUrl);
+    const blob = shareBlob || new Blob([bytes], { type: mime });
     photoBlobCache.set(id, blob);
     photoCache.set(id, URL.createObjectURL(blob));
+    rememberPhotoFingerprint(id, fp);
     if (state.current) PhotoDB.put({ id, mapId: state.current.id, blob }).catch(e => console.error("Saving photo failed", e));
     return id;
   }
@@ -455,17 +572,92 @@
   // reference) so each node ends up owning its own photo record. The two
   // ids can safely share the same underlying Blob (Blobs are immutable)
   // instead of duplicating the bytes in memory.
-  function duplicatePhotoRecord(oldId) {
+  //
+  // Identical photos now share one id (see above), so a copy simply reuses
+  // the id — one stored photo, referenced from both nodes — unless the
+  // destination already holds that id (`avoid`), in which case it gets its
+  // own id still backed by the same in-memory Blob.
+  function duplicatePhotoRecord(oldId, avoid) {
     const blob = photoBlobCache.get(oldId);
     if (!blob) return oldId; // shouldn't happen; fail safe by sharing the id
+    if (!Array.isArray(avoid) || !avoid.includes(oldId)) return oldId;
     const id = uid();
     photoBlobCache.set(id, blob);
     photoCache.set(id, URL.createObjectURL(blob));
+    const fp = photoFpById.get(oldId);
+    if (fp) rememberPhotoFingerprint(id, fp);
     if (state.current) PhotoDB.put({ id, mapId: state.current.id, blob }).catch(e => console.error("Saving photo failed", e));
     return id;
   }
 
+  // Every id any node, table cell or link comment in this tree points at.
+  function collectReferencedPhotoIds(root) {
+    const ids = new Set();
+    const addList = (list) => (list || []).forEach((id) => { if (id) ids.add(id); });
+    (function walk(node) {
+      if (!node) return;
+      getNodeImageIds(node).forEach((id) => ids.add(id));
+      getCellImageIds(node).forEach((id) => ids.add(id));
+      if (node.linkPhotos) Object.values(node.linkPhotos).forEach(addList);
+      if (node.table && Array.isArray(node.table.attach)) {
+        node.table.attach.forEach((row) => (row || []).forEach((a) => {
+          if (a && a.linkPhotos) Object.values(a.linkPhotos).forEach(addList);
+        }));
+      }
+      (node.children || []).forEach(walk);
+    })(root);
+    return ids;
+  }
+  function photoIsReferenced(id) {
+    return !!state.current && collectReferencedPhotoIds(state.current.root).has(id);
+  }
+
+  // Swaps fromId for toId wherever ONE node holds it — its own photos
+  // (carrying the per-photo tags/notes/comments/favorite/date over to the
+  // new id), its table cells' photos, and its link-comment photos. A list
+  // that already holds toId is left alone so no owner ends up with the
+  // same id twice. Returns how many lists changed.
+  function replacePhotoIdInNode(node, fromId, toId) {
+    if (!node || fromId === toId) return 0;
+    let changed = 0;
+    const swap = (arr) => {
+      if (!Array.isArray(arr) || !arr.includes(fromId) || arr.includes(toId)) return false;
+      for (let i = 0; i < arr.length; i++) if (arr[i] === fromId) arr[i] = toId;
+      return true;
+    };
+    const renameMeta = () => {
+      ["photoTags", "photoNotes", "photoComments", "photoFavorites", "photoTimestamps"].forEach((k) => {
+        const m = node[k];
+        if (m && Object.prototype.hasOwnProperty.call(m, fromId)) {
+          if (!Object.prototype.hasOwnProperty.call(m, toId)) m[toId] = m[fromId];
+          delete m[fromId];
+        }
+      });
+    };
+    if (Array.isArray(node.images) && node.images.length) {
+      if (swap(node.images)) { changed++; renameMeta(); }
+    } else if (node.image === fromId) {
+      node.images = [toId]; node.image = null; changed++; renameMeta();
+    }
+    if (node.linkPhotos) Object.values(node.linkPhotos).forEach((arr) => { if (swap(arr)) changed++; });
+    if (node.table && Array.isArray(node.table.attach)) {
+      node.table.attach.forEach((row) => (row || []).forEach((a) => {
+        if (!a) return;
+        if (Array.isArray(a.images) && a.images.length) { if (swap(a.images)) changed++; }
+        else if (a.image === fromId) { a.images = [toId]; a.image = null; changed++; }
+        if (a.linkPhotos) Object.values(a.linkPhotos).forEach((arr) => { if (swap(arr)) changed++; });
+      }));
+    }
+    return changed;
+  }
+
   function deletePhotoRecord(id) {
+    // Identical photos can share one id, so only drop the bytes once nothing
+    // in the map points at this id any more. (If a caller deletes before
+    // removing its own reference the bytes simply linger until the idle
+    // orphan sweep — never the other way round.)
+    if (photoIsReferenced(id)) return;
+    forgetPhotoFingerprint(id);
     const url = photoCache.get(id);
     if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } }
     photoCache.delete(id);
@@ -2549,7 +2741,7 @@
   }
   function addLinkPhoto(node, url, dataUrl) {
     if (!node || !url) return null;
-    const id = addPhotoRecord(dataUrl);
+    const id = addPhotoRecord(dataUrl, { avoid: getLinkPhotos(node, url) });
     if (!node.linkPhotos) node.linkPhotos = {};
     if (!node.linkPhotos[url]) node.linkPhotos[url] = [];
     node.linkPhotos[url].push(id);
@@ -3226,7 +3418,7 @@
   }
   function addCellLinkPhoto(a, url, dataUrl) {
     if (!a || !url) return null;
-    const id = addPhotoRecord(dataUrl);
+    const id = addPhotoRecord(dataUrl, { avoid: getCellLinkPhotos(a, url) });
     if (!a.linkPhotos) a.linkPhotos = {};
     if (!a.linkPhotos[url]) a.linkPhotos[url] = [];
     a.linkPhotos[url].push(id);
@@ -4070,17 +4262,14 @@
   async function gcOrphanedPhotos(map) {
     if (!map) return;
     try {
-      const referenced = new Set();
-      (function walk(node) {
-        if (!node) return;
-        getNodeImageIds(node).forEach(id => referenced.add(id));
-        getCellImageIds(node).forEach(id => referenced.add(id));
-        (node.children || []).forEach(walk);
-      })(map.root);
+      // Includes photos attached to link comments (video/link screenshots),
+      // which the sweep used to overlook.
+      const referenced = collectReferencedPhotoIds(map.root);
       const rows = await PhotoDB.getAllForMap(map.id);
       for (const r of rows) {
         if (!referenced.has(r.id)) {
           await PhotoDB.delete(r.id);
+          forgetPhotoFingerprint(r.id);
           const url = photoCache.get(r.id);
           if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } }
           photoCache.delete(r.id);
@@ -6005,7 +6194,7 @@
       const srcIds = getNodeImageIds(source);
       if (!srcIds.length) return;
       pushUndo();
-      const carriedIds = copy ? srcIds.map(duplicatePhotoRecord) : srcIds;
+      const carriedIds = copy ? srcIds.map((id) => duplicatePhotoRecord(id, getNodeImageIds(target))) : srcIds;
       const pairs = srcIds.map((id, i) => [id, carriedIds[i]]);
       carryPhotoTags(source, target, pairs);
       carryPhotoNotes(source, target, pairs);
@@ -6029,7 +6218,7 @@
       if (photoIndex == null || photoIndex < 0 || photoIndex >= srcIds.length) return;
       pushUndo();
       const movedId = srcIds[photoIndex];
-      const carriedId = copy ? duplicatePhotoRecord(movedId) : movedId;
+      const carriedId = copy ? duplicatePhotoRecord(movedId, getNodeImageIds(target)) : movedId;
       carryPhotoTags(source, target, [[movedId, carriedId]]);
       carryPhotoNotes(source, target, [[movedId, carriedId]]);
       carryPhotoComments(source, target, [[movedId, carriedId]]);
@@ -6200,7 +6389,7 @@
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
-        a.images.push(addPhotoRecord(reader.result));
+        a.images.push(addPhotoRecord(reader.result, { avoid: getCellPhotoIds(a) }));
         done();
       };
       reader.onerror = () => { hadError = true; done(); };
@@ -6404,9 +6593,10 @@
     }
     if (cellHasImages(a)) items.push(["Remove all photos", () => {
       pushUndo();
-      getCellPhotoIds(a).forEach(id => { if (!String(id).startsWith("data:")) deletePhotoRecord(id); });
+      const removedCellIds = getCellPhotoIds(a).slice();
       a.images = null;
       a.image = null;
+      removedCellIds.forEach(id => { if (!String(id).startsWith("data:")) deletePhotoRecord(id); });
       renderAll();
       persist();
     }]);
@@ -8373,15 +8563,23 @@
     // source map's id (see PhotoDB/loadPhotoCacheForMap) — re-tag every
     // one to the destination map so it isn't orphaned there and actually
     // loads once that map is opened.
-    const photoIds = new Set();
-    (function collectPhotoIds(n) {
-      getNodeImageIds(n).forEach(id => photoIds.add(id));
-      getCellImageIds(n).forEach(id => photoIds.add(id));
-      (n.children || []).forEach(collectPhotoIds);
-    })(src);
+    const photoIds = collectReferencedPhotoIds(src);
+    // src is already detached from the source tree, so this is what the
+    // nodes staying behind still use.
+    const stayingPhotoIds = collectReferencedPhotoIds(state.current.root);
     for (const id of photoIds) {
       const blob = photoBlobCache.get(id);
       if (blob === undefined) continue; // already gone/never loaded — nothing to carry over
+      if (stayingPhotoIds.has(id)) {
+        // Shared with a node that stays in this map: the moved branch gets
+        // its own copy (new id) in the destination, the original stays put.
+        try {
+          const copyId = uid();
+          (function swapIn(n) { replacePhotoIdInNode(n, id, copyId); (n.children || []).forEach(swapIn); })(src);
+          await PhotoDB.put({ id: copyId, mapId: targetMap.id, blob });
+        } catch (e) { console.error("Copying shared photo to new map failed", e); }
+        continue;
+      }
       try {
         await PhotoDB.put({ id, mapId: targetMap.id, blob });
         // No longer part of the currently-open (source) map — drop it
@@ -11369,7 +11567,7 @@
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
-        const id = addPhotoRecord(reader.result);
+        const id = addPhotoRecord(reader.result, { avoid: getNodeImageIds(node) });
         node.images.push(id);
         setPhotoTimestamp(node, id, Date.now());
         done();
@@ -11856,7 +12054,7 @@
       const liveIds = getNodeImageIds(liveNode);
       if (!liveIds.length) return;
       pushUndo();
-      const newId = addPhotoRecord(outUrl);
+      const newId = addPhotoRecord(outUrl, { noDedupe: true });
       const oldId = liveIds[photoModalState.index];
       carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
       carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
@@ -11867,10 +12065,10 @@
       setPhotoNotes(liveNode, oldId, null);
       setPhotoComment(liveNode, oldId, null);
       setPhotoTimestamp(liveNode, oldId, null);
-      deletePhotoRecord(oldId);
       liveIds[photoModalState.index] = newId;
       liveNode.images = liveIds;
       liveNode.image = null;
+      deletePhotoRecord(oldId); // after the old reference is gone, so a shared id is kept if another node still uses it
       renderAll();
       persist();
     }
@@ -12714,7 +12912,7 @@
         // A crop replaces the photo's actual bytes, so it gets a new id
         // (the old id/record is retired) — its tags carry over onto the
         // new id since it's still conceptually "the same" photo.
-        const newId = addPhotoRecord(croppedUrl);
+        const newId = addPhotoRecord(croppedUrl, { noDedupe: true });
         const oldId = liveIds[photoModalState.index];
         carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
         carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
@@ -12725,10 +12923,10 @@
         setPhotoNotes(liveNode, oldId, null);
         setPhotoComment(liveNode, oldId, null);
         setPhotoTimestamp(liveNode, oldId, null);
-        deletePhotoRecord(oldId);
         liveIds[photoModalState.index] = newId;
         liveNode.images = liveIds;
         liveNode.image = null;
+        deletePhotoRecord(oldId); // after the old reference is gone, so a shared id is kept if another node still uses it
         renderAll();
         persist();
       }
@@ -13339,7 +13537,7 @@
         const liveIds = getNodeImageIds(liveNode);
         if (liveIds.length) {
           pushUndo();
-          const newId = addPhotoRecord(outUrl);
+          const newId = addPhotoRecord(outUrl, { noDedupe: true });
           const oldId = liveIds[photoModalState.index];
           carryPhotoTags(liveNode, liveNode, [[oldId, newId]]);
           carryPhotoNotes(liveNode, liveNode, [[oldId, newId]]);
@@ -13350,10 +13548,10 @@
           setPhotoNotes(liveNode, oldId, null);
           setPhotoComment(liveNode, oldId, null);
           setPhotoTimestamp(liveNode, oldId, null);
-          deletePhotoRecord(oldId);
           liveIds[photoModalState.index] = newId;
           liveNode.images = liveIds;
           liveNode.image = null;
+          deletePhotoRecord(oldId); // after the old reference is gone, so a shared id is kept if another node still uses it
           renderAll();
           persist();
         }
@@ -13834,6 +14032,7 @@
   // pushUndo/persist) on every edit, forever, even after new pastes stop
   // adding to the problem.
   function noteDownscaleOversizedImagesInEditor() {
+    if (!NOTE_IMAGE_DOWNSCALE) return; // photos are kept at full quality — see NOTE_IMAGE_DOWNSCALE
     const oversized = Array.from(noteTextarea.querySelectorAll("img[src^='data:']"))
       .filter(img => img.src.length > NOTE_IMAGE_SKIP_BYTES);
     if (!oversized.length) return;
@@ -14611,10 +14810,17 @@
   // the undo stacks keep. Downscaling/re-encoding each pasted image here
   // (skipped when it's already small) keeps that per-image cost small
   // regardless of how many screenshots accumulate in the map.
+  //
+  // Photos are now kept exactly as added: NOTE_IMAGE_DOWNSCALE is off, so
+  // nothing is resized or re-encoded on paste/drop/pick, and photos already
+  // in a note are no longer shrunk when it's opened. Flip it back to true
+  // to restore the memory-saving behavior above (1600px long edge, JPEG 0.85).
+  const NOTE_IMAGE_DOWNSCALE = false;
   const NOTE_IMAGE_MAX_DIM = 1600; // long-edge cap, px
   const NOTE_IMAGE_SKIP_BYTES = 400 * 1024; // already-small pastes go through untouched
   function downscaleNoteImageDataUrl(dataUrl) {
     return new Promise((resolve) => {
+      if (!NOTE_IMAGE_DOWNSCALE) { resolve(dataUrl); return; } // keep the original bytes, 100% quality
       if (!dataUrl || dataUrl.length <= NOTE_IMAGE_SKIP_BYTES) { resolve(dataUrl); return; }
       const img = new Image();
       img.onload = () => {
@@ -18883,6 +19089,54 @@
     showToast(freed > 0 ? `Freed ${formatStorageBytes(freed)} of unused photos on this map.` : "No unused photos found on this map.");
     renderStorageModal();
   });
+  // Folds photos that are byte-for-byte identical (added before identical
+  // photos shared an id) onto one id per picture, on the currently open map.
+  $("#storage-merge-btn").addEventListener("click", async () => {
+    if (!state.current) { showToast("Open a map first."); return; }
+    if (!requireSignIn()) return;
+    if (!confirm("Merge identical photos on this map? Photos that are exactly the same picture will share one stored copy. Nothing you see changes, but this clears the undo history.")) return;
+    showToast("Checking photos…");
+    const map = state.current;
+    await photoFpIndexPromise; // make sure every stored photo has been fingerprinted
+    if (state.current !== map) return;
+    const before = await estimateMapPhotoBytes(map.id);
+    const groups = new Map();
+    collectReferencedPhotoIds(map.root).forEach((id) => {
+      const fp = photoFpById.get(id);
+      if (!fp || !photoBlobCache.has(id)) return;
+      if (!groups.has(fp)) groups.set(fp, []);
+      groups.get(fp).push(id);
+    });
+    let merged = 0;
+    groups.forEach((ids) => {
+      if (ids.length < 2) return;
+      const keep = ids[0];
+      ids.slice(1).forEach((dupId) => {
+        (function walk(n) { merged += replacePhotoIdInNode(n, dupId, keep); (n.children || []).forEach(walk); })(map.root);
+      });
+    });
+    if (!merged) { showToast("No identical photos to merge."); return; }
+    // The old ids no longer exist in the tree, so earlier undo snapshots
+    // would point at photos that are about to be swept — drop them.
+    state.undoStack = [];
+    state.redoStack = [];
+    renderAll();
+    persist();
+    // Get the merged tree onto disk BEFORE sweeping the now-unused photo
+    // rows, so a crash in between can never leave the saved map pointing
+    // at photos that no longer exist.
+    try { await DB.put(map); } catch (e) {
+      showToast("Couldn't save the merge — nothing was deleted.");
+      renderStorageModal();
+      return;
+    }
+    await gcOrphanedPhotos(map);
+    await loadPhotoCacheForMap(map.id);
+    const after = await estimateMapPhotoBytes(map.id);
+    const freed = before - after;
+    showToast(`Merged ${merged} duplicate photo reference${merged === 1 ? "" : "s"}` + (freed > 0 ? ` — freed ${formatStorageBytes(freed)}.` : "."));
+    renderStorageModal();
+  });
   $("#storage-cleanup-all-btn").addEventListener("click", async () => {
     if (!confirm(`Scan all ${state.maps.length} map${state.maps.length === 1 ? "" : "s"} for unused photo bytes and delete them? This can't be undone.`)) return;
     let before = 0;
@@ -20152,8 +20406,12 @@
     syncPhotosFavoriteFolderAssignments();
     renderFolderSidebar(photosBrowserFoldersEl, photosFolderMgr, allIds, renderPhotosBrowserList, [FAVORITE_FOLDER]);
     const q = photosBrowserSearch.value.trim().toLowerCase();
+    // A photo shared by two nodes has one id, so a folder assignment (and
+    // "Favorite", synced from ONE node's star) is keyed by that id — only
+    // list a node's copy under Favorite if that node really starred it.
     const filtered = photosBrowserItems.filter((it) =>
       photosFolderMgr.matches(it.photoId) &&
+      (photosFolderMgr.getSelected() !== FAVORITE_FOLDER || it.favorite) &&
       (!q || it.nodeLabel.toLowerCase().includes(q) || it.tag.toLowerCase().includes(q)));
     const sorted = sortPhotosBrowserItems(filtered);
     photosBrowserList.innerHTML = "";
