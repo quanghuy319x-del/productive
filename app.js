@@ -3379,8 +3379,14 @@
     const n = winsSoFar || 0;
     return n < AFFIRMATION_TARGETS_BY_ROUND.length ? AFFIRMATION_TARGETS_BY_ROUND[n] : AFFIRMATION_TARGET;
   }
+  // Commas don't count in the affirmation game: they're treated like a
+  // space, so typing them or skipping them are both fine ("ơn, Chừng",
+  // "ơn,Chừng" and "ơn Chừng" all match).
+  function stripAffirmationCommas(s) {
+    return (s || "").replace(/[,，、]/g, " ").replace(/\s+/g, " ");
+  }
   function normalizeAffirmationText(s) {
-    return (s || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
+    return stripAffirmationCommas(s).trim().toLocaleLowerCase("vi");
   }
 
   // The "Brainstorm" note-typing score task — reached from the same
@@ -15625,6 +15631,7 @@
   const tasksSortStarsBtn = $("#tasks-sort-stars");
   const tasksFontColorToggleBtn = $("#tasks-font-color-toggle");
   const tasksTemplatesBtn = $("#tasks-templates-btn");
+  const tasksRandomBtn = $("#tasks-random-btn");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
   // Guards the same race as noteIsResizing above: dragging the resize
@@ -15694,6 +15701,17 @@
   // for the life of the page (not persisted) so it survives re-renders
   // but resets on reload.
   const collapsedSubtaskIds = new Set();
+  // The subtask most recently chosen by the "🎲 Random" button — drawn
+  // highlighted in the tasks modal until it's done, another one is
+  // picked, or the modal closes. Just an id; nothing is saved.
+  let randomPickedSubtaskId = null;
+  // Every unfinished subtask across the WHOLE task list (all tasks),
+  // each paired with the task it belongs to.
+  function unfinishedSubtasksOfHost(host) {
+    return getNodeTasks(host).flatMap((t) =>
+      getTaskSubtasks(t).filter((s) => !s.done).map((s) => ({ t, s }))
+    );
+  }
 
   // Shared color-dot popover for a task's optional color label (see
   // getTaskColor/setTaskColor) — one instance reused by every task row,
@@ -16426,6 +16444,7 @@
 
   function closeTasksModal() {
     tasksEditingTarget = null;
+    randomPickedSubtaskId = null;
     subtaskAddOpenFor.clear();
     closeTaskTemplatesPopover();
     renderAll();
@@ -16497,7 +16516,8 @@
 
     getTaskSubtasks(t).forEach((s) => {
       const row = document.createElement("li");
-      row.className = "subtask-row" + (s.done ? " done" : "");
+      row.className = "subtask-row" + (s.done ? " done" : "") + (!s.done && s.id === randomPickedSubtaskId ? " picked" : "");
+      row.dataset.subtaskId = s.id;
 
       row.addEventListener("dragover", (e) => {
         if (!subtaskDragState) return;
@@ -16981,8 +17001,30 @@
     tasksProgressBar.classList.toggle("done", prog.pct >= 1);
     tasksProgressLabel.textContent = prog.total ? `${prog.done} of ${prog.total} done` : "No tasks yet";
     tasksSortStarsBtn.disabled = tasks.length < 2;
+    tasksRandomBtn.disabled = unfinishedSubtasksOfHost(host).length === 0;
     updateTaskFontColorToggleBtn();
   }
+
+  // 🎲 Random — picks one unfinished subtask uniformly from every task in
+  // the list (not just within a single task), highlights it and scrolls
+  // it into view. Avoids repeating the previous pick when there's a choice.
+  function pickRandomSubtask() {
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
+    let pool = unfinishedSubtasksOfHost(host);
+    if (!pool.length) { showToast("No unfinished subtasks to pick from"); return; }
+    if (pool.length > 1) pool = pool.filter(({ s }) => s.id !== randomPickedSubtaskId);
+    const { t, s } = pool[Math.floor(Math.random() * pool.length)];
+    randomPickedSubtaskId = s.id;
+    // Make sure its task's subtask panel isn't collapsed, or the pick would be hidden.
+    collapsedSubtaskIds.delete(t.id);
+    renderTasksModal();
+    const row = tasksListEl.querySelector(`.subtask-row[data-subtask-id="${s.id}"]`);
+    if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+    showToast(`🎲 ${s.text}`);
+  }
+  tasksRandomBtn.addEventListener("click", pickRandomSubtask);
 
   // Reflects the current taskFontBlackMode on the toggle button itself
   // (label + pressed state) — called whenever the tasks modal (re)renders.
@@ -17790,8 +17832,8 @@
     const target = a.target || AFFIRMATION_TARGET;
     const count = Math.min(a.count || 0, target);
     const quote = a.quote || "";
-    const chars = Array.from(quote);
-    const typed = Array.from(typedRaw || "");
+    const chars = Array.from(stripAffirmationCommas(quote).trim());
+    const typed = Array.from(stripAffirmationCommas(typedRaw).replace(/^\s+/, ""));
     let correctCount = 0;
     let hitMismatch = false;
     for (let i = 0; i < typed.length && !hitMismatch; i++) {
