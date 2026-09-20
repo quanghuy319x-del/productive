@@ -455,6 +455,17 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 #app.sidebar-hidden #toolbar{
   padding-left: 54px;
 }
+/* Same again with the sidebar *open* on a wide screen: the toggle button
+   then sits at the sidebar's edge (left: 266px, see .sidebar-toggle-btn)
+   — i.e. right where #toolbar starts — so it was covering the first
+   toolbar item (the version badge). Reserve room for it here too. On
+   narrow screens the button stays pinned at the far left over the
+   sidebar instead, so no extra padding is needed there. */
+@media (min-width: 641px){
+  #app:not(.sidebar-hidden) #toolbar{
+    padding-left: 54px;
+  }
+}
 
 .title-input{
   display: none;
@@ -2869,12 +2880,13 @@ kbd{
   outline:none;
   padding: 0 2px;
   border-radius: 4px;
-  /* One line only: long subtask text is trimmed with an ellipsis instead
-     of wrapping the pill onto several lines. Any line breaks in the
-     stored text just render as spaces here; the full text (with its
-     breaks) is still shown while editing (see the contenteditable rule
-     below) and in the title tooltip. */
-  white-space: nowrap;
+  /* Long text is trimmed with an ellipsis instead of soft-wrapping the
+     pill onto extra lines. `pre` (not nowrap) keeps any line break typed
+     *inside* a subtask (Shift+Enter, or one that came in via a template)
+     as a real line break, and text-overflow trims each of those lines
+     individually. The full text is shown while editing (see the
+     contenteditable rule below) and in the title tooltip. */
+  white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
