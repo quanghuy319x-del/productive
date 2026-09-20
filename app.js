@@ -18722,10 +18722,16 @@
   const tagBrowserGalleryGrid = $("#tagbrowser-gallery-grid");
   const tagBrowserGalleryTitle = $("#tagbrowser-gallery-title");
 
-  function openTagBrowserModal() {
+  // The tag browser now lives inside the Photos browser (its 🏷 Tags
+  // button), so when it's opened from there the list view shows a back
+  // arrow that returns to Photos instead of just closing.
+  const tagBrowserListBack = $("#tagbrowser-list-back");
+
+  function openTagBrowserModal(fromPhotos) {
     renderTagBrowserList();
     tagBrowserGalleryView.classList.add("hidden");
     tagBrowserListView.classList.remove("hidden");
+    tagBrowserListBack.classList.toggle("hidden", !fromPhotos);
     zoomModalOpen(tagBrowserModal);
   }
   function closeTagBrowserModal() {
@@ -18811,7 +18817,10 @@
     tagBrowserGalleryView.classList.remove("hidden");
   }
 
-  $("#btn-tagbrowser").addEventListener("click", openTagBrowserModal);
+  tagBrowserListBack.addEventListener("click", () => {
+    closeTagBrowserModal();
+    openPhotosBrowserModal();
+  });
   $("#tagbrowser-close").addEventListener("click", closeTagBrowserModal);
   $("#tagbrowser-gallery-close").addEventListener("click", closeTagBrowserModal);
   $("#tagbrowser-back").addEventListener("click", () => {
@@ -19015,19 +19024,33 @@
     return items.sort((a, b) => a.nodeLabel.localeCompare(b.nodeLabel));
   }
 
-  const FAVORITE_TYPE_ICON = { note: "📝", photo: "🖼", link: "🔗", video: "📺" };
+  const FAVORITE_TYPE_ICON = { note: "📝", photo: "🖼", link: "🔗" };
+
+  // Puts the red YouTube logo (the same LINK_ICON_SVGS.youtube used on a
+  // node's link markers and the sidebar Videos button) into `el`, at a
+  // fixed pixel size — used anywhere a row/heading stands for a video, so
+  // every video reads with one consistent icon instead of an emoji.
+  function setYoutubeIcon(el, size) {
+    el.innerHTML = LINK_ICON_SVGS.youtube;
+    const svg = el.firstElementChild;
+    if (svg && size) {
+      svg.setAttribute("width", String(size));
+      svg.setAttribute("height", String(size));
+    }
+  }
 
   // Section-heading icon for the Favorites browser groups — reuses the
   // same true note/link icons as the rows below each heading (and as
   // the rest of the app) rather than the FAVORITE_TYPE_ICON emoji, so a
   // heading never shows a different "note" or "link" glyph than the
-  // items filed under it. Photo/video keep their emoji since there's no
-  // single app-wide icon for those types to match against.
+  // items filed under it. Videos use the red YouTube logo; photos keep
+  // their emoji since there's no single app-wide icon to match against.
   function favoriteTypeIconEl(type) {
     const el = document.createElement("span");
     el.className = "favoritesbrowser-heading-icon";
     if (type === "note") el.innerHTML = CELL_NOTE_ICON_SVG;
     else if (type === "link") el.innerHTML = LINK_ICON_SVGS.link;
+    else if (type === "video") el.innerHTML = LINK_ICON_SVGS.youtube;
     else el.textContent = FAVORITE_TYPE_ICON[type];
     return el;
   }
@@ -19139,6 +19162,8 @@
       // Same recognizable per-destination icon as the link menus/markers
       // elsewhere (see linkIconFor), instead of a generic 🔗 emoji.
       icon.innerHTML = linkIconFor(it.url);
+    } else if (it.type === "video") {
+      setYoutubeIcon(icon, 22);
     } else {
       icon.textContent = FAVORITE_TYPE_ICON[it.type];
     }
@@ -19987,6 +20012,10 @@
   }
 
   $("#btn-photosbrowser").addEventListener("click", openPhotosBrowserModal);
+  $("#photosbrowser-tags-btn").addEventListener("click", () => {
+    closePhotosBrowserModal();
+    openTagBrowserModal(true);
+  });
   $("#photosbrowser-close").addEventListener("click", closePhotosBrowserModal);
   photosBrowserModal.addEventListener("click", (e) => { if (e.target === photosBrowserModal) closePhotosBrowserModal(); });
   photosBrowserSearch.addEventListener("input", renderPhotosBrowserList);
@@ -20131,7 +20160,7 @@
 
       const icon = document.createElement("span");
       icon.className = "favoritesbrowser-row-icon";
-      icon.textContent = "📺";
+      setYoutubeIcon(icon, 22);
 
       const text = document.createElement("span");
       text.className = "favoritesbrowser-row-text";

@@ -3359,6 +3359,10 @@ kbd{
 .storage-modal-actions-wrap{ display:flex; gap:8px; flex-wrap:wrap; }
 
 #tagbrowser-list-view.hidden, #tagbrowser-gallery-view.hidden{ display:none; }
+#tagbrowser-list-back.hidden{ display:none; }
+/* Tags shortcut inside the Photos browser — sits at the right end of the
+   sort row, away from the Date / A–Z sort pills. */
+.photosbrowser-tags-btn{ margin-left:auto; }
 .tagbrowser-modal-card{
   width: 480px;
   max-height: 82vh;
