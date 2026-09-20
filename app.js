@@ -900,6 +900,11 @@
     // save(). Purely a UI value (see updateDriveUI's "Synced Xm ago"),
     // never persisted or compared against anything.
     lastSyncedAt: 0,
+    // Bookkeeping for pushLocalNewer() below: when it last tried (so a
+    // failing retry isn't hammered every poll tick) and whether a push
+    // pass is running right now.
+    lastLocalPushTryAt: 0,
+    pushingLocal: false,
     // Silent-refresh attempts are throttled (see silentRefresh() below)
     // so a failing one can't be retried more than once per cooldown
     // window, and capped altogether after a few consecutive failures
@@ -989,7 +994,7 @@
         try {
           await this.syncFromDrive();
           this.dataSynced = true;
-          for (const m of state.maps) if (!this.fileIndex[m.id]) await this.save(m);
+          await this.pushLocalNewer({ force: true, includeNew: true });
           renderSidebar();
           // Repaint the already-open map's canvas with whatever this sync
           // just pulled in — without this, the currently-open map (and any
@@ -1233,7 +1238,7 @@
       try {
         await this.syncFromDrive();
         this.dataSynced = true;
-        for (const m of state.maps) if (!this.fileIndex[m.id]) await this.save(m);
+        await this.pushLocalNewer({ force: true, includeNew: true });
       } catch (e) {
         console.error("Drive sync failed", e);
         if (!silent) alert("Signed in, but syncing with Drive failed: " + (e.message || e) + "\n\nYour maps are still safe locally — try signing in again, or check the browser console for details.");
@@ -1390,6 +1395,55 @@
         await this.api(`https://www.googleapis.com/drive/v3/files/${known.fileId}`, { method: "DELETE" });
       } catch (e) { /* best-effort */ }
       delete this.fileIndex[map.id];
+    },
+
+    // The push half of sync. syncFromDrive() only ever *pulls*, and skips
+    // any map whose local copy is newer than Drive's — so if an upload was
+    // cut short (phone backgrounded mid-upload, network drop, expired
+    // login), that edit used to sit on this device only, invisible to
+    // every other device, until the next edit happened to trigger a fresh
+    // upload. This finds every map whose local `updatedAt` is ahead of
+    // what Drive last confirmed and uploads it again. `includeNew` also
+    // uploads maps Drive has never seen (used right after sign-in, when
+    // nothing else could be creating them at the same time).
+    //
+    // Returns true if it pushed anything. Skipped while an edit is still
+    // being typed or saved — runPersistNow() uploads those itself, and a
+    // second overlapping upload of the same map could land out of order.
+    async pushLocalNewer(opts) {
+      const { force = false, includeNew = false } = opts || {};
+      if (!this.signedIn || !this.dataSynced || this.needsReauth) return false;
+      if (this.pushingLocal) return false;
+      // Retry a failing push at most every 15s, but always let an explicit
+      // trigger (returning to the tab, coming back online) go straight
+      // through.
+      if (!force && Date.now() - this.lastLocalPushTryAt < 15000) return false;
+      const busy = () => {
+        try { return !!(state.editingId || unsavedEdits || persistTimer || persistInFlight); }
+        catch (e) { return false; }
+      };
+      if (busy()) return false;
+      const stale = state.maps.filter(m => {
+        const known = this.fileIndex[m.id];
+        if (!known) return includeNew;
+        return (m.updatedAt || 0) > (known.updatedAt || 0);
+      });
+      if (!stale.length) return false;
+      this.lastLocalPushTryAt = Date.now();
+      this.pushingLocal = true;
+      try {
+        for (const m of stale) {
+          if (busy()) break; // an edit started mid-pass — its own save takes over
+          await this.save(m);
+        }
+      } finally {
+        this.pushingLocal = false;
+      }
+      // save() swallows its own errors and flags syncBroken instead — if
+      // this pass ended that way, wait ~a minute before the timer retries
+      // so a persistent failure doesn't keep re-locking editing every 15s.
+      if (this.syncBroken) this.lastLocalPushTryAt = Date.now() + 45000;
+      return true;
     },
 
     // Pulls in anything new/changed from Drive, same merge rule as
@@ -1574,6 +1628,9 @@
   window.addEventListener("online", () => {
     isOnline = true;
     updateDriveUI();
+    // Back online: catch up in both directions right away (including
+    // re-uploading any edit that couldn't reach Drive while offline).
+    pollDriveUpdates(true);
   });
   window.addEventListener("offline", () => {
     isOnline = false;
@@ -1751,7 +1808,7 @@
   function stopDriveSyncPolling() {
     if (driveSyncTimer) { clearInterval(driveSyncTimer); driveSyncTimer = null; }
   }
-  async function pollDriveUpdates() {
+  async function pollDriveUpdates(force) {
     if (!DriveDB.signedIn || DriveDB.syncing) return;
     if (document.visibilityState !== "visible") return;
     // Don't touch the map tree while you're actively mid-keystroke in a
@@ -1765,6 +1822,11 @@
     DriveDB.syncing = true;
     try {
       await DriveDB.syncFromDrive();
+      // Then the other direction: re-upload any map whose local copy is
+      // newer than Drive's (an earlier upload that never finished — see
+      // pushLocalNewer). `force` is true when this poll was triggered by
+      // returning to the tab or coming back online, false for the 1s timer.
+      await DriveDB.pushLocalNewer({ force: force === true });
       // Re-check both conditions: either can flip from clear to set while
       // the syncFromDrive() network call above was in flight (the guards
       // above only ran before it started). If either did, don't blow away
@@ -1798,7 +1860,7 @@
     updateDriveUI();
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") pollDriveUpdates();
+    if (document.visibilityState === "visible") pollDriveUpdates(true);
   });
 
   /* ---------------- data model ---------------- */
@@ -2813,7 +2875,8 @@
   }
 
   // Task-list templates — a whole node's task list, saved as one named
-  // template (each task's text, color and subtask text — not done state,
+  // template (each task's text, color and subtask text plus the line
+  // breaks between subtask pills — not done state,
   // ids, due dates or notes: a template is a reusable shape, not a
   // snapshot of one specific in-progress list) from the tasks modal's
   // "📋 Templates" button, then insertable onto any other node's task
@@ -2839,7 +2902,15 @@
     return getNodeTasks(host).map(t => ({
       text: (t.text || "").trim() || "Untitled task",
       color: getTaskColor(t) || null,
-      subtasks: getTaskSubtasks(t).map(s => ({ text: s.text || "" })).filter(s => s.text.trim())
+      // brBefore = the line breaks entered *between* subtask pills (see
+      // enhanceSubtaskList), remembered so a template restores the same
+      // pill layout. Only stored when non-zero.
+      subtasks: getTaskSubtasks(t).map(s => {
+        const o = { text: s.text || "" };
+        const br = Math.max(0, Math.min(5, s.brBefore | 0));
+        if (br) o.brBefore = br;
+        return o;
+      }).filter(s => s.text.trim())
     }));
   }
   // Saves a copy of every task on `host` as a new named template. Returns
@@ -2881,7 +2952,11 @@
     const newTasks = tpl.tasks.map(t => {
       const task = {
         id: uid(), text: t.text, done: false, stars: 0, due: null,
-        subtasks: (t.subtasks || []).map(s => ({ id: uid(), text: s.text, done: false }))
+        subtasks: (t.subtasks || []).map(s => {
+          const sub = { id: uid(), text: s.text, done: false };
+          if (s.brBefore > 0) sub.brBefore = Math.min(5, s.brBefore | 0);
+          return sub;
+        })
       };
       if (t.color) task.color = t.color;
       return task;
