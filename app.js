@@ -14058,8 +14058,12 @@
   // the color if the line isn't numbered. Applied at the div level (not
   // wrapped in a span), so it never collides with a manual foreColor
   // selection made via the color picker inside the line's text.
+  // Follows the 🎨 auto-color toggle like every other auto color: while
+  // it's off (the default for DRC notes) numbered lines are left exactly
+  // as they are — every caller (the 1. button, Enter continuing a list,
+  // loading/undoing a note) goes through here, so this is the one gate.
   function noteSetOrderedLineColor(el) {
-    if (!el) return;
+    if (!el || !noteAutoColorEnabled) return;
     const match = (el.textContent || "").match(/^(\d+)\.\s/);
     el.style.color = match ? noteColorForOrdinal(parseInt(match[1], 10)) : "";
   }
@@ -14069,6 +14073,7 @@
   // inline color saved yet. `container` defaults to the per-node rich note
   // editor but is also passed the per-task note editor.
   function noteSyncAllOrderedColors(container = noteTextarea) {
+    if (!noteAutoColorEnabled) return;
     Array.from(container.children).forEach(el => {
       if (/^\d+\.\s/.test(el.textContent || "") && !el.style.color) {
         noteSetOrderedLineColor(el);
@@ -14733,6 +14738,14 @@
       noteTextarea.focus();
       document.execCommand("foreColor", false, "#7c7c76");
       setNoteColorTrigger("#7c7c76");
+    } else {
+      // Turned back on: numbered lines (and paragraphs) only ever get
+      // colored while this is on, so bring the whole note up to date now
+      // instead of leaving them plain until the note is reopened.
+      notePushUndo();
+      noteSyncAllOrderedColors();
+      noteAutoColorParagraphs();
+      scheduleNoteAutosave();
     }
   });
   const noteColorTriggerBtn = $("#note-tool-color");
