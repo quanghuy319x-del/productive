@@ -2466,6 +2466,67 @@
     }
   });
 
+  // "⟳ Load latest" — a manual, do-it-now version of the background poll,
+  // for when you don't want to wait on (or trust) the automatic check:
+  // saves whatever is pending, pulls down anything newer from Drive, then
+  // uploads anything Drive is missing. Work on this device that Drive
+  // never received is kept as a copy rather than overwritten (see
+  // saveConflictCopy).
+  const loadLatestBtn = document.getElementById("btn-load-latest");
+  let loadLatestRunning = false;
+  async function loadLatestFromDrive() {
+    if (loadLatestRunning) return;
+    if (!DriveDB.signedIn) {
+      DriveDB.signIn(false).catch(err => alert(err.message || "Google sign-in failed."));
+      return;
+    }
+    if (!isOnline) { showToast("You're offline \u2014 can't reach Google Drive"); return; }
+    loadLatestRunning = true;
+    const originalLabel = loadLatestBtn.textContent;
+    loadLatestBtn.disabled = true;
+    loadLatestBtn.textContent = "\u27f3 Loading\u2026";
+    try {
+      if (DriveDB.needsReauth) {
+        // Session expired: an explicit sign-in (a real click) is the fix,
+        // and it syncs on its own.
+        await DriveDB.signIn(false);
+        showToast("Reconnected and loaded the latest from Drive");
+        return;
+      }
+      // Commit whatever is mid-edit, then let any save/upload/poll in
+      // flight finish so nothing overlaps.
+      try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+      try { flushPersist(); } catch (e) {}
+      const t0 = Date.now();
+      while ((DriveDB.syncing || DriveDB.verifying || localSaveBusy()) && Date.now() - t0 < 15000) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      DriveDB.syncing = true;
+      let changed = false;
+      try {
+        changed = await DriveDB.syncFromDrive();
+        DriveDB.dataSynced = true;
+        await DriveDB.pushLocalNewer({ force: true });
+      } finally {
+        DriveDB.syncing = false;
+      }
+      driveRenderPending = false;
+      renderSidebar();
+      renderAll();
+      updateDriveUI();
+      if (DriveDB.driveBroken()) showToast("Loaded from Drive, but some of your changes still aren't uploading \u2014 retrying");
+      else showToast(changed ? "\u2705 Loaded the latest from Drive" : "\u2705 Already on the latest version");
+    } catch (e) {
+      console.error("Load latest failed", e);
+      showToast("Couldn't load from Drive: " + ((e && e.message) || e));
+    } finally {
+      loadLatestRunning = false;
+      loadLatestBtn.disabled = false;
+      loadLatestBtn.textContent = originalLabel;
+    }
+  }
+  loadLatestBtn.addEventListener("click", loadLatestFromDrive);
+
   /* ---------------- data model ---------------- */
 
   function newNode(text) {
