@@ -3368,6 +3368,42 @@ kbd{
   max-height: 82vh;
   overflow-y: auto;
 }
+/* The tag browser is now reached from the Photos browser's 🏷 Tags
+   button, so it uses the exact same fixed card size as the Photos /
+   Notes / Videos browsers (see .browser-with-folders below) — switching
+   between them no longer makes the window jump. Scoped by id because the
+   Comments and Favorites browsers share .tagbrowser-modal-card and keep
+   their own size. The header stays put; only the tag list / photo grid
+   scroll inside the card. */
+#tagbrowser-modal .tagbrowser-modal-card{
+  width: 620px;
+  height: min(720px, 82vh);
+  max-height: 82vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+#tagbrowser-list-view,
+#tagbrowser-gallery-view{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+#tagbrowser-list-view > .modal-back-row,
+#tagbrowser-list-view > .tagbrowser-hint,
+#tagbrowser-gallery-view > .modal-back-row{
+  flex:none;
+}
+#tagbrowser-tag-list,
+#tagbrowser-gallery-grid{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+}
+/* A grid child of a flex column would otherwise stretch its rows to fill
+   the fixed height when there are only a few photos. */
+#tagbrowser-gallery-grid{ align-content:start; }
 .tagbrowser-hint{
   font-size: 12px;
   color: var(--text-dim);
