@@ -3785,6 +3785,46 @@ kbd{
   font: inherit;
 }
 .folder-move-option:hover{ background: var(--panel-2); color: var(--text); }
+/* "New folder…" row pinned to the bottom of the move-to-folder popover
+   (stays visible even when a long folder list scrolls). */
+.folder-move-add-row{
+  display:flex;
+  gap:4px;
+  margin-top:4px;
+  padding:6px 0 0;
+  border-top:1px solid var(--border);
+  position:sticky;
+  bottom:-6px;
+  background: var(--panel);
+}
+.folder-move-add-input{
+  flex:1 1 auto;
+  min-width:0;
+  font: inherit;
+  font-size:13px;
+  padding:6px 8px;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+.folder-move-add-input:focus{ outline:none; border-color: var(--accent); }
+.folder-move-add-btn{
+  flex:none;
+  width:30px;
+  border-radius:6px;
+  border:1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor:pointer;
+  font-size:16px;
+  line-height:1;
+}
+.folder-move-add-btn:hover{ border-color: var(--accent); }
+/* 16px stops iOS Safari zooming the page when the input is focused. */
+@media (pointer: coarse){
+  .folder-move-add-input{ font-size:16px; }
+}
 .folder-move-option.active{
   background: var(--accent-dim);
   color: var(--text);

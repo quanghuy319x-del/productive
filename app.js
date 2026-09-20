@@ -19106,6 +19106,45 @@
     }
     addOption(null, "Unfiled");
     mgr.list().forEach((name) => addOption(name, name));
+
+    // "New folder…" row at the bottom — creates the folder and files this
+    // item into it in one step, so there's no need to close the popover,
+    // go make the folder in the browser's own sidebar, then come back.
+    // Typing an existing folder's name just files the item there.
+    const addRow = document.createElement("div");
+    addRow.className = "folder-move-add-row";
+    const addInput = document.createElement("input");
+    addInput.type = "text";
+    addInput.className = "folder-move-add-input";
+    addInput.placeholder = "New folder…";
+    addInput.spellcheck = false;
+    addInput.autocomplete = "off";
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "folder-move-add-btn";
+    addBtn.textContent = "+";
+    addBtn.title = "Create folder and move here";
+    function submitNewFolder() {
+      const name = addInput.value.trim();
+      if (!name) { addInput.focus(); return; }
+      mgr.create(name); // no-op (false) if it already exists — moveTo below still applies
+      if (!mgr.list().includes(name)) return;
+      mgr.moveTo(id, name);
+      closeFolderMovePopover();
+      onChange();
+    }
+    addBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    addBtn.addEventListener("click", (e) => { e.stopPropagation(); submitNewFolder(); });
+    addInput.addEventListener("click", (e) => e.stopPropagation());
+    addInput.addEventListener("keydown", (e) => {
+      // Keep typing here from triggering the host modal's own keyboard
+      // shortcuts (photo arrows, note editor keys, Esc-to-close, …).
+      e.stopPropagation();
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); submitNewFolder(); }
+      else if (e.key === "Escape") { e.preventDefault(); closeFolderMovePopover(); }
+    });
+    addRow.append(addInput, addBtn);
+    pop.appendChild(addRow);
     document.body.appendChild(pop);
     const margin = 8;
     const rect = anchorBtn.getBoundingClientRect();
