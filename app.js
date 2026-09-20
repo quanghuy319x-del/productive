@@ -590,7 +590,41 @@
     return id;
   }
 
-  // Every id any node, table cell or link comment in this tree points at.
+  // ---- Photos embedded inline in notes ---------------------------------
+  // A note's rich-text body can hold pasted/dropped screenshots too (see
+  // noteInsertImages below). Those now live in PhotoDB exactly like a
+  // node's attached photos — the note's stored HTML carries only a
+  // data-photo-id="…" attribute on the <img>, never the picture's bytes —
+  // so two identical screenshots pasted into one note (or two different
+  // notes on the same map) share one PhotoDB row instead of each paste
+  // inflating the note's own HTML with a fresh copy of the same base64.
+  // Ids only ever appear in that one attribute, so a plain string scan is
+  // enough; no need to parse the HTML into a live DOM just to read it.
+  function extractNotePhotoIds(html) {
+    const ids = [];
+    if (!html || html.indexOf("data-photo-id") === -1) return ids;
+    const re = /data-photo-id="([^"]+)"/g;
+    let m;
+    while ((m = re.exec(html))) ids.push(m[1]);
+    return ids;
+  }
+  // Every note-bearing "owner" shape (a node, a table cell's attach record,
+  // a task, a subtask) stores its notes the same way — see getNodeNotes/
+  // getTaskNotes/getCellNotes — so this only needs to look at `.notes`.
+  function addNoteOwnerPhotoIds(owner, ids) {
+    if (!owner || !Array.isArray(owner.notes)) return;
+    owner.notes.forEach((n) => { if (n && n.html) extractNotePhotoIds(n.html).forEach((id) => ids.add(id)); });
+  }
+  function addTaskListNotePhotoIds(tasks, ids) {
+    (tasks || []).forEach((t) => {
+      if (!t) return;
+      addNoteOwnerPhotoIds(t, ids);
+      (t.subtasks || []).forEach((s) => addNoteOwnerPhotoIds(s, ids));
+    });
+  }
+
+  // Every id any node, table cell, link comment, or inline note image in
+  // this tree points at.
   function collectReferencedPhotoIds(root) {
     const ids = new Set();
     const addList = (list) => (list || []).forEach((id) => { if (id) ids.add(id); });
@@ -599,9 +633,14 @@
       getNodeImageIds(node).forEach((id) => ids.add(id));
       getCellImageIds(node).forEach((id) => ids.add(id));
       if (node.linkPhotos) Object.values(node.linkPhotos).forEach(addList);
+      addNoteOwnerPhotoIds(node, ids);
+      addTaskListNotePhotoIds(node.tasks, ids);
       if (node.table && Array.isArray(node.table.attach)) {
         node.table.attach.forEach((row) => (row || []).forEach((a) => {
-          if (a && a.linkPhotos) Object.values(a.linkPhotos).forEach(addList);
+          if (!a) return;
+          if (a.linkPhotos) Object.values(a.linkPhotos).forEach(addList);
+          addNoteOwnerPhotoIds(a, ids);
+          addTaskListNotePhotoIds(a.tasks, ids);
         }));
       }
       (node.children || []).forEach(walk);
@@ -640,12 +679,36 @@
       node.images = [toId]; node.image = null; changed++; renameMeta();
     }
     if (node.linkPhotos) Object.values(node.linkPhotos).forEach((arr) => { if (swap(arr)) changed++; });
+    // Ids embedded inline in a note (see noteInsertImages/extractNotePhotoIds)
+    // live inside data-photo-id="…" attributes in the note's stored HTML
+    // rather than in an array, so they need their own swap: a literal
+    // string replace of the attribute value (ids are plain uid() strings,
+    // never containing regex-special characters, so this is safe without
+    // parsing the HTML into a DOM).
+    const swapNoteOwner = (owner) => {
+      if (!owner || !Array.isArray(owner.notes)) return;
+      owner.notes.forEach((n) => {
+        if (n && n.html && n.html.indexOf(fromId) !== -1) {
+          const swapped = n.html.split(`data-photo-id="${fromId}"`).join(`data-photo-id="${toId}"`);
+          if (swapped !== n.html) { n.html = swapped; changed++; }
+        }
+      });
+    };
+    const swapTaskList = (tasks) => (tasks || []).forEach((t) => {
+      if (!t) return;
+      swapNoteOwner(t);
+      (t.subtasks || []).forEach(swapNoteOwner);
+    });
+    swapNoteOwner(node);
+    swapTaskList(node.tasks);
     if (node.table && Array.isArray(node.table.attach)) {
       node.table.attach.forEach((row) => (row || []).forEach((a) => {
         if (!a) return;
         if (Array.isArray(a.images) && a.images.length) { if (swap(a.images)) changed++; }
         else if (a.image === fromId) { a.images = [toId]; a.image = null; changed++; }
         if (a.linkPhotos) Object.values(a.linkPhotos).forEach((arr) => { if (swap(arr)) changed++; });
+        swapNoteOwner(a);
+        swapTaskList(a.tasks);
       }));
     }
     return changed;
@@ -746,6 +809,42 @@
           }
         }));
       }
+      // A note's inline images normally already reference PhotoDB via
+      // data-photo-id (see noteInsertImages) — nothing to do for those.
+      // But a note that still carries a raw `data:` <img> (an old note
+      // saved before that existed, or one just brought in from a Drive/
+      // folder/import file — see inlinePhotosForPortableCopy, which
+      // inlines them back to plain data: URLs for portability) gets the
+      // same one-time move into its own PhotoDB record here, so it picks
+      // up the same dedup benefit instead of sitting there as loose
+      // base64 forever.
+      const migrateNoteOwner = (owner) => {
+        if (!owner || !Array.isArray(owner.notes)) return;
+        owner.notes.forEach((n) => {
+          if (!n || !n.html || n.html.indexOf("<img") === -1) return;
+          n.html = n.html.replace(/<img\b[^>]*\bsrc="(data:[^"]*)"[^>]*>/g, (tag, dataUrl) => {
+            const id = uid();
+            puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(dataUrl) }));
+            return tag
+              .replace(`src="${dataUrl}"`, "")
+              .replace("<img", `<img data-photo-id="${id}"`);
+          });
+        });
+      };
+      const migrateTaskList = (tasks) => (tasks || []).forEach((t) => {
+        if (!t) return;
+        migrateNoteOwner(t);
+        (t.subtasks || []).forEach(migrateNoteOwner);
+      });
+      migrateNoteOwner(node);
+      migrateTaskList(node.tasks);
+      if (node.table && Array.isArray(node.table.attach)) {
+        node.table.attach.forEach(row => (row || []).forEach((a) => {
+          if (!a) return;
+          migrateNoteOwner(a);
+          migrateTaskList(a.tasks);
+        }));
+      }
       (node.children || []).forEach(walk);
     })(map.root);
     if (puts.length) await Promise.all(puts);
@@ -819,6 +918,36 @@
           if (!a) return;
           if (a.image) a.image = lookup.get(a.image) || a.image;
           if (Array.isArray(a.images)) a.images = a.images.map(id => lookup.get(id) || id);
+        }));
+      }
+      // A note's inline images (see noteInsertImages/extractNotePhotoIds)
+      // only ever hold a data-photo-id="…" reference in storage, same as
+      // node.images holding bare ids — resolve those back to real inline
+      // data: URLs too, so an exported/synced copy of this note still
+      // shows its pictures outside this browser.
+      const inlineNoteOwner = (owner) => {
+        if (!owner || !Array.isArray(owner.notes)) return;
+        owner.notes.forEach((n) => {
+          if (!n || !n.html || n.html.indexOf("data-photo-id") === -1) return;
+          n.html = n.html.replace(/<img\b[^>]*\bdata-photo-id="([^"]+)"[^>]*>/g, (tag, id) => {
+            const dataUrl = lookup.get(id);
+            if (!dataUrl) return tag; // photo missing from PhotoDB — leave the tag as-is rather than break the note
+            return tag.includes("src=") ? tag.replace(/src="[^"]*"/, `src="${dataUrl}"`) : tag.replace("<img", `<img src="${dataUrl}"`);
+          });
+        });
+      };
+      const inlineTaskList = (tasks) => (tasks || []).forEach((t) => {
+        if (!t) return;
+        inlineNoteOwner(t);
+        (t.subtasks || []).forEach(inlineNoteOwner);
+      });
+      inlineNoteOwner(node);
+      inlineTaskList(node.tasks);
+      if (node.table && Array.isArray(node.table.attach)) {
+        node.table.attach.forEach(row => (row || []).forEach((a) => {
+          if (!a) return;
+          inlineNoteOwner(a);
+          inlineTaskList(a.tasks);
         }));
       }
       (node.children || []).forEach(walk);
@@ -12046,9 +12175,25 @@
     if (photoModalState.noteMode) {
       const noteImgs = Array.from(noteTextarea.querySelectorAll("img"));
       const targetImg = noteImgs[photoModalState.index];
-      if (targetImg) targetImg.src = outUrl;
+      let oldId = null;
+      if (targetImg) {
+        // A combined image is a fresh picture, not the original one with a
+        // few pixels changed — same "always a new id" rule crop/text/
+        // combine use for a node's own photos (see the noDedupe below and
+        // its counterpart in the non-note branch), so it gets its own
+        // PhotoDB record rather than dedup'ing against the original.
+        const newId = addPhotoRecord(outUrl, { noDedupe: true });
+        oldId = targetImg.dataset.photoId;
+        targetImg.dataset.photoId = newId;
+        targetImg.src = photoUrl(newId);
+      }
       photoModalState.images[photoModalState.index] = outUrl;
+      // Commit first, so the node's own stored notes drop the old id
+      // before deletePhotoRecord checks whether anything still
+      // references it — otherwise the still-unsaved old reference would
+      // make it look referenced and the swap would leak that copy.
       commitNotesToNode();
+      if (oldId) deletePhotoRecord(oldId);
     } else {
       const liveNode = findNode(photoModalState.nodeId);
       const liveIds = getNodeImageIds(liveNode);
@@ -13522,16 +13667,28 @@
       const outUrl = encodePhotoCanvas(canvas, isPng ? "image/png" : "image/jpeg", canvas.width * canvas.height, 1.0);
 
       if (photoModalState.noteMode) {
-        // No PhotoDB record to swap here — just write the baked-in image
-        // straight back onto the actual <img> element sitting in the note
-        // editor's live DOM. commitNotesToNode() then reads that updated
-        // innerHTML back into the note (see captureActiveNote), same as
-        // any other in-note edit, and handles its own pushUndo/persist.
+        // The baked-in image (with the label now part of its pixels) is a
+        // fresh picture — gets its own PhotoDB record via addPhotoRecord
+        // (same noDedupe rule the non-note branch below uses for crop/
+        // text/combine edits), swapped onto the actual <img> element
+        // sitting in the note editor's live DOM. commitNotesToNode() then
+        // reads that updated innerHTML back into the note (see
+        // captureActiveNote), same as any other in-note edit, and handles
+        // its own pushUndo/persist; only once that's landed is the old
+        // id's reference actually gone, so the old copy is freed after,
+        // not before.
         const noteImgs = Array.from(noteTextarea.querySelectorAll("img"));
         const targetImg = noteImgs[photoModalState.index];
-        if (targetImg) targetImg.src = outUrl;
+        let oldId = null;
+        if (targetImg) {
+          const newId = addPhotoRecord(outUrl, { noDedupe: true });
+          oldId = targetImg.dataset.photoId;
+          targetImg.dataset.photoId = newId;
+          targetImg.src = photoUrl(newId);
+        }
         photoModalState.images[photoModalState.index] = outUrl;
         commitNotesToNode();
+        if (oldId) deletePhotoRecord(oldId);
       } else {
         const liveNode = findNode(photoModalState.nodeId);
         const liveIds = getNodeImageIds(liveNode);
@@ -13776,6 +13933,52 @@
     return raw.split(/\n/).map(line => `<div>${escapeHtml(line) || "<br>"}</div>`).join("");
   }
 
+  // A note's stored HTML never carries an inline photo's actual src — an
+  // <img data-photo-id="…"> with no src (see stripNotePhotoSrcForStorage
+  // below) — so the moment it's loaded into the live, editable DOM, every
+  // such tag needs its src filled back in from PhotoDB (see photoUrl).
+  // Also self-heals notes saved by an older build, or just brought in
+  // from Drive/a folder/import (see ensurePhotosMigrated/
+  // inlinePhotosForPortableCopy), which can still have a raw `data:` src
+  // and no data-photo-id yet: those get moved into PhotoDB right here too
+  // — via the exact same dedup'd addPhotoRecord every fresh paste already
+  // goes through — so an old note full of repeated screenshots shrinks
+  // the moment it's opened, same spirit as noteDownscaleOversizedImagesInEditor
+  // below. Returns whether anything changed, so the caller knows whether
+  // the now-smaller HTML needs to be autosaved back onto the node.
+  function hydrateNotePhotoImages(container = noteTextarea) {
+    let migrated = false;
+    Array.from(container.querySelectorAll("img")).forEach((img) => {
+      const id = img.dataset.photoId;
+      if (id) {
+        img.src = photoUrl(id);
+        return;
+      }
+      const src = img.getAttribute("src") || "";
+      if (src.startsWith("data:")) {
+        const newId = addPhotoRecord(src);
+        img.dataset.photoId = newId;
+        img.src = photoUrl(newId);
+        migrated = true;
+      }
+    });
+    return migrated;
+  }
+
+  // The inverse, run just before a note's live DOM is read back into
+  // storage (see captureActiveNote) — strips every inline photo's src
+  // (a tab-local blob: object URL, meaningless the moment this tab
+  // closes — see loadPhotoCacheForMap) back down to just its
+  // data-photo-id reference, so the note's stored HTML stays a small
+  // string no matter how many/how large its photos are.
+  function stripNotePhotoSrcForStorage(html) {
+    if (!html || html.indexOf("data-photo-id") === -1) return html;
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    tmp.querySelectorAll("img[data-photo-id]").forEach((img) => img.removeAttribute("src"));
+    return tmp.innerHTML;
+  }
+
   // Same conversion as noteHtmlFromRaw, but bolds each non-blank line —
   // used only for a fresh DRC note's starting content, so the template's
   // section headers (📊 OVERVIEW, ✅ GOOD, ❌ BAD, 🔄 CHANGE FROM TOMORROW,
@@ -14009,6 +14212,12 @@
       noteNavAdd.title = "Start a new note on this node";
     }
     noteTextarea.innerHTML = noteHtmlFromRaw(current.html);
+    // Fill in (and, for older/imported notes, migrate) every inline
+    // photo's src — see hydrateNotePhotoImages. If anything needed
+    // migrating, the note's HTML just got smaller (bare data: bytes
+    // replaced with a short id reference); autosave that shrink so it
+    // isn't repeated on every open.
+    if (hydrateNotePhotoImages()) scheduleNoteAutosave();
     setNoteAutoColorEnabled(!isDRCNote(current));
     refreshDRCCards();
     noteSyncAllCheckedLines();
@@ -14117,9 +14326,11 @@
     // The card decoration (classes + CSS variables) lives only in the open
     // editor — never in what's saved — so merely opening a DRC note isn't
     // counted as changing it.
-    const newHtml = noteTextarea.classList.contains("drc-cards")
-      ? drcStripCardMarkup(noteTextarea.innerHTML)
-      : noteTextarea.innerHTML;
+    const newHtml = stripNotePhotoSrcForStorage(
+      noteTextarea.classList.contains("drc-cards")
+        ? drcStripCardMarkup(noteTextarea.innerHTML)
+        : noteTextarea.innerHTML
+    );
     if (current.title !== newTitle || current.html !== newHtml) {
       current.updatedAt = Date.now();
       // Backfills a timestamp for notes written before this field existed,
@@ -14738,6 +14949,22 @@
   // noteImageShrinkBtn/noteImageGrowBtn below) resize it from there.
   const NOTE_IMG_DEFAULT_INSERT_WIDTH = 84;  // 20% of the 420px default width
   const NOTE_IMG_DEFAULT_INSERT_HEIGHT = 60; // 20% of the 300px default height
+  // Builds the actual <img> for one inserted photo — stores it in PhotoDB
+  // (dedup'd against every other photo already on this map, node photos
+  // included, see addPhotoRecord) rather than embedding its base64 bytes
+  // straight into the note's HTML. The live DOM element still shows the
+  // photo via a normal object-URL src (see photoUrl); only the note's
+  // *stored* copy (see captureActiveNote's stripping step) drops that src
+  // down to just the data-photo-id reference.
+  function noteMakeImageEl(dataUrl) {
+    const id = addPhotoRecord(dataUrl);
+    const img = document.createElement("img");
+    img.dataset.photoId = id;
+    img.src = photoUrl(id);
+    img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
+    img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
+    return img;
+  }
   function noteInsertImages(dataUrls, targetLine, atStart) {
     noteTextarea.focus();
     notePushUndo();
@@ -14755,11 +14982,7 @@
       // into.
       dataUrls.forEach((dataUrl) => {
         const imgLine = document.createElement("div");
-        const img = document.createElement("img");
-        img.src = dataUrl;
-        img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
-        img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
-        imgLine.appendChild(img);
+        imgLine.appendChild(noteMakeImageEl(dataUrl));
         parent.insertBefore(imgLine, lineDiv);
       });
       const range = document.createRange();
@@ -14773,11 +14996,7 @@
       let lastImgLine = null;
       dataUrls.forEach((dataUrl) => {
         const imgLine = document.createElement("div");
-        const img = document.createElement("img");
-        img.src = dataUrl;
-        img.style.width = `${NOTE_IMG_DEFAULT_INSERT_WIDTH}px`;
-        img.style.height = `${NOTE_IMG_DEFAULT_INSERT_HEIGHT}px`;
-        imgLine.appendChild(img);
+        imgLine.appendChild(noteMakeImageEl(dataUrl));
         parent.insertBefore(imgLine, cursor ? cursor.nextSibling : null);
         cursor = imgLine;
         lastImgLine = imgLine;
