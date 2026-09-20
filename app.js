@@ -10129,15 +10129,22 @@
     if (!root) return;
     const kids = Array.from(root.children).filter((el) => el.tagName !== "BR");
     if (!mode) {
-      root.classList.remove("drc-cards");
+      root.classList.remove("drc-cards", "drc-is-empty");
       kids.forEach((el) => drcSetCardState(el, null));
       return;
     }
     root.classList.add("drc-cards");
+    // Template editor with nothing typed yet (a single blank line): the
+    // CSS draws the "One section per line…" hint inside that card.
+    root.classList.toggle("drc-is-empty", mode === "template" && kids.length === 1 && drcIsBlankLine(kids[0]));
     const titleColor = mode === "note" ? new Map(drcTemplateCards().map((c) => [drcNorm(c.title), c.color])) : null;
     const isHead = (el) => {
       const t = drcNorm(el.textContent);
-      if (!t) return false;
+      // A blank line is never a heading — it belongs to the card above it —
+      // except a blank very-first line in the template editor, which has no
+      // card above it, so it starts one (otherwise the caret would sit
+      // outside every card).
+      if (!t) return mode === "template" && el === kids[0];
       return mode === "template" ? true : titleColor.has(t);
     };
     let ordinal = 0;
@@ -10154,8 +10161,6 @@
       }
       let j = i + 1;
       while (j < kids.length && !isHead(kids[j])) j++;
-      let lastFilled = i;
-      for (let k = i + 1; k < j; k++) if (!drcIsBlankLine(kids[k])) lastFilled = k;
       let color = head.getAttribute("data-card-color");
       if (!color) {
         if (mode === "template") {
@@ -10166,12 +10171,66 @@
         }
       }
       ordinal++;
+      // Every line up to the next heading is part of this card — blank
+      // ones included. They used to be drawn as a card-less "gap" once past
+      // the last filled line, which left the caret outside any card
+      // (e.g. right after pressing Enter, before typing anything).
       for (let k = i; k < j; k++) {
-        if (k > lastFilled) drcSetCardState(kids[k], { gap: true, color });
-        else drcSetCardState(kids[k], { head: k === i, last: k === lastFilled, color });
+        drcSetCardState(kids[k], { head: k === i, last: k === j - 1, color });
       }
       i = j;
     }
+  }
+
+  // Every line of the template editor has to be a <div> to be drawn as a
+  // card. Chrome can leave the very first line as a bare text node, and an
+  // emptied editor as nothing (or a lone <br>) — either way the caret ends
+  // up outside every card. Wraps such runs into a line <div>, guarantees at
+  // least one line exists, and keeps the caret/selection where it was.
+  function drcEnsureLineDivs(root) {
+    if (!root) return;
+    const sel = window.getSelection();
+    const hadSel = !!(sel && sel.rangeCount && root.contains(sel.anchorNode) && root.contains(sel.focusNode));
+    const saved = hadSel ? { a: sel.anchorNode, ao: sel.anchorOffset, f: sel.focusNode, fo: sel.focusOffset } : null;
+    let changed = false;
+    let run = [];
+    const emptyLine = () => {
+      const d = document.createElement("div");
+      d.appendChild(document.createElement("br"));
+      return d;
+    };
+    const flush = () => {
+      if (!run.length) return;
+      const div = document.createElement("div");
+      root.insertBefore(div, run[0]);
+      run.forEach((n) => div.appendChild(n));
+      if (!div.textContent && !div.querySelector("br, img")) div.appendChild(document.createElement("br"));
+      run = [];
+      changed = true;
+    };
+    Array.from(root.childNodes).forEach((n) => {
+      if (n.nodeType === 1 && n.tagName === "DIV") { flush(); return; }
+      // Stray whitespace between lines isn't a line of its own.
+      if (n.nodeType === 3 && !run.length && /^[ \t\r\n]*$/.test(n.nodeValue)) return;
+      run.push(n);
+    });
+    flush();
+    if (!root.querySelector(":scope > div")) { root.appendChild(emptyLine()); changed = true; }
+    if (!changed || !saved || document.activeElement !== root) return;
+    try {
+      if (saved.a === root || saved.f === root) {
+        // Caret was parked on the editor itself (e.g. it had just been
+        // emptied): drop it into the first/last line instead.
+        const line = saved.ao === 0 ? root.firstElementChild : root.lastElementChild;
+        const r = document.createRange();
+        r.selectNodeContents(line);
+        r.collapse(saved.ao === 0);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      } else {
+        sel.setBaseAndExtent(saved.a, saved.ao, saved.f, saved.fo);
+      }
+    } catch (err) { /* selection couldn't be restored — leave the browser's */ }
   }
 
   // Removes everything decorateDRCCards adds (classes + CSS variables) from
@@ -10280,6 +10339,7 @@
 
   function openDRCTemplateModal() {
     drcTemplateTextarea.innerHTML = noteHtmlFromDRCTemplate(getDRCTemplateText());
+    drcEnsureLineDivs(drcTemplateTextarea);
     decorateDRCCards(drcTemplateTextarea, "template");
     zoomModalOpen(drcTemplateModal);
     requestAnimationFrame(() => drcTemplateTextarea.focus());
@@ -10301,18 +10361,27 @@
   if (drcTemplateModal) {
     $("#drc-template-reset").addEventListener("click", () => {
       drcTemplateTextarea.innerHTML = noteHtmlFromDRCTemplate(DEFAULT_DRC_TEMPLATE_TEXT);
+      drcEnsureLineDivs(drcTemplateTextarea);
       decorateDRCCards(drcTemplateTextarea, "template");
     });
     // Keep the cards in step with every edit (new line = new card), and
-    // wire up the recolor ring on each card's heading.
+    // wire up the recolor ring on each card's heading. Wrapping a bare
+    // first line into a <div> moves a text node, which would cancel an
+    // in-progress IME composition (Telex/VNI) — so that step waits until
+    // the composition ends.
     let drcTemplateCardsRaf = 0;
-    drcTemplateTextarea.addEventListener("input", () => {
+    let drcTemplateComposing = false;
+    const scheduleDrcTemplateCards = () => {
       if (drcTemplateCardsRaf) return;
       drcTemplateCardsRaf = requestAnimationFrame(() => {
         drcTemplateCardsRaf = 0;
+        if (!drcTemplateComposing) drcEnsureLineDivs(drcTemplateTextarea);
         decorateDRCCards(drcTemplateTextarea, "template");
       });
-    });
+    };
+    drcTemplateTextarea.addEventListener("input", scheduleDrcTemplateCards);
+    drcTemplateTextarea.addEventListener("compositionstart", () => { drcTemplateComposing = true; });
+    drcTemplateTextarea.addEventListener("compositionend", () => { drcTemplateComposing = false; scheduleDrcTemplateCards(); });
     bindDRCCardColorDot(drcTemplateTextarea, () => true, (head, color) => {
       head.setAttribute("data-card-color", color);
       decorateDRCCards(drcTemplateTextarea, "template");
@@ -10369,7 +10438,12 @@
     drcTemplateTextarea.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Enter" && !e.shiftKey) {
-        if (drcHandleEnter()) e.preventDefault();
+        if (drcHandleEnter()) {
+          e.preventDefault();
+          // The handler built the new line itself (no `input` event fires),
+          // so give it its card right now, not on the next keystroke.
+          decorateDRCCards(drcTemplateTextarea, "template");
+        }
       }
     });
 
@@ -14813,7 +14887,13 @@
     }
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
-      if (noteHandleEnter()) e.preventDefault();
+      if (noteHandleEnter()) {
+        e.preventDefault();
+        // noteHandleEnter builds the new line itself (no `input` event
+        // fires), so on a DRC note give that line its card immediately —
+        // otherwise the caret sits outside the card until you type.
+        refreshDRCCards();
+      }
     }
     // Alt+Left/Right switch between a node's notes without leaving the
     // keyboard — plain arrow keys stay reserved for moving the caret.
@@ -19119,7 +19199,9 @@
     });
   }
 
-  $("#btn-favoritesbrowser").addEventListener("click", openFavoritesBrowserModal);
+  // The sidebar ⭐ Favorites button was removed — each browser (Notes / Photos /
+  // Videos) has its own "Favorite" folder now. The modal below is kept but is no
+  // longer opened from anywhere.
   $("#favoritesbrowser-close").addEventListener("click", closeFavoritesBrowserModal);
   favoritesBrowserModal.addEventListener("click", (e) => { if (e.target === favoritesBrowserModal) closeFavoritesBrowserModal(); });
   favoritesBrowserSearch.addEventListener("input", renderFavoritesBrowserList);

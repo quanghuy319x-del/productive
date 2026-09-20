@@ -3619,15 +3619,38 @@ kbd{
    file-manager-style way to sort each browser's items into folders (see
    createFolderManager in app.js). The sidebar sits to the left of the
    existing list; picking a folder just filters that same list. */
-.tagbrowser-modal-card.browser-with-folders{ width: 620px; }
+/* FIXED SIZE: the Notes / Photos / Videos browsers used to be exactly as
+   tall as their current list, so every folder click, search keystroke or
+   sort change (fewer/more rows) made the whole window grow, shrink and
+   re-center. Now the card is a constant width AND height; the header,
+   search box and sort row stay put, and only the folder column and the
+   list scroll inside it. */
+.tagbrowser-modal-card.browser-with-folders{
+  width: 620px;
+  height: min(720px, 82vh);
+  max-height: 82vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;            /* the card itself never scrolls — its two panes do */
+}
+.tagbrowser-modal-card.browser-with-folders > .modal-back-row,
+.tagbrowser-modal-card.browser-with-folders > .tagbrowser-hint,
+.tagbrowser-modal-card.browser-with-folders > .commentbrowser-search,
+.tagbrowser-modal-card.browser-with-folders > .notesbrowser-sort-row{
+  flex:none;
+}
 .browser-body{
   display:flex;
   gap:12px;
-  align-items:flex-start;
+  align-items:stretch;        /* both panes fill the remaining height */
+  flex:1 1 auto;
+  min-height:0;               /* lets the panes scroll instead of stretching the card */
 }
 .browser-body > .favoritesbrowser-list{
   flex:1 1 auto;
   min-width:0;
+  min-height:0;
+  overflow-y:auto;
 }
 /* 140px left barely one short word visible before the label's ellipsis
    took over, which made anything but a very short folder name
@@ -3643,7 +3666,7 @@ kbd{
   display:flex;
   flex-direction:column;
   gap:2px;
-  max-height: 520px;
+  min-height:0;
   overflow-y:auto;
   padding-right:6px;
   border-right:1px solid var(--border);
@@ -4046,11 +4069,22 @@ kbd{
   padding-bottom: 6px;
 }
 .drc-cards > .drc-card-head.drc-card-last{ border-radius: 8px; }
-/* Blank line(s) after a card's last filled line: just spacing between
-   cards, kept clickable so a new line can still be typed there. */
-.drc-cards > .drc-card-gap{
-  min-height: .9em;
-  line-height: .9em;
+/* Blank lines under a card's last filled line stay INSIDE that card (they
+   used to be a card-less ".drc-card-gap" spacer, which left the caret
+   outside every card). The space between cards comes from the heading's
+   margin-top above. .drc-card-gap is no longer produced by app.js. */
+
+/* Template editor with nothing typed yet: a single blank card with the
+   hint drawn inside it. Absolutely positioned so the caret sits at the
+   start of the line, not after the hint. */
+.drc-template-textarea.drc-is-empty > .drc-card-head::before{
+  content: "One section per line…";
+  position: absolute;
+  left: 18px;
+  top: 6px;
+  color: var(--paper-text-dim);
+  pointer-events: none;
+  white-space: nowrap;
 }
 .drc-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
 .drc-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
