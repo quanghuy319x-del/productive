@@ -4109,6 +4109,14 @@ kbd{
   padding-bottom: 6px;
 }
 .drc-cards > .drc-card-head.drc-card-last{ border-radius: 8px; }
+/* DRC Template editor: no bold accent bar on the left of each card — the
+   tint and the recolor ring already carry the card's color. Padding grows
+   by the 4px the border took up, so the text (and the empty-state hint,
+   left:18px below) stay exactly where they were. DRC notes are unchanged. */
+.drc-template-textarea.drc-cards > .drc-card-line{
+  border-left: none;
+  padding-left: 18px;
+}
 /* Blank lines under a card's last filled line stay INSIDE that card (they
    used to be a card-less ".drc-card-gap" spacer, which left the caret
    outside every card). The space between cards comes from the heading's
