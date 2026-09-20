@@ -4004,6 +4004,54 @@ kbd{
 .drc-template-textarea div{ min-height: 1.6em; }
 .drc-template-textarea:focus{ border-color: var(--accent); }
 .drc-template-toolbar{ margin-top: 8px; justify-content: flex-start; }
+
+/* ---- DRC cards: each section heading + the lines under it drawn as one
+   tinted, rounded card (like a colored task row), recolored from the ring
+   at the heading's right edge. See decorateDRCCards in app.js — the
+   classes/variables here are added to the editor's existing line <div>s and
+   are never saved. ---- */
+.note-textarea.drc-cards{ padding: 6px 8px; }
+.drc-cards > .drc-card-line{
+  background: var(--dc-tint);
+  border-left: 4px solid var(--dc-accent);
+  padding: 1px 14px;
+  margin: 0;
+}
+.drc-cards > .drc-card-head{
+  position: relative;
+  margin-top: 8px;
+  padding-top: 6px;
+  padding-bottom: 4px;
+  padding-right: 46px; /* room for the recolor ring */
+  background: var(--dc-strong);
+  border-radius: 8px 8px 0 0;
+}
+.drc-cards > .drc-card-head:first-child{ margin-top: 0; }
+.drc-cards > .drc-card-head::after{
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--dc-accent);
+  background: var(--dc-tint);
+  pointer-events: none;
+}
+.drc-cards > .drc-card-last{
+  border-radius: 0 0 8px 8px;
+  padding-bottom: 6px;
+}
+.drc-cards > .drc-card-head.drc-card-last{ border-radius: 8px; }
+/* Blank line(s) after a card's last filled line: just spacing between
+   cards, kept clickable so a new line can still be typed there. */
+.drc-cards > .drc-card-gap{
+  min-height: .9em;
+  line-height: .9em;
+}
 .drc-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
 .drc-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
 .drc-color-swatch[data-color="#000000"]{ color:#000000; }

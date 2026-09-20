@@ -10030,6 +10030,242 @@
     quoteBannerModal.addEventListener("click", (e) => { if (e.target === quoteBannerModal) zoomModalClose(quoteBannerModal); });
   }
 
+  /* ---------------- DRC "cards" ---------------- */
+  // A DRC note (and the DRC template editor) shows each section heading
+  // (📊 OVERVIEW, ✅ GOOD, …) and the lines typed under it as one rounded,
+  // tinted card — the same look as a colored task row — with a small ring
+  // at the heading's right edge that opens a swatch popover to recolor
+  // that card.
+  //
+  // Purely a *decoration* layered on the editor's existing flat line
+  // <div>s: nothing is wrapped or moved, so Enter, checklists, undo and
+  // every other line-based editing feature keep working exactly as
+  // before. Which lines belong to which card is recomputed from position
+  // (a card = its heading line + everything up to the next heading), so a
+  // line typed under a heading is in that card immediately. Only the
+  // chosen color is stored, as a `data-card-color` attribute on the heading
+  // line; the classes/CSS variables that draw the card are stripped again
+  // before a note/template is saved (see drcStripCardMarkup).
+  //
+  // Which lines count as headings:
+  //  - template editor: every non-blank line (one section per line);
+  //  - a DRC note: any line whose text equals one of the template's lines.
+  const DRC_CARD_COLORS = ["#6F94CC", "#5DBB63", "#E84D42", "#F39236", "#756BD1", "#0BC09C", "#E86BB8", "#F2C94C"];
+  const DRC_CARD_NEUTRAL = "#9A9A94";
+  const DRC_CARD_CLASSES = ["drc-card-line", "drc-card-head", "drc-card-last", "drc-card-gap"];
+  const drcCardSig = new WeakMap(); // line element -> last decoration applied (skips redundant DOM writes)
+
+  function drcNorm(s) { return (s || "").replace(/\s+/g, " ").trim(); }
+  function drcIsBlankLine(el) {
+    return !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !(el.querySelector && el.querySelector("img"));
+  }
+  function drcCardPaint(color) {
+    const hex = (color && /^#[0-9a-f]{6}$/i.test(color)) ? color : DRC_CARD_NEUTRAL;
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    return { accent: hex, tint: `rgba(${r}, ${g}, ${b}, 0.10)`, strong: `rgba(${r}, ${g}, ${b}, 0.20)` };
+  }
+  function drcResetLine(el) {
+    el.classList.remove(...DRC_CARD_CLASSES);
+    el.style.removeProperty("--dc-accent");
+    el.style.removeProperty("--dc-tint");
+    el.style.removeProperty("--dc-strong");
+    if (!el.getAttribute("style")) el.removeAttribute("style");
+    if (!el.getAttribute("class")) el.removeAttribute("class");
+  }
+  // state: null (plain line) or { head, last, gap, color }.
+  function drcSetCardState(el, state) {
+    const sig = state ? `${state.head ? 1 : 0}${state.last ? 1 : 0}${state.gap ? 1 : 0}|${state.color}` : "none";
+    if (drcCardSig.get(el) === sig) return;
+    // A plain line that was never decorated: leave its markup completely
+    // alone (so opening an ordinary note can't alter its stored HTML).
+    if (!state && !el.classList.contains("drc-card-line") && !el.classList.contains("drc-card-gap")
+        && (el.getAttribute("style") || "").indexOf("--dc-") === -1) {
+      drcCardSig.set(el, sig);
+      return;
+    }
+    drcResetLine(el);
+    if (state) {
+      if (state.gap) {
+        el.classList.add("drc-card-gap");
+      } else {
+        const p = drcCardPaint(state.color);
+        el.classList.add("drc-card-line");
+        if (state.head) el.classList.add("drc-card-head");
+        if (state.last) el.classList.add("drc-card-last");
+        el.style.setProperty("--dc-accent", p.accent);
+        el.style.setProperty("--dc-tint", p.tint);
+        el.style.setProperty("--dc-strong", p.strong);
+      }
+    }
+    drcCardSig.set(el, sig);
+  }
+
+  // The template's own sections as [{ title, color }] — colors come from
+  // each line's data-card-color, else a default by position. Used to
+  // recognise (and color) the heading lines inside a DRC note.
+  function drcTemplateCards() {
+    const raw = getDRCTemplateText();
+    const found = [];
+    if (looksLikeHtml(raw)) {
+      const box = document.createElement("div");
+      box.innerHTML = raw;
+      Array.from(box.childNodes).forEach((n) => {
+        if (n.nodeType === 3) {
+          const t = drcNorm(n.nodeValue);
+          if (t) found.push({ title: t, color: null });
+        } else if (n.nodeType === 1) {
+          const t = drcNorm(n.textContent);
+          if (t) found.push({ title: t, color: n.getAttribute("data-card-color") || null });
+        }
+      });
+    } else {
+      raw.split("\n").map(drcNorm).filter(Boolean).forEach((t) => found.push({ title: t, color: null }));
+    }
+    return found.map((c, i) => ({ title: c.title, color: c.color || DRC_CARD_COLORS[i % DRC_CARD_COLORS.length] }));
+  }
+
+  // mode: "template" | "note" | null (null = not a card view: clear it).
+  function decorateDRCCards(root, mode) {
+    if (!root) return;
+    const kids = Array.from(root.children).filter((el) => el.tagName !== "BR");
+    if (!mode) {
+      root.classList.remove("drc-cards");
+      kids.forEach((el) => drcSetCardState(el, null));
+      return;
+    }
+    root.classList.add("drc-cards");
+    const titleColor = mode === "note" ? new Map(drcTemplateCards().map((c) => [drcNorm(c.title), c.color])) : null;
+    const isHead = (el) => {
+      const t = drcNorm(el.textContent);
+      if (!t) return false;
+      return mode === "template" ? true : titleColor.has(t);
+    };
+    let ordinal = 0;
+    let i = 0;
+    while (i < kids.length) {
+      const head = kids[i];
+      if (!isHead(head)) {
+        drcSetCardState(head, null);
+        // A stray copy of a card color on a non-heading line (the browser
+        // can clone attributes when a line is split) has no meaning.
+        if (mode === "note" && head.hasAttribute("data-card-color")) head.removeAttribute("data-card-color");
+        i++;
+        continue;
+      }
+      let j = i + 1;
+      while (j < kids.length && !isHead(kids[j])) j++;
+      let lastFilled = i;
+      for (let k = i + 1; k < j; k++) if (!drcIsBlankLine(kids[k])) lastFilled = k;
+      let color = head.getAttribute("data-card-color");
+      if (!color) {
+        if (mode === "template") {
+          color = DRC_CARD_COLORS[ordinal % DRC_CARD_COLORS.length];
+          head.setAttribute("data-card-color", color); // remember the default so it's stable once saved
+        } else {
+          color = titleColor.get(drcNorm(head.textContent));
+        }
+      }
+      ordinal++;
+      for (let k = i; k < j; k++) {
+        if (k > lastFilled) drcSetCardState(kids[k], { gap: true, color });
+        else drcSetCardState(kids[k], { head: k === i, last: k === lastFilled, color });
+      }
+      i = j;
+    }
+  }
+
+  // Removes everything decorateDRCCards adds (classes + CSS variables) from
+  // an HTML string, keeping the real content and data-card-color — so a
+  // saved note/template is the same as it would have been without cards,
+  // and just opening a note never counts as editing it.
+  function drcStripCardMarkup(html) {
+    if (!html || (html.indexOf("drc-card") === -1 && html.indexOf("--dc-") === -1)) return html;
+    const box = document.createElement("div");
+    box.innerHTML = html;
+    box.querySelectorAll("[class*='drc-card'], [style*='--dc-']").forEach(drcResetLine);
+    return box.innerHTML;
+  }
+
+  // ---- Card color popover (reuses the task color-dot popover styling) ----
+  const drcCardPopover = document.createElement("div");
+  drcCardPopover.className = "task-color-popover drc-card-popover hidden";
+  let drcCardPopoverPick = null; // callback(color | "none") for the popover's current owner
+  (function buildDrcCardPopover() {
+    const none = document.createElement("span");
+    none.className = "task-color-swatch task-color-swatch-none";
+    none.title = "No color";
+    none.dataset.color = "none";
+    drcCardPopover.appendChild(none);
+    PALETTE.forEach((c) => {
+      const sw = document.createElement("span");
+      sw.className = "task-color-swatch";
+      sw.style.background = c;
+      sw.dataset.color = c;
+      drcCardPopover.appendChild(sw);
+    });
+    drcCardPopover.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+    drcCardPopover.addEventListener("click", (e) => {
+      const sw = e.target.closest(".task-color-swatch");
+      if (!sw) return;
+      e.stopPropagation();
+      const pick = drcCardPopoverPick;
+      closeDrcCardPopover();
+      if (pick) pick(sw.dataset.color);
+    });
+    document.body.appendChild(drcCardPopover);
+    document.addEventListener("mousedown", (e) => {
+      if (!drcCardPopover.classList.contains("hidden") && !drcCardPopover.contains(e.target)) closeDrcCardPopover();
+    });
+  })();
+  function closeDrcCardPopover() {
+    drcCardPopover.classList.add("hidden");
+    drcCardPopoverPick = null;
+  }
+  function openDrcCardPopover(head, pick) {
+    const cur = head.getAttribute("data-card-color");
+    drcCardPopover.querySelectorAll(".task-color-swatch").forEach((sw) => {
+      sw.classList.toggle("active", sw.dataset.color === cur);
+    });
+    drcCardPopoverPick = pick;
+    drcCardPopover.classList.remove("hidden");
+    const margin = 8;
+    const r = head.getBoundingClientRect();
+    const pop = drcCardPopover.getBoundingClientRect();
+    let left = r.right - 34 + 8 - pop.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - pop.width - margin));
+    let top = r.top + r.height / 2 + 14;
+    if (top + pop.height > window.innerHeight - margin) top = r.top + r.height / 2 - pop.height - 14;
+    drcCardPopover.style.left = `${left}px`;
+    drcCardPopover.style.top = `${Math.max(margin, top)}px`;
+  }
+
+  // The recolor ring is drawn by CSS (::after) on the card's heading line,
+  // so there's no real button to click — a click/tap counts as hitting it
+  // when it lands on a heading line's right-hand edge.
+  function drcCardDotHit(root, e) {
+    const head = e.target && e.target.closest ? e.target.closest(".drc-card-head") : null;
+    if (!head || head.parentNode !== root) return null;
+    const r = head.getBoundingClientRect();
+    const cy = r.top + r.height / 2;
+    return (e.clientX >= r.right - 38 && e.clientX <= r.right && Math.abs(e.clientY - cy) <= 18) ? head : null;
+  }
+  // `canEdit()` gates it (a locked note shouldn't be recolorable);
+  // `apply(head, color)` writes the color and does whatever refresh/save
+  // the owning editor needs.
+  function bindDRCCardColorDot(root, canEdit, apply) {
+    root.addEventListener("mousedown", (e) => { if (drcCardDotHit(root, e)) e.preventDefault(); });
+    root.addEventListener("click", (e) => {
+      const head = drcCardDotHit(root, e);
+      if (!head || !canEdit()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openDrcCardPopover(head, (color) => apply(head, color));
+    });
+    root.addEventListener("mousemove", (e) => {
+      root.style.cursor = drcCardDotHit(root, e) ? "pointer" : "";
+    });
+  }
+
   /* ---------------- DRC template editor ---------------- */
   // Lets the person edit the standing DRC (Daily Report Card) template as
   // one whole block of text in a single textarea. WYSIWYG: whatever's
@@ -10044,6 +10280,7 @@
 
   function openDRCTemplateModal() {
     drcTemplateTextarea.innerHTML = noteHtmlFromDRCTemplate(getDRCTemplateText());
+    decorateDRCCards(drcTemplateTextarea, "template");
     zoomModalOpen(drcTemplateModal);
     requestAnimationFrame(() => drcTemplateTextarea.focus());
   }
@@ -10058,12 +10295,27 @@
   // (e.g. "<div><br></div>") that isn't actually blank text.
   function saveDRCTemplateFromTextarea() {
     const isEmpty = !drcTemplateTextarea.textContent.trim();
-    saveDRCTemplateText(isEmpty ? getDRCTemplateText() : drcTemplateTextarea.innerHTML);
+    saveDRCTemplateText(isEmpty ? getDRCTemplateText() : drcStripCardMarkup(drcTemplateTextarea.innerHTML));
   }
 
   if (drcTemplateModal) {
     $("#drc-template-reset").addEventListener("click", () => {
       drcTemplateTextarea.innerHTML = noteHtmlFromDRCTemplate(DEFAULT_DRC_TEMPLATE_TEXT);
+      decorateDRCCards(drcTemplateTextarea, "template");
+    });
+    // Keep the cards in step with every edit (new line = new card), and
+    // wire up the recolor ring on each card's heading.
+    let drcTemplateCardsRaf = 0;
+    drcTemplateTextarea.addEventListener("input", () => {
+      if (drcTemplateCardsRaf) return;
+      drcTemplateCardsRaf = requestAnimationFrame(() => {
+        drcTemplateCardsRaf = 0;
+        decorateDRCCards(drcTemplateTextarea, "template");
+      });
+    });
+    bindDRCCardColorDot(drcTemplateTextarea, () => true, (head, color) => {
+      head.setAttribute("data-card-color", color);
+      decorateDRCCards(drcTemplateTextarea, "template");
     });
     $("#drc-template-close").addEventListener("click", () => {
       saveDRCTemplateFromTextarea();
@@ -13033,6 +13285,7 @@
 
   function noteRestoreSnapshot(html) {
     noteTextarea.innerHTML = html;
+    refreshDRCCards();
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
@@ -13345,6 +13598,7 @@
     }
     noteTextarea.innerHTML = noteHtmlFromRaw(current.html);
     setNoteAutoColorEnabled(!isDRCNote(current));
+    refreshDRCCards();
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
@@ -13427,6 +13681,18 @@
     noteNavFolder.classList.toggle("has-folder", !!folder);
   }
 
+  // Shows the open note as DRC cards when (and only when) its title is
+  // "DRC" — see decorateDRCCards. Cheap and idempotent, so it's simply
+  // re-run after every load/edit/undo and whenever the title changes.
+  function refreshDRCCards() {
+    decorateDRCCards(noteTextarea, isDRCNote({ title: noteTitleInput.value }) ? "note" : null);
+  }
+  let drcNoteCardsRaf = 0;
+  function refreshDRCCardsSoon() {
+    if (drcNoteCardsRaf) return;
+    drcNoteCardsRaf = requestAnimationFrame(() => { drcNoteCardsRaf = 0; refreshDRCCards(); });
+  }
+
   // Reads whatever's currently in the editor (title + body) back into the
   // working list, without touching the node yet — called before
   // navigating away from the note currently on screen so nothing typed
@@ -13435,7 +13701,12 @@
     const current = noteWorkingList[noteActiveIndex];
     if (!current) return;
     const newTitle = noteTitleInput.value;
-    const newHtml = noteTextarea.innerHTML;
+    // The card decoration (classes + CSS variables) lives only in the open
+    // editor — never in what's saved — so merely opening a DRC note isn't
+    // counted as changing it.
+    const newHtml = noteTextarea.classList.contains("drc-cards")
+      ? drcStripCardMarkup(noteTextarea.innerHTML)
+      : noteTextarea.innerHTML;
     if (current.title !== newTitle || current.html !== newHtml) {
       current.updatedAt = Date.now();
       // Backfills a timestamp for notes written before this field existed,
@@ -14455,7 +14726,7 @@
   noteModal.addEventListener("click", (e) => {
     if (!noteIsResizing && e.target === noteModal && noteBackdropMousedown) closeNoteModal();
   });
-  noteTitleInput.addEventListener("input", scheduleNoteAutosave);
+  noteTitleInput.addEventListener("input", () => { scheduleNoteAutosave(); refreshDRCCardsSoon(); });
   noteTitleInput.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Enter/Delete/arrows trigger the canvas shortcuts while typing a title
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
@@ -14508,7 +14779,15 @@
       updateNoteToolActiveStates();
     }
   });
-  noteTextarea.addEventListener("input", () => { noteAutoColorParagraphs(); scheduleNoteAutosave(); });
+  noteTextarea.addEventListener("input", () => { noteAutoColorParagraphs(); scheduleNoteAutosave(); refreshDRCCardsSoon(); });
+  // Recolor a DRC card from the ring on its heading (undoable with the
+  // editor's own undo, autosaved like any other edit).
+  bindDRCCardColorDot(noteTextarea, () => noteTextarea.contentEditable !== "false", (head, color) => {
+    notePushUndo();
+    head.setAttribute("data-card-color", color);
+    refreshDRCCards();
+    scheduleNoteAutosave();
+  });
   noteTextarea.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Tab/Enter/Delete trigger the canvas shortcuts while typing a note
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
