@@ -15923,9 +15923,12 @@
       li.appendChild(handle);
       li.appendChild(cb);
       li.appendChild(text);
+      // Add-subtask "+" sits right at the end of the task name (before the
+      // due date / note icons) — still hidden until the row is hovered,
+      // see .task-subtask-btn in style.css.
+      li.appendChild(subtaskBtn);
       li.appendChild(dueBtn);
       li.appendChild(noteBtn);
-      li.appendChild(subtaskBtn);
       li.appendChild(star);
       li.appendChild(colorBtn);
       li.appendChild(del);
