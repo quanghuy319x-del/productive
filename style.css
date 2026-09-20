@@ -5204,11 +5204,39 @@ kbd{
 .subtask-note-icon .drc-icon-inline{ margin-right: 0; vertical-align: top; }
 
 /* ← Back buttons on the note editor, photo viewer and video player (see
-   "viewer ← Back navigation" in app.js). The photo/video ones are plain
-   arrows, so give the glyph a little more weight to read at button size. */
-#photo-modal-back{ font-size:17px; padding-bottom:2px; }
-#video-modal-back{ font-size:16px; padding-bottom:2px; }
-#photo-modal-back, #video-modal-back{ font-weight:700; }
-/* On the video card, the "Open on YouTube" link pushes everything else to
-   the right (margin-right:auto), so the back button needs a gap of its own. */
-#video-modal-back{ margin-right:2px; }
+   "viewer ← Back navigation" in app.js) — all pinned to the top-left. */
+/* Note: its own line above the title, inside the card's top-left corner. */
+.note-nav-back{ align-self:flex-start; margin-bottom:8px; }
+/* Photo: fixed to the viewport's top-left, mirroring the top-right toolbar. */
+.photo-modal-back{
+  position: fixed;
+  top: 12px;
+  left: calc(4vw - 16px);
+  z-index: 101;
+  font-size: 17px;
+  font-weight: 700;
+  padding-bottom: 2px;
+}
+/* Video: a direct child of the dimmed overlay, so it sits in the screen's
+   top-left corner however big the player card is. */
+.video-modal-back{
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 2;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  padding-bottom: 2px;
+  display:flex; align-items:center; justify-content:center;
+  cursor: pointer;
+}
+.video-modal-back:hover{ background: rgba(255,255,255,0.22); }
+/* The minimized player has no dimmed overlay to anchor a corner button to
+   (and the overlay ignores clicks there) — ✕ is still on the mini card. */
+.video-modal.mini .video-modal-back{ display:none; }

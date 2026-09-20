@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=95">
+<link rel="stylesheet" href="style.css?v=96">
 </head>
 <body>
 <div id="app">
@@ -254,8 +254,8 @@
          🔢/Aa/⛶(crop)/☆(favorite) are inserted here by app.js, in that
          order, right before the comment toggle — see the insertBefore
          chain near photoModalToolbarTop in app.js. -->
+    <button id="photo-modal-back" class="photo-modal-toolbar-btn photo-modal-back" title="Back" aria-label="Back">←</button>
     <div id="photo-modal-toolbar-top" class="photo-modal-toolbar photo-modal-toolbar-top">
-      <button id="photo-modal-back" class="photo-modal-toolbar-btn" title="Back" aria-label="Back">←</button>
       <button id="photo-modal-comment-toggle" class="photo-modal-toolbar-btn" title="Add/view comment" aria-label="Add or view comment">💬</button>
       <button id="photo-modal-folder" class="photo-modal-toolbar-btn" title="Move to folder" aria-label="Move to folder">📁</button>
       <button id="photo-modal-delete" class="photo-modal-toolbar-btn" title="Delete this photo" aria-label="Delete this photo">🗑</button>
@@ -315,12 +315,12 @@
 </div>
 
 <div id="video-modal" class="modal video-modal hidden">
+  <button id="video-modal-back" class="video-modal-back" title="Back" aria-label="Back">←</button>
   <div class="modal-card video-modal-card">
     <div class="video-modal-frame-wrap">
       <div id="video-modal-iframe" class="video-modal-iframe"></div>
     </div>
     <div class="video-modal-actions">
-      <button id="video-modal-back" class="video-modal-size" title="Back" aria-label="Back">←</button>
       <a id="video-modal-open-link" class="video-modal-open-link" target="_blank" rel="noopener">Open on YouTube ↗</a>
       <button id="video-modal-favorite" class="video-modal-size item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
       <button id="video-modal-folder" class="video-modal-size" title="Move to folder" aria-label="Move to folder">📁</button>
@@ -550,9 +550,9 @@
 
 <div id="note-modal" class="modal hidden">
   <div class="modal-card note-modal-card">
+    <button type="button" id="note-nav-back" class="note-nav-btn note-nav-back" title="Back" aria-label="Back">← Back</button>
     <input id="note-title-input" class="note-title-input" spellcheck="false">
     <div class="note-nav-row">
-      <button type="button" id="note-nav-back" class="note-nav-btn" title="Back" aria-label="Back">← Back</button>
       <span class="note-nav-gap"></span>
       <button type="button" id="note-nav-add" class="note-nav-btn" title="Start a new note on this node">+ New note</button>
       <button type="button" id="note-nav-favorite" class="note-nav-btn item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
@@ -790,6 +790,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=168"></script>
+<script src="app.js?v=169"></script>
 </body>
 </html>
