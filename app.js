@@ -14247,9 +14247,13 @@
   // inside, so anything typed on it falls back to the browser's default
   // black instead of continuing in whatever color the line above it was.
   const NOTE_DEFAULT_TEXT_RGB = "rgb(43, 42, 37)"; // #2b2a25, the "Default text" swatch
-  function noteEmptyLineContent(color) {
+  // `baseRgb` (optional) is the color the line itself already renders in —
+  // e.g. its own div-level color. The <font> wrapper is only needed when the
+  // caret color differs from that, not from the global default.
+  function noteEmptyLineContent(color, baseRgb) {
     const br = document.createElement("br");
-    if (!color || color.replace(/\s+/g, "") === NOTE_DEFAULT_TEXT_RGB.replace(/\s+/g, "")) return br;
+    const plain = (baseRgb || NOTE_DEFAULT_TEXT_RGB).replace(/\s+/g, "");
+    if (!color || color.replace(/\s+/g, "") === plain) return br;
     const font = document.createElement("font");
     font.setAttribute("color", color);
     font.appendChild(br);
@@ -14262,6 +14266,12 @@
     // Capture the color in effect right at the caret before splitting —
     // needed below if either half of the split ends up empty.
     const caretColor = document.queryCommandValue("foreColor");
+    // With 🎨 auto-color off nothing re-colors lines for us, so Enter has to
+    // carry the current color over by itself: the line's own div-level color
+    // (left over from when auto-color was on) and whatever inline color the
+    // caret is sitting in. With it on, noteAutoColorParagraphs below keeps
+    // assigning the next color in the rotation, as before.
+    const keepColor = !noteAutoColorEnabled;
     const range = sel.getRangeAt(0);
     const afterRange = document.createRange();
     afterRange.setStart(range.startContainer, range.startOffset);
@@ -14272,11 +14282,18 @@
     else afterRange.setEnd(range.startContainer, range.startOffset);
     const frag = afterRange.extractContents();
     const newDiv = document.createElement("div");
-    let newDivEmptyContent = null;
-    if (frag.hasChildNodes()) newDiv.appendChild(frag);
-    else newDiv.appendChild((newDivEmptyContent = noteEmptyLineContent(caretColor)));
-    if (!el.hasChildNodes()) el.appendChild(noteEmptyLineContent(caretColor));
+    if (keepColor && el.style.color) newDiv.style.color = el.style.color;
     el.parentNode.insertBefore(newDiv, el.nextSibling);
+    // Caret at the very end of a colored run leaves only empty inline
+    // shells (<font color></font>) in the extracted fragment; the caret
+    // would then land before them, outside the color. Treat that as an
+    // empty line so the color is rebuilt around the caret below.
+    const fragHasContent = frag.hasChildNodes() &&
+      !(keepColor && !(frag.textContent || "").replace(/\u200b/g, "") && !(frag.querySelector && frag.querySelector("img")));
+    let newDivEmptyContent = null;
+    if (fragHasContent) newDiv.appendChild(frag);
+    else newDiv.appendChild((newDivEmptyContent = noteEmptyLineContent(caretColor, keepColor ? getComputedStyle(newDiv).color : undefined)));
+    if (!el.hasChildNodes()) el.appendChild(noteEmptyLineContent(caretColor, keepColor ? getComputedStyle(el).color : undefined));
     noteAutoColorParagraphs();
     const caretRange = document.createRange();
     // If the new line is the empty-<font><br></font> case, put the caret
@@ -14334,23 +14351,48 @@
 
     notePushUndo();
     const nextPrefix = numMatch ? `${parseInt(numMatch[1], 10) + 1}. ` : "☐ ";
-    el.textContent = prefix + before;
+    // With 🎨 auto-color off, the new line must keep the current color:
+    // capture it before the text is rewritten below.
+    const keepColor = !noteAutoColorEnabled;
+    const caretColor = keepColor ? document.queryCommandValue("foreColor") : "";
+    // Enter at the end of the line moves no text, so leave the line's
+    // markup (and any inline colors in it) untouched instead of flattening
+    // it through textContent.
+    if (after !== "" || !keepColor) el.textContent = prefix + before;
     if (numMatch) noteSetOrderedLineColor(el);
     noteSyncLineChecked(el);
 
     const newDiv = document.createElement("div");
     newDiv.textContent = nextPrefix + after;
+    if (keepColor) {
+      if (el.style.color) newDiv.style.color = el.style.color;
+      // Inline color at the caret (picked via the toolbar) isn't inherited
+      // by a fresh div, so wrap the new line's text in it when it differs
+      // from what the line already renders as.
+      if (lineDiv && lineDiv.parentNode) lineDiv.parentNode.insertBefore(newDiv, lineDiv.nextSibling);
+      else noteTextarea.appendChild(newDiv);
+      const plain = getComputedStyle(newDiv).color.replace(/\s+/g, "");
+      if (caretColor && caretColor.replace(/\s+/g, "") !== plain) {
+        const font = document.createElement("font");
+        font.setAttribute("color", caretColor);
+        font.textContent = newDiv.textContent;
+        newDiv.textContent = "";
+        newDiv.appendChild(font);
+      }
+    }
     if (numMatch) noteSetOrderedLineColor(newDiv);
     noteSyncLineChecked(newDiv);
-    if (lineDiv && lineDiv.parentNode) {
-      lineDiv.parentNode.insertBefore(newDiv, lineDiv.nextSibling);
-    } else {
-      noteTextarea.appendChild(newDiv);
+    if (!newDiv.parentNode) {
+      if (lineDiv && lineDiv.parentNode) {
+        lineDiv.parentNode.insertBefore(newDiv, lineDiv.nextSibling);
+      } else {
+        noteTextarea.appendChild(newDiv);
+      }
     }
 
     // Caret goes right after the new line's prefix — i.e. right before
     // whatever text got pushed down onto it.
-    const textNode = newDiv.firstChild;
+    const textNode = newDiv.firstChild && newDiv.firstChild.nodeName === "FONT" ? newDiv.firstChild.firstChild : newDiv.firstChild;
     const caretRange = document.createRange();
     if (textNode && textNode.nodeType === 3) {
       caretRange.setStart(textNode, Math.min(nextPrefix.length, textNode.length));
