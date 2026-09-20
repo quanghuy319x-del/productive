@@ -725,7 +725,40 @@
     if (url) { try { URL.revokeObjectURL(url); } catch (e) { /* already gone */ } }
     photoCache.delete(id);
     photoBlobCache.delete(id);
-    PhotoDB.delete(id).catch(e => console.error("Deleting photo failed", e));
+    // Don't touch the disk row yet. The map that's stored in IndexedDB may
+    // STILL point at this id (crop / add-text / combine swap a photo for a
+    // new id, and the map save that records the swap is debounced and can
+    // even queue behind a slow Drive upload). Deleting the row right now
+    // left a window where a refresh loaded a map referencing a photo that
+    // no longer existed — the photo just vanished. The row is deleted by
+    // releasePhotoDeletes() once a map save that no longer references it
+    // has actually landed.
+    pendingPhotoDeletes.add(id);
+  }
+
+  // ids whose PhotoDB row is waiting for a durable map save (see above).
+  const pendingPhotoDeletes = new Set();
+  // Called right BEFORE a map write starts: takes ownership of everything
+  // queued so far. Only ids removed from the tree before this moment are
+  // guaranteed to be absent from the map that write stores.
+  function takePendingPhotoDeletes() {
+    const ids = Array.from(pendingPhotoDeletes);
+    pendingPhotoDeletes.clear();
+    return ids;
+  }
+  // Called after that write succeeded. Skips any id the map points at again
+  // (e.g. an undo re-attached it in the meantime).
+  async function releasePhotoDeletes(ids, map) {
+    if (!ids || !ids.length) return;
+    try {
+      const still = map && map.root ? collectReferencedPhotoIds(map.root) : new Set();
+      const doomed = ids.filter((id) => !still.has(id));
+      if (doomed.length) await PhotoDB.deleteMany(doomed);
+    } catch (e) { console.error("Deleting photos failed", e); }
+  }
+  // The write failed — keep the rows and try again with the next save.
+  function requeuePhotoDeletes(ids) {
+    (ids || []).forEach((id) => pendingPhotoDeletes.add(id));
   }
 
   function photoUrl(id) {
@@ -4452,7 +4485,15 @@
     state.current.view = { scale: state.scale, tx: state.tx, ty: state.ty };
     const mapToSave = state.current;
     try {
-      await DB.put(mapToSave);
+      const deferredPhotoDeletes = takePendingPhotoDeletes();
+      try {
+        await DB.put(mapToSave);
+      } catch (putErr) {
+        requeuePhotoDeletes(deferredPhotoDeletes);
+        throw putErr;
+      }
+      // The stored map no longer references those photos — safe to drop them.
+      await releasePhotoDeletes(deferredPhotoDeletes, mapToSave);
       await FolderDB.save(mapToSave);
       // Local save (IndexedDB + connected folder) is the fast part and
       // is what this toolbar status is meant to reflect — flip it to
@@ -4509,8 +4550,24 @@
   // more pass for right after the current one finishes.
   let persistInFlight = false;
   let persistAgainAfter = false;
+  // runPersistNow() ends with the Drive upload, which on a photo-heavy map
+  // can take many seconds. While one is running, the next save used to just
+  // wait its turn — so an edit made in that window was not in IndexedDB at
+  // all until the upload finished, and a refresh threw it away. This writes
+  // the current state to IndexedDB straight away; the queued full pass still
+  // runs afterwards and does the folder mirror + Drive upload as before.
+  function saveLocalWhileBusy() {
+    const m = state.current;
+    if (!m) return;
+    m.updatedAt = Date.now();
+    m.view = { scale: state.scale, tx: state.tx, ty: state.ty };
+    const deferredPhotoDeletes = takePendingPhotoDeletes();
+    DB.put(m)
+      .then(() => releasePhotoDeletes(deferredPhotoDeletes, m))
+      .catch((e) => { requeuePhotoDeletes(deferredPhotoDeletes); console.error("Local save failed", e); });
+  }
   function kickPersist() {
-    if (persistInFlight) { persistAgainAfter = true; return; }
+    if (persistInFlight) { persistAgainAfter = true; saveLocalWhileBusy(); return; }
     persistInFlight = true;
     runPersistNow()
       .catch((e) => console.error("Persist failed", e))
