@@ -1458,7 +1458,11 @@
     // removes it. A map that's only ever existed locally (never made it
     // into fileIndex yet) is never touched by this — only maps we'd
     // already confirmed were on Drive.
+    // Resolves to true only if this pass actually changed local data
+    // (downloaded a newer/new map, or removed one deleted elsewhere), so
+    // callers like pollDriveUpdates can skip re-rendering when nothing did.
     async syncFromDrive() {
+      let changed = false;
       const remoteFiles = await this.listRemote();
       const previouslyKnownIds = new Set(Object.keys(this.fileIndex));
       const seenRemoteIds = new Set();
@@ -1488,6 +1492,7 @@
             state.maps.push(data);
             await DB.put(data);
           }
+          changed = true;
         } catch (e) { console.error("Drive download failed for one map", e); }
       }
       for (const id of previouslyKnownIds) {
@@ -1497,6 +1502,7 @@
         if (!existing) continue; // already gone locally too, nothing to do
         await DB.delete(id);
         await FolderDB.remove(existing);
+        changed = true;
         state.maps = state.maps.filter(m => m.id !== id);
         if (state.current && state.current.id === id) {
           state.current = null;
@@ -1514,6 +1520,7 @@
       this.lastSyncedAt = Date.now();
       this.syncBroken = false;
       this.consecutivePollFailures = 0;
+      return changed;
     }
   };
 
@@ -1801,6 +1808,11 @@
   // Drive's API quota is generous enough that 1s is fine while visible),
   // plus once immediately whenever you switch back to this tab.
   let driveSyncTimer = null;
+  // Set when a poll pulled in remote changes that the screen doesn't show
+  // yet; cleared once the map/sidebar have actually been redrawn. Needed
+  // because a poll can find changes while an edit is in progress (redraw
+  // must wait) and the *next* poll will see nothing new to report.
+  let driveRenderPending = false;
   function startDriveSyncPolling() {
     stopDriveSyncPolling();
     driveSyncTimer = setInterval(pollDriveUpdates, 1000);
@@ -1821,7 +1833,7 @@
     if (state.editingId || unsavedEdits) return;
     DriveDB.syncing = true;
     try {
-      await DriveDB.syncFromDrive();
+      if (await DriveDB.syncFromDrive()) driveRenderPending = true;
       // Then the other direction: re-upload any map whose local copy is
       // newer than Drive's (an earlier upload that never finished — see
       // pushLocalNewer). `force` is true when this poll was triggered by
@@ -1835,7 +1847,14 @@
       // from outside the user's tap gesture (which is why the on-screen
       // keyboard would flash and immediately close on mobile), or clobber
       // a change that's still mid-save.
-      if (!state.editingId && !unsavedEdits) {
+      // Only redraw when this poll (or an earlier one that had to wait)
+      // actually brought in changes. This used to rebuild the sidebar AND
+      // every node of the canvas from scratch on every 1-second tick even
+      // when nothing had changed — which made the whole map stutter, and
+      // dropped any click whose press and release straddled a rebuild
+      // (the element pressed no longer exists, so no click event fires).
+      if (driveRenderPending && !state.editingId && !unsavedEdits) {
+        driveRenderPending = false;
         renderSidebar();
         renderAll();
       }
@@ -9282,7 +9301,15 @@
   let pinchState = null;
 
   function startPan(clientX, clientY) {
-    commitEditIfActive();
+    // What was on screen before this press decides how much has to be
+    // redrawn afterwards (see the end of this function).
+    const hadEditing = !!state.editingId;
+    const hadCellState = !!(state.selectedCell || state.cellRange || state.cellRangeAnchor);
+    const prevSelectedId = state.selectedId;
+    // render:false — this function renders (at most) once itself below;
+    // letting commitEditIfActive render too made every click on empty
+    // canvas rebuild the whole map twice.
+    commitEditIfActive({ render: false });
     panning = true;
     panStart = { x: clientX, y: clientY, tx: state.tx, ty: state.ty };
     viewportEl.classList.add("panning");
@@ -9299,7 +9326,15 @@
     // cancel the pending link/move. Escape, completing the action, or
     // explicitly choosing "Cancel move" are the only ways to back out (see
     // updateLinkHint's hint text).
-    renderAll();
+    //
+    // Leaving an edit box or a table-cell selection needs the real
+    // thing (text may have changed size; cell highlights are drawn per
+    // render). A plain deselect only has to drop the .selected class —
+    // same cheap path selectNode uses — instead of tearing down and
+    // rebuilding every node, connector and photo thumbnail on the map
+    // just because the empty background was pressed.
+    if (hadEditing || hadCellState) renderAll();
+    else updateSelectedClasses(prevSelectedId, null);
   }
 
   viewportEl.addEventListener("mousedown", (e) => {
@@ -10382,10 +10417,8 @@
     drcTemplateTextarea.addEventListener("input", scheduleDrcTemplateCards);
     drcTemplateTextarea.addEventListener("compositionstart", () => { drcTemplateComposing = true; });
     drcTemplateTextarea.addEventListener("compositionend", () => { drcTemplateComposing = false; scheduleDrcTemplateCards(); });
-    bindDRCCardColorDot(drcTemplateTextarea, () => true, (head, color) => {
-      head.setAttribute("data-card-color", color);
-      decorateDRCCards(drcTemplateTextarea, "template");
-    });
+    // No card-color ring in the template editor (hidden in CSS), so
+    // nothing here binds bindDRCCardColorDot to it — DRC notes still do.
     $("#drc-template-close").addEventListener("click", () => {
       saveDRCTemplateFromTextarea();
       zoomModalClose(drcTemplateModal);
