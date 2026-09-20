@@ -199,6 +199,7 @@
       <tr><td>Add note…</td><td>Right-click a node and choose "Add note…" to attach a longer note — and you can attach more than one. Each note has an optional title field on its first line (<kbd>Enter</kbd> jumps from the title into the body) — the picker menus below use it, falling back to a preview of the body text if it's left blank. Nodes with notes show one small note-shaped marker per note, alongside any photo thumbnails. Click a marker to open that note; inside the editor use <kbd>Alt</kbd> + arrow keys to page between them, "+ New note" to start another, and 🗑 to delete the one on screen. Right-click any note marker for a quick list of every note on the node, each with its own ✕ to delete without opening the editor.</td></tr>
       <tr><td>Tasks…</td><td>Right-click a node and choose "Add tasks…" to keep a checklist for it (e.g. today's to-dos). Nodes with tasks show a small ring marker with a fraction like "2/5" — its fill grows as you check tasks off, and a progress bar on the node fills the same way. Click the ⏱ next to any task to start a 1-minute focus timer for it — click "+1m" any time to add more, it keeps running even if you close the modal, chimes when time's up, and counts down right in the browser tab's title alongside the task name (e.g. "⏱ 0:42 · Water the plants") so you can see it from another tab.</td></tr>
       <tr><td>Drag markers to another node</td><td>A node's note icon, link icon (both shown alongside its photo thumbnails), task ring/progress bar, or any individual photo thumbnail can all be dragged onto a different node to move that note, link, checklist, or photo over — hold <kbd>Alt</kbd>/<kbd>⌥</kbd> while dropping to copy instead of move. Each note marker drags just that one note. Dragging the "+N" photo badge moves the rest of that node's photos as a batch.</td></tr>
+      <tr><td>← Back</td><td>The note editor, photo viewer and YouTube player each have a ← Back button. If you opened one from a list (Notes, Photos, Videos, Favorites, a tag gallery…), Back returns to that list with the same folder, search and scroll position; from the map or from Tasks/Calendar it simply closes the viewer, leaving you where you were.</td></tr>
       <tr><td>Add image to note</td><td>In the note editor, click the 🖼 button to pick a photo, or paste (Ctrl/⌘+V) or drag-and-drop an image straight into the note.</td></tr>
       <tr><td>Add photo…</td><td>Right-click a node and choose "Add photo…" to attach one or more pictures to it (pick multiple files at once, or repeat to add more later). Nodes with photos show a small thumbnail with a count badge — click it to view full-size and step through them. With a node selected, you can also just paste (<kbd>Ctrl/⌘</kbd> + <kbd>V</kbd>) an image straight from your clipboard — handy right after taking a screenshot.</td></tr>
       <tr><td>🏷 Tags (inside 🖼 Photos)</td><td>Open 🖼 Photos in the sidebar, then tap the 🏷 Tags button next to the sort options to open a browser of every tag you've added to a photo, gathered from across the whole map. Tap a tag to see every photo carrying it, no matter which node it's on — tap a photo there to jump straight to its node (expanding any collapsed branch in the way) and open it full-size.</td></tr>
@@ -254,6 +255,7 @@
          order, right before the comment toggle — see the insertBefore
          chain near photoModalToolbarTop in app.js. -->
     <div id="photo-modal-toolbar-top" class="photo-modal-toolbar photo-modal-toolbar-top">
+      <button id="photo-modal-back" class="photo-modal-toolbar-btn" title="Back" aria-label="Back">←</button>
       <button id="photo-modal-comment-toggle" class="photo-modal-toolbar-btn" title="Add/view comment" aria-label="Add or view comment">💬</button>
       <button id="photo-modal-folder" class="photo-modal-toolbar-btn" title="Move to folder" aria-label="Move to folder">📁</button>
       <button id="photo-modal-delete" class="photo-modal-toolbar-btn" title="Delete this photo" aria-label="Delete this photo">🗑</button>
@@ -318,6 +320,7 @@
       <div id="video-modal-iframe" class="video-modal-iframe"></div>
     </div>
     <div class="video-modal-actions">
+      <button id="video-modal-back" class="video-modal-size" title="Back" aria-label="Back">←</button>
       <a id="video-modal-open-link" class="video-modal-open-link" target="_blank" rel="noopener">Open on YouTube ↗</a>
       <button id="video-modal-favorite" class="video-modal-size item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
       <button id="video-modal-folder" class="video-modal-size" title="Move to folder" aria-label="Move to folder">📁</button>
@@ -549,6 +552,7 @@
   <div class="modal-card note-modal-card">
     <input id="note-title-input" class="note-title-input" spellcheck="false">
     <div class="note-nav-row">
+      <button type="button" id="note-nav-back" class="note-nav-btn" title="Back" aria-label="Back">← Back</button>
       <span class="note-nav-gap"></span>
       <button type="button" id="note-nav-add" class="note-nav-btn" title="Start a new note on this node">+ New note</button>
       <button type="button" id="note-nav-favorite" class="note-nav-btn item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>

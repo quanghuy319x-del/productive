@@ -413,7 +413,7 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
   opacity: .45;
   pointer-events: none;
 }
-.note-locked .note-nav-btn:not(#note-nav-close){
+.note-locked .note-nav-btn:not(#note-nav-close):not(#note-nav-back){
   opacity: .45;
   pointer-events: none;
 }
@@ -5202,3 +5202,13 @@ kbd{
 .task-note-btn:hover .drc-icon-inline,
 .task-note-btn.has-note .drc-icon-inline{ filter: none; opacity: 1; }
 .subtask-note-icon .drc-icon-inline{ margin-right: 0; vertical-align: top; }
+
+/* ← Back buttons on the note editor, photo viewer and video player (see
+   "viewer ← Back navigation" in app.js). The photo/video ones are plain
+   arrows, so give the glyph a little more weight to read at button size. */
+#photo-modal-back{ font-size:17px; padding-bottom:2px; }
+#video-modal-back{ font-size:16px; padding-bottom:2px; }
+#photo-modal-back, #video-modal-back{ font-weight:700; }
+/* On the video card, the "Open on YouTube" link pushes everything else to
+   the right (margin-right:auto), so the back button needs a gap of its own. */
+#video-modal-back{ margin-right:2px; }

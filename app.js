@@ -10610,6 +10610,72 @@
   // falls back to growing from the card's own center, which reads as a
   // plain centered pop/fade — still the same iPhone-style motion, just
   // without a specific origin to grow from.
+  /* ---------------- viewer "← Back" navigation ---------------- */
+  // The note editor, photo viewer and YouTube player each get a ← Back
+  // button. Where it goes depends on where the viewer was opened from:
+  //  - a browser (Notes / Photos / Videos / Favorites / Comments / a tag
+  //    gallery): the browser is closed to make room for the viewer, so
+  //    Back re-opens it with the same folder, search text, tag gallery and
+  //    scroll position it had;
+  //  - a modal that is still open underneath (Tasks, Calendar, or the note
+  //    a photo was clicked in): Back just closes the viewer and that modal
+  //    is right there again;
+  //  - the map itself (node marker, right-click menu): Back closes the
+  //    viewer, which is exactly "back to the node".
+  // A caller describes where it came from with a "return point"
+  // { label, restore } and hands it over with withViewerReturn(); the
+  // viewer's open function picks it up via takeViewerReturn().
+  let pendingViewerReturn = null;
+  function withViewerReturn(ret, openFn) {
+    pendingViewerReturn = ret || null;
+    try { openFn(); } finally { pendingViewerReturn = null; }
+  }
+  function takeViewerReturn() {
+    const r = pendingViewerReturn;
+    pendingViewerReturn = null;
+    return r;
+  }
+  function runViewerReturn(ret) {
+    if (!ret || typeof ret.restore !== "function") return;
+    try { ret.restore(); } catch (err) { console.warn("Branchline: couldn't go back to", ret.label, err); }
+  }
+  function viewerBackTitle(ret) {
+    return ret && ret.label ? `Back to ${ret.label}` : "Back to map";
+  }
+  // "Notes", or "Notes › Work" when a folder is selected in that browser.
+  function browserReturnLabel(base, mgr) {
+    const sel = mgr && mgr.getSelected();
+    if (!sel) return base;
+    return `${base} › ${sel === "__unfiled__" ? "Unfiled" : sel}`;
+  }
+  // Builds the return point for a browser modal. Call it BEFORE closing the
+  // browser so the scroll position can still be read. `reopen(true)` must
+  // re-open the browser without resetting its search box.
+  function makeBrowserReturn(label, listEl, reopen, mgr) {
+    const sel = mgr ? mgr.getSelected() : null;
+    const top = listEl ? listEl.scrollTop : 0;
+    return {
+      label: mgr ? browserReturnLabel(label, mgr) : label,
+      restore: () => {
+        if (mgr) mgr.select(sel);
+        reopen(true);
+        const apply = () => { if (listEl) listEl.scrollTop = top; };
+        apply();
+        requestAnimationFrame(apply);
+      },
+    };
+  }
+  // A modal that stays open underneath a viewer: Back = just close the
+  // viewer, so there's nothing to restore — only a label for the tooltip.
+  function underlyingModalReturn() {
+    const under = [["#tasks-modal", "Tasks"], ["#calendar-modal", "Calendar"]];
+    for (const [sel, label] of under) {
+      const el = document.querySelector(sel);
+      if (el && !el.classList.contains("hidden")) return { label, restore: null };
+    }
+    return null;
+  }
+
   function zoomModalOpen(modalEl, cardSelector) {
     if (!modalEl) return;
     clearTimeout(modalEl.__zoomTimer);
@@ -10690,6 +10756,8 @@
   const videoModalMinimizeBtn = $("#video-modal-minimize");
   const videoModalSizeBtn = $("#video-modal-size");
   const videoModalCloseBtn = $("#video-modal-close");
+  const videoModalBackBtn = $("#video-modal-back");
+  let videoModalReturn = null;
   const videoModalCommentRow = $("#video-modal-comment-row");
   const videoModalCommentInput = $("#video-modal-comment-input");
   const videoModalPhotoStrip = $("#video-modal-photo-strip");
@@ -10825,6 +10893,12 @@
   // element's .src to an arbitrary site would leave the player object
   // pointed at a page that no longer understands its postMessage calls.
   async function openVideoModal(url, ytId, commentCtx) {
+    // Must be read before the first await — see withViewerReturn.
+    const pendingRet = takeViewerReturn();
+    if (pendingRet) videoModalReturn = pendingRet;
+    else if (videoModal.classList.contains("hidden")) videoModalReturn = null;
+    videoModalBackBtn.title = viewerBackTitle(videoModalReturn);
+    videoModalBackBtn.setAttribute("aria-label", videoModalBackBtn.title);
     setVideoModalMini(false);
     videoModalOpenLink.href = url;
     videoModalOpenLink.textContent = "Open on YouTube ↗";
@@ -10926,9 +11000,16 @@
     }
     videoModalCommentCtx = null;
     ytPlayerCurrentId = null;
+    videoModalReturn = null;
     zoomModalClose(videoModal);
   }
   videoModalCloseBtn.addEventListener("click", closeVideoModal);
+  videoModalBackBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const ret = videoModalReturn;
+    closeVideoModal();
+    runViewerReturn(ret);
+  });
   videoModal.addEventListener("click", (e) => { if (e.target === videoModal) closeVideoModal(); });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !videoModal.classList.contains("hidden")) closeVideoModal();
@@ -11458,6 +11539,7 @@
   const photoModalTagInput = $("#photo-modal-tag-input");
   const photoModalTagSuggest = $("#photo-modal-tag-suggest");
   const photoModalClose = $("#photo-modal-close");
+  const photoModalBack = $("#photo-modal-back");
   const photoModalCommentInput = $("#photo-modal-comment-input");
   const photoModalCommentRow = $("#photo-modal-comment-row");
   const photoModalCommentToggle = $("#photo-modal-comment-toggle");
@@ -11972,6 +12054,9 @@
       index: clampedIndex,
       tagGroup: (tagGroup && tagGroup.items && tagGroup.items.length) ? tagGroup : null,
       tagIndex,
+      // Where ← Back goes — see withViewerReturn. Kept on the state so it
+      // survives stepping through the group with prev/next.
+      ret: takeViewerReturn() || underlyingModalReturn(),
     };
     resetPhotoZoom();
     renderPhotoModal();
@@ -11979,6 +12064,8 @@
   }
   function renderPhotoModal() {
     if (!photoModalState) return;
+    photoModalBack.title = viewerBackTitle(photoModalState.ret);
+    photoModalBack.setAttribute("aria-label", photoModalBack.title);
     const images = photoModalState.noteMode
       ? photoModalState.images
       : getNodeImages(findNode(photoModalState.nodeId));
@@ -12081,6 +12168,7 @@
       noteMode: true,
       images: imgs.map(im => im.src),
       index,
+      ret: { label: "note", restore: null }, // the note editor is still open underneath
     };
     // The note editor's modal is deliberately raised above the shared
     // modal z-index (see #note-modal in style.css) so it can be opened
@@ -12240,6 +12328,12 @@
     renderPhotoModal();
   }
   photoModalClose.addEventListener("click", closePhotoModal);
+  photoModalBack.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const ret = photoModalState && photoModalState.ret;
+    closePhotoModal();
+    runViewerReturn(ret);
+  });
   photoModalPrev.addEventListener("click", (e) => { e.stopPropagation(); stepPhotoModal(-1); });
   photoModalNext.addEventListener("click", (e) => { e.stopPropagation(); stepPhotoModal(1); });
   photoModalGoto.addEventListener("click", (e) => {
@@ -13306,6 +13400,8 @@
   let noteWorkingList = [];
   let noteActiveIndex = 0;
   const noteNavAdd = $("#note-nav-add");
+  const noteNavBack = $("#note-nav-back");
+  let noteReturn = null; // where ← Back goes — see withViewerReturn
   const noteNavFavorite = $("#note-nav-favorite");
   const noteNavFolder = $("#note-nav-folder");
   const noteNavDelete = $("#note-nav-delete");
@@ -13593,6 +13689,15 @@
     const node = findNode(nodeId);
     if (!node) return;
     commitEditIfActive();
+    // Where ← Back should go. A return point handed over by a browser wins;
+    // otherwise, if this is a fresh open (not a jump between notes while the
+    // editor is already up), fall back to whichever modal is sitting
+    // underneath (Tasks/Calendar) or to the map.
+    const pendingRet = takeViewerReturn();
+    if (pendingRet) noteReturn = pendingRet;
+    else if (noteModal.classList.contains("hidden")) noteReturn = underlyingModalReturn();
+    noteNavBack.title = viewerBackTitle(noteReturn);
+    noteNavBack.setAttribute("aria-label", noteNavBack.title);
     // A task — or now a subtask — literally named "DRC" shares the exact
     // same single per-node DRC note as the right-click "📋 DRC…" shortcut
     // below, instead of owning a separate note of its own — otherwise a
@@ -13870,6 +13975,7 @@
     noteEditingCellPos = null;
     noteWorkingList = [];
     noteActiveIndex = 0;
+    noteReturn = null;
     $("#note-color-popover").classList.add("hidden");
     zoomModalClose(noteModal);
   }
@@ -15003,6 +15109,12 @@
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
   $("#note-nav-close").addEventListener("click", closeNoteModal);
+  noteNavBack.addEventListener("mousedown", (e) => e.preventDefault());
+  noteNavBack.addEventListener("click", () => {
+    const ret = noteReturn;
+    closeNoteModal();
+    runViewerReturn(ret);
+  });
 
   bgInput.addEventListener("input", () => updateTheme({ background: bgInput.value }));
   $("#theme-bg-reset").addEventListener("click", () => { bgInput.value = defaultBg(); updateTheme({ background: null }); });
@@ -18894,8 +19006,15 @@
       cell.addEventListener("click", () => {
         const idx = getNodeImageIds(node).indexOf(it.id);
         if (idx < 0) return;
+        // Back re-opens this tag's gallery (and, if the tag browser was
+        // reached through the Photos browser, keeps its ← to Photos).
+        const fromPhotos = !tagBrowserListBack.classList.contains("hidden");
+        const ret = {
+          label: fromPhotos ? `Photos › ${group.label}` : `tag “${group.label}”`,
+          restore: () => { openTagBrowserModal(fromPhotos); openTagGallery(group); },
+        };
         closeTagBrowserModal();
-        openPhotoModal(it.nodeId, idx, group);
+        withViewerReturn(ret, () => openPhotoModal(it.nodeId, idx, group));
       });
       tagBrowserGalleryGrid.appendChild(cell);
     });
@@ -18960,12 +19079,12 @@
     return items.sort((a, b) => a.nodeLabel.localeCompare(b.nodeLabel));
   }
 
-  function openCommentBrowserModal() {
+  function openCommentBrowserModal(keep) {
     commentBrowserItems = collectPhotoCommentItems();
-    commentBrowserSearch.value = "";
+    if (keep !== true) commentBrowserSearch.value = "";
     renderCommentBrowserGrid();
     zoomModalOpen(commentBrowserModal);
-    requestAnimationFrame(() => commentBrowserSearch.focus());
+    if (keep !== true) requestAnimationFrame(() => commentBrowserSearch.focus());
   }
   function closeCommentBrowserModal() {
     zoomModalClose(commentBrowserModal);
@@ -19015,8 +19134,9 @@
       cell.addEventListener("click", () => {
         const idx = getNodeImageIds(node).indexOf(it.id);
         if (idx < 0) return;
+        const ret = makeBrowserReturn("Photo comments", commentBrowserGrid, openCommentBrowserModal, null);
         closeCommentBrowserModal();
-        openPhotoModal(it.nodeId, idx, group);
+        withViewerReturn(ret, () => openPhotoModal(it.nodeId, idx, group));
       });
       commentBrowserGrid.appendChild(cell);
     });
@@ -19141,12 +19261,12 @@
     return el;
   }
 
-  function openFavoritesBrowserModal() {
+  function openFavoritesBrowserModal(keep) {
     favoritesBrowserItems = collectFavoriteItems();
-    favoritesBrowserSearch.value = "";
+    if (keep !== true) favoritesBrowserSearch.value = "";
     renderFavoritesBrowserList();
     zoomModalOpen(favoritesBrowserModal);
-    requestAnimationFrame(() => favoritesBrowserSearch.focus());
+    if (keep !== true) requestAnimationFrame(() => favoritesBrowserSearch.focus());
   }
   function closeFavoritesBrowserModal() {
     zoomModalClose(favoritesBrowserModal);
@@ -19187,7 +19307,9 @@
   function jumpToFavoriteItem(item) {
     const node = findNode(item.nodeId);
     if (!node) return;
+    const ret = makeBrowserReturn("Favorites", favoritesBrowserList, openFavoritesBrowserModal, null);
     closeFavoritesBrowserModal();
+    withViewerReturn(ret, () => {
     if (item.type === "note") {
       const idx = resolveNoteListForItem(node, item).findIndex(n => n.id === item.noteId);
       openNoteModal(item.nodeId, idx >= 0 ? idx : undefined, null, item.taskId || null);
@@ -19217,6 +19339,7 @@
         removePhoto: (id) => removeLinkPhoto(findNode(item.nodeId) || node, item.url, id),
       });
     }
+    });
   }
 
   const FAVORITE_TYPE_LABEL = { note: "Notes", photo: "Photos", link: "Links", video: "Videos" };
@@ -19742,12 +19865,15 @@
     return sorted;
   }
 
-  function openNotesBrowserModal() {
+  // `keep === true` re-opens with the search text left as it was (used by
+  // the viewers' ← Back button) instead of starting fresh. Strictly `true`
+  // because this is also bound directly as a click handler.
+  function openNotesBrowserModal(keep) {
     notesBrowserItems = collectAllNotes();
-    notesBrowserSearch.value = "";
+    if (keep !== true) notesBrowserSearch.value = "";
     renderNotesBrowserList();
     zoomModalOpen(notesBrowserModal);
-    requestAnimationFrame(() => notesBrowserSearch.focus());
+    if (keep !== true) requestAnimationFrame(() => notesBrowserSearch.focus());
   }
   function closeNotesBrowserModal() {
     closeFolderMovePopover();
@@ -19758,8 +19884,9 @@
     const node = findNode(it.nodeId);
     if (!node) return;
     const idx = resolveNoteListForItem(node, it).findIndex(n => n.id === it.noteId);
+    const ret = makeBrowserReturn("Notes", notesBrowserList, openNotesBrowserModal, notesFolderMgr);
     closeNotesBrowserModal();
-    openNoteModal(it.nodeId, idx >= 0 ? idx : undefined, null, it.taskId || null);
+    withViewerReturn(ret, () => openNoteModal(it.nodeId, idx >= 0 ? idx : undefined, null, it.taskId || null));
   }
 
   // Same direct toggle as unfavoriteItem in the Favorites browser above —
@@ -19966,12 +20093,12 @@
     return sorted;
   }
 
-  function openPhotosBrowserModal() {
+  function openPhotosBrowserModal(keep) {
     photosBrowserItems = collectAllPhotos();
-    photosBrowserSearch.value = "";
+    if (keep !== true) photosBrowserSearch.value = "";
     renderPhotosBrowserList();
     zoomModalOpen(photosBrowserModal);
-    requestAnimationFrame(() => photosBrowserSearch.focus());
+    if (keep !== true) requestAnimationFrame(() => photosBrowserSearch.focus());
   }
   function closePhotosBrowserModal() {
     closeFolderMovePopover();
@@ -19983,6 +20110,7 @@
     if (!node) return;
     const idx = getNodeImageIds(node).indexOf(it.photoId);
     if (idx < 0) return;
+    const ret = makeBrowserReturn("Photos", photosBrowserList, openPhotosBrowserModal, photosFolderMgr);
     closePhotosBrowserModal();
     // Every photo across the map (not just the filtered/visible ones), so
     // prev/next inside the opened photo modal steps through the whole set
@@ -19992,7 +20120,7 @@
       label: "Photos",
       items: photosBrowserItems.map(x => ({ nodeId: x.nodeId, id: x.photoId })),
     };
-    openPhotoModal(it.nodeId, idx, group);
+    withViewerReturn(ret, () => openPhotoModal(it.nodeId, idx, group));
   }
 
   // Same direct toggle as unfavoriteItem in the Favorites browser above —
@@ -20167,12 +20295,12 @@
     return sorted;
   }
 
-  function openVideosBrowserModal() {
+  function openVideosBrowserModal(keep) {
     videosBrowserItems = collectAllVideos();
-    videosBrowserSearch.value = "";
+    if (keep !== true) videosBrowserSearch.value = "";
     renderVideosBrowserList();
     zoomModalOpen(videosBrowserModal);
-    requestAnimationFrame(() => videosBrowserSearch.focus());
+    if (keep !== true) requestAnimationFrame(() => videosBrowserSearch.focus());
   }
   function closeVideosBrowserModal() {
     closeFolderMovePopover();
@@ -20186,8 +20314,9 @@
   function jumpToVideoBrowserItem(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
+    const ret = makeBrowserReturn("Videos", videosBrowserList, openVideosBrowserModal, videosFolderMgr);
     closeVideosBrowserModal();
-    openLinkSmart(it.url, {
+    withViewerReturn(ret, () => openLinkSmart(it.url, {
       videoKey: `${it.nodeId}|${it.url}`,
       get: () => getLinkComment(findNode(it.nodeId) || node, it.url),
       set: (v) => setLinkComment(findNode(it.nodeId) || node, it.url, v),
@@ -20196,7 +20325,7 @@
       getPhotos: () => getLinkPhotos(findNode(it.nodeId) || node, it.url),
       addPhoto: (dataUrl) => addLinkPhoto(findNode(it.nodeId) || node, it.url, dataUrl),
       removePhoto: (id) => removeLinkPhoto(findNode(it.nodeId) || node, it.url, id),
-    });
+    }));
   }
 
   function toggleVideoBrowserFavorite(it) {
