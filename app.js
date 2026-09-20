@@ -1281,6 +1281,62 @@
     syncBroken: false,
     consecutivePollFailures: 0,
     MAX_POLL_FAILURES: 3,
+    // "Am I on the latest version?" — the edit lock's freshness check.
+    // dataSynced above only proves the FIRST sync happened; after that,
+    // another device (the phone) can save a newer copy at any moment,
+    // and this device stays unaware until its next poll finishes
+    // downloading it (or for good while the tab is hidden, since polling
+    // pauses then). Editing in that gap is editing an old version and
+    // overwrites the newer one on the next upload. So editing is only
+    // allowed while a Drive check made within FRESH_WINDOW_MS confirmed
+    // nothing newer exists (lastVerifiedAt), and never while a newer
+    // remote copy is known but not yet applied (remoteAhead).
+    remoteAhead: false,
+    lastVerifiedAt: 0,
+    verifying: false,
+    // True from the moment an upload fails until one succeeds. Unlike
+    // syncBroken it is NOT cleared by a successful download check —
+    // that used to hide failed uploads behind a fresh "Synced just now".
+    uploadFailing: false,
+    driveBroken() { return !!(this.syncBroken || this.uploadFailing); },
+    // Maps with edits Drive hasn't confirmed receiving yet.
+    unsyncedMaps() {
+      return state.maps.filter((m) => {
+        const known = this.fileIndex[m.id];
+        return !!known && (m.updatedAt || 0) > (known.updatedAt || 0);
+      });
+    },
+    FRESH_WINDOW_MS: 6000,
+    isFresh() {
+      return !this.remoteAhead && this.lastVerifiedAt > 0
+        && (Date.now() - this.lastVerifiedAt) <= this.FRESH_WINDOW_MS;
+    },
+    // True if Drive holds a newer copy of any map this device already has.
+    remoteBehindLocal(remoteFiles) {
+      return remoteFiles.some((f) => {
+        const id = f.appProperties && f.appProperties.branchlineId;
+        if (!id) return false;
+        const existing = state.maps.find(m => m.id === id);
+        const remoteUpdatedAt = Number((f.appProperties && f.appProperties.updatedAt) || 0);
+        return !!existing && remoteUpdatedAt > (existing.updatedAt || 0);
+      });
+    },
+    // Check-only pass (no downloads, nothing touched locally): used while
+    // a map edit is in progress, when the full sync can't run because it
+    // would swap the tree out from under the editor. It keeps the
+    // freshness stamp current, and flags remoteAhead the moment another
+    // device saves something newer.
+    async verifyRemote() {
+      const remoteFiles = await this.listRemote();
+      const listedAt = Date.now();
+      if (this.remoteBehindLocal(remoteFiles)) {
+        this.remoteAhead = true;
+      } else {
+        this.remoteAhead = false;
+        this.lastVerifiedAt = listedAt;
+      }
+      this.consecutivePollFailures = 0;
+    },
     // map id -> { fileId, updatedAt } for every map we know is mirrored to
     // Drive, so save/remove don't have to search every time.
     fileIndex: {},
@@ -1621,6 +1677,9 @@
       this.accessToken = null;
       this.signedIn = false;
       this.dataSynced = false;
+      this.remoteAhead = false;
+      this.lastVerifiedAt = 0;
+      this.uploadFailing = false;
       this.fileIndex = {};
       this.lastSyncedAt = 0;
       DB.setHandle(DRIVE_SIGNED_IN_KEY, false).catch(() => {});
@@ -1715,15 +1774,21 @@
         // the folder mirror — it needs real photo bytes inline rather
         // than this browser's local-only photo ids.
         const portable = await inlinePhotosForPortableCopy(map);
+        // The stamp of the copy actually being uploaded — NOT the live
+        // map's, which can have moved on during a slow upload. Recording
+        // the live one made edits made mid-upload look already synced.
+        const uploadedStamp = portable.updatedAt || map.updatedAt;
         const known = this.fileIndex[map.id];
         if (known) {
           await this.updateFile(known.fileId, portable);
-          known.updatedAt = map.updatedAt;
+          known.updatedAt = uploadedStamp;
         } else {
           const fileId = await this.createFile(portable);
-          this.fileIndex[map.id] = { fileId, updatedAt: map.updatedAt };
+          this.fileIndex[map.id] = { fileId, updatedAt: uploadedStamp };
         }
+        setSyncBase(map.id, uploadedStamp);
         this.lastSyncedAt = Date.now();
+        this.uploadFailing = false;
         this.syncBroken = false;
         this.consecutivePollFailures = 0;
         updateDriveUI();
@@ -1736,6 +1801,7 @@
         // editing, and say so on screen.
         console.error("Drive save failed", e);
         this.syncBroken = true;
+        this.uploadFailing = true;
         if (!this.accessToken || Date.now() >= this.tokenExpiresAt) this.needsReauth = true;
         try { updateDriveUI(); } catch (e2) {}
       }
@@ -1773,13 +1839,15 @@
       // through.
       if (!force && Date.now() - this.lastLocalPushTryAt < 15000) return false;
       const busy = () => {
-        try { return !!(state.editingId || unsavedEdits || persistTimer || persistInFlight); }
+        // While uploads are failing, an open editor mustn't block the
+        // retry — the lock this causes would otherwise never lift.
+        try { return !!(((state.editingId && !this.uploadFailing)) || unsavedEdits || persistTimer || persistInFlight); }
         catch (e) { return false; }
       };
       if (busy()) return false;
       const stale = state.maps.filter(m => {
         const known = this.fileIndex[m.id];
-        if (!known) return includeNew;
+        if (!known) return includeNew || this.uploadFailing;
         return (m.updatedAt || 0) > (known.updatedAt || 0);
       });
       if (!stale.length) return false;
@@ -1796,7 +1864,8 @@
       // save() swallows its own errors and flags syncBroken instead — if
       // this pass ended that way, wait ~a minute before the timer retries
       // so a persistent failure doesn't keep re-locking editing every 15s.
-      if (this.syncBroken) this.lastLocalPushTryAt = Date.now() + 45000;
+      // (editing is locked while uploads fail, so retry soon: ~5s, not a minute)
+      if (this.uploadFailing) this.lastLocalPushTryAt = Date.now() - 10000;
       return true;
     },
 
@@ -1817,7 +1886,16 @@
     // callers like pollDriveUpdates can skip re-rendering when nothing did.
     async syncFromDrive() {
       let changed = false;
+      let downloadFailed = false;
       const remoteFiles = await this.listRemote();
+      const listedAt = Date.now();
+      // The instant the listing shows another device saved something
+      // newer, this device is on an old version: lock editing right now,
+      // not after the (possibly slow, photo-heavy) download below lands.
+      if (this.remoteBehindLocal(remoteFiles)) {
+        this.remoteAhead = true;
+        try { updateStaleSyncBanner(); refreshEditLockUI(); } catch (e) {}
+      }
       const previouslyKnownIds = new Set(Object.keys(this.fileIndex));
       const seenRemoteIds = new Set();
       for (const f of remoteFiles) {
@@ -1827,10 +1905,41 @@
         const remoteUpdatedAt = Number((f.appProperties && f.appProperties.updatedAt) || 0);
         this.fileIndex[id] = { fileId: f.id, updatedAt: remoteUpdatedAt };
         const existing = state.maps.find(m => m.id === id);
-        if (existing && (existing.updatedAt || 0) >= remoteUpdatedAt) continue; // ours is already current
+        if (existing) {
+          // First time this device sees the map since sync tracking
+          // began: assume it's clean, so nothing gets a false alarm.
+          if (getSyncBase(id) === undefined) setSyncBase(id, Math.min(existing.updatedAt || 0, remoteUpdatedAt));
+          if ((existing.updatedAt || 0) === remoteUpdatedAt) { setSyncBase(id, remoteUpdatedAt); continue; }
+          if ((existing.updatedAt || 0) > remoteUpdatedAt) {
+            // Ours is newer and will be uploaded. But if Drive ALSO
+            // changed since we last synced, uploading would erase the
+            // other device's edit — keep it as a copy first.
+            const base = getSyncBase(id);
+            if (base !== undefined && (existing.updatedAt || 0) > base && remoteUpdatedAt > base) {
+              try {
+                const other = await this.downloadFile(f.id);
+                if (other && other.root) await saveConflictCopy(other, "other device");
+                setSyncBase(id, remoteUpdatedAt); // acknowledged — don't copy again next poll
+                changed = true;
+              } catch (e) { console.error("Couldn't fetch the other device's copy", e); downloadFailed = true; }
+            }
+            continue;
+          }
+        }
         try {
           const data = await this.downloadFile(f.id);
           if (!data || !data.id || !data.root) continue;
+          // About to replace this device's copy with Drive's. If this
+          // device has edits Drive never received (an upload that failed
+          // or was cut off, then a refresh), don't destroy them — keep
+          // them as their own map first.
+          if (existing) {
+            const base = getSyncBase(id);
+            if (base !== undefined && (existing.updatedAt || 0) > base) {
+              const localPortable = await inlinePhotosForPortableCopy(existing);
+              await saveConflictCopy(localPortable, "unsynced copy");
+            }
+          }
           ensureTheme(data);
           ensureLayout(data);
           ensureFavorite(data);
@@ -1846,8 +1955,9 @@
             state.maps.push(data);
             await DB.put(data);
           }
+          setSyncBase(id, Math.max(remoteUpdatedAt, data.updatedAt || 0));
           changed = true;
-        } catch (e) { console.error("Drive download failed for one map", e); }
+        } catch (e) { console.error("Drive download failed for one map", e); downloadFailed = true; }
       }
       for (const id of previouslyKnownIds) {
         if (seenRemoteIds.has(id)) continue;
@@ -1872,11 +1982,87 @@
       }
       sortMaps(state.maps);
       this.lastSyncedAt = Date.now();
-      this.syncBroken = false;
+      // A successful DOWNLOAD check proves the connection works, but says
+      // nothing about whether this device's UPLOADS are landing.
+      if (!this.uploadFailing) this.syncBroken = false;
       this.consecutivePollFailures = 0;
+      // Only "latest" if every newer map actually came down. A failed
+      // download leaves remoteAhead set, so editing stays locked and the
+      // next poll retries.
+      if (!downloadFailed) {
+        this.remoteAhead = false;
+        this.lastVerifiedAt = listedAt;
+      }
       return changed;
     }
   };
+
+  /* ---------------- sync safety net ----------------
+     Three helpers that keep "synced" honest and stop a refresh from
+     discarding work that never reached Drive. */
+
+  // For every map, the version stamp it had the last time this device
+  // KNEW it matched Drive (right after a download, or right after an
+  // upload that actually succeeded). A map whose own updatedAt is above
+  // this has edits Drive has never seen ("dirty"). Kept in localStorage
+  // so it survives a reload — which is exactly when it matters.
+  const SYNC_BASE_KEY = "branchline_sync_base_v1";
+  function readSyncBases() {
+    try { return JSON.parse(localStorage.getItem(SYNC_BASE_KEY) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function getSyncBase(id) {
+    const v = readSyncBases()[id];
+    return typeof v === "number" ? v : undefined;
+  }
+  function setSyncBase(id, value) {
+    try {
+      const all = readSyncBases();
+      all[id] = value;
+      localStorage.setItem(SYNC_BASE_KEY, JSON.stringify(all));
+    } catch (e) {}
+  }
+
+  // Version stamps come from each device's own clock, and the newest
+  // stamp wins. A phone whose clock runs even a few seconds behind the PC
+  // therefore stamped its NEWER edit with an OLDER number, so the next
+  // download (or a refresh) quietly replaced it with the PC's copy. This
+  // never stamps below what Drive already has, so a real edit always wins.
+  function nextUpdatedAt(map) {
+    const known = DriveDB.fileIndex && DriveDB.fileIndex[map.id];
+    return Math.max(Date.now(), (map.updatedAt || 0) + 1, ((known && known.updatedAt) || 0) + 1);
+  }
+
+  // True while a local save or upload is still pending/running. Wrapped
+  // because the variables live further down the file.
+  function localSaveBusy() {
+    try { return !!(unsavedEdits || persistTimer || persistInFlight); }
+    catch (e) { return false; }
+  }
+
+  // Keeps a losing version instead of throwing it away: stores it as its
+  // own map in the sidebar ("… (unsynced copy 9/20 14:05)"). `portable`
+  // must be a self-contained map (photos inline, e.g. straight from Drive
+  // or from inlinePhotosForPortableCopy).
+  async function saveConflictCopy(portable, label) {
+    try {
+      const copy = JSON.parse(JSON.stringify(portable));
+      const t = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      copy.id = uid();
+      copy.title = `${copy.title || "Untitled map"} (${label} ${t.getMonth() + 1}/${t.getDate()} ${pad(t.getHours())}:${pad(t.getMinutes())})`;
+      copy.updatedAt = Date.now();
+      copy.trashedAt = null;
+      await ensurePhotosMigrated(copy);
+      await DB.put(copy);
+      state.maps.push(copy);
+      showToast(`Kept a copy of the version that would have been overwritten: "${copy.title}"`);
+      return copy;
+    } catch (e) {
+      console.error("Couldn't keep a conflict copy", e);
+      return null;
+    }
+  }
 
   function driveSyncStatusText() {
     if (!DriveDB.lastSyncedAt) return "Synced to Google Drive";
@@ -1894,7 +2080,17 @@
     const banner = $("#stale-sync-banner");
     if (!banner) return;
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
-    banner.classList.toggle("hidden", !stillSyncing);
+    // Synced once already, but not confirmed as the latest right now
+    // (see DriveDB.isFresh) — editing is paused until the next check.
+    const checking = DriveDB.signedIn && DriveDB.dataSynced && isOnline
+      && !driveLockReason() && !DriveDB.isFresh();
+    banner.classList.toggle("hidden", !(stillSyncing || checking));
+    const text = $("#stale-sync-text");
+    if (text) {
+      text.textContent = checking
+        ? "\u23f3 Checking for a newer version from your other devices \u2014 editing is paused for a moment so an old copy can't overwrite it."
+        : "\u23f3 Still syncing from Google Drive \u2014 what's on screen may not be the latest version from your other devices yet.";
+    }
   }
 
   // Why editing is locked *despite* being signed in, or null when it
@@ -1904,7 +2100,7 @@
     if (!DriveDB.signedIn) return null;
     if (!isOnline) return "offline";
     if (DriveDB.needsReauth) return "reauth";
-    if (DriveDB.syncBroken) return "broken";
+    if (DriveDB.driveBroken()) return "broken";
     return null;
   }
 
@@ -1951,7 +2147,7 @@
     // "Sign in with Google" even though we're already signed in and
     // just waiting on the initial Drive sync to finish.
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
-    if (DriveDB.needsReauth || (DriveDB.syncBroken && isOnline)) {
+    if (DriveDB.needsReauth || (DriveDB.driveBroken() && isOnline)) {
       btn.textContent = "Reconnect Google";
       btn.classList.remove("hidden");
     } else if (stillSyncing) {
@@ -1974,8 +2170,14 @@
       status.textContent = "Offline — editing paused";
     } else if (DriveDB.needsReauth) {
       status.textContent = "Google session expired \u2014 editing paused";
-    } else if (DriveDB.syncBroken) {
-      status.textContent = "Not reaching Drive \u2014 editing paused";
+    } else if (DriveDB.driveBroken()) {
+      status.textContent = "Changes NOT on Drive \u2014 retrying, editing paused";
+    } else if (DriveDB.signedIn && DriveDB.dataSynced && !DriveDB.isFresh()) {
+      status.textContent = "Checking for a newer version\u2026 editing paused";
+    } else if (DriveDB.signedIn && DriveDB.dataSynced && (DriveDB.pushingLocal || localSaveBusy())) {
+      status.textContent = "Uploading changes\u2026";
+    } else if (DriveDB.signedIn && DriveDB.dataSynced && DriveDB.unsyncedMaps().length) {
+      status.textContent = "\u26a0 Changes not on Drive yet \u2014 retrying\u2026";
     } else if (DriveDB.signedIn) {
       status.textContent = driveSyncStatusText();
     } else {
@@ -2019,7 +2221,8 @@
   // can only ever write to this one browser.
   function isEditingAllowed() {
     return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
-      && !DriveDB.needsReauth && !DriveDB.syncBroken;
+      && !DriveDB.needsReauth && !DriveDB.driveBroken()
+      && DriveDB.isFresh();
   }
 
   // Set only while flushing already-typed work to disk as the lock comes
@@ -2062,21 +2265,26 @@
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
     const offline = !isOnline;
     const disconnected = driveLockReason() === "reauth" || driveLockReason() === "broken";
+    const checkingNewer = DriveDB.signedIn && DriveDB.dataSynced && !offline && !disconnected && !DriveDB.isFresh();
     if (heading) heading.textContent = offline
       ? "You're offline"
       : disconnected
       ? "Disconnected from Google Drive"
+      : checkingNewer
+      ? "Checking for a newer version\u2026"
       : (stillSyncing ? "Syncing\u2026" : "Sign in to edit");
     if (body) body.textContent = offline
       ? "Editing is paused until you're back online, so a change made here can't drift out of sync with your other devices. Reconnect and try again."
       : disconnected
       ? "Editing is paused because changes can't reach Drive right now \u2014 anything typed from here on would live only in this browser and disappear on a refresh. Everything already typed has been saved. Reconnect to carry on."
+      : checkingNewer
+      ? "Another device may have saved a newer version. Editing is paused until this device has confirmed (or downloaded) the latest one, so it can't be overwritten by an old copy. This only takes a moment \u2014 try again in a second."
       : stillSyncing
       ? "Hang on \u2014 making sure this device has your latest saved changes before you start editing, so a newer version from another device can't get overwritten. This only takes a moment."
       : "This map is read-only until you sign in with Google. Editing, undo/redo, and adding tasks, notes, or photos all need a signed-in session.";
     if (signinRequiredSigninBtn) {
       signinRequiredSigninBtn.textContent = disconnected ? "Reconnect Google" : "Sign in with Google";
-      signinRequiredSigninBtn.classList.toggle("hidden", stillSyncing || offline);
+      signinRequiredSigninBtn.classList.toggle("hidden", stillSyncing || offline || checkingNewer);
     }
     zoomModalOpen(signinRequiredModalEl);
   }
@@ -2175,7 +2383,7 @@
     if (driveSyncTimer) { clearInterval(driveSyncTimer); driveSyncTimer = null; }
   }
   async function pollDriveUpdates(force) {
-    if (!DriveDB.signedIn || DriveDB.syncing) return;
+    if (!DriveDB.signedIn || DriveDB.syncing || DriveDB.verifying) return;
     if (document.visibilityState !== "visible") return;
     // Don't touch the map tree while you're actively mid-keystroke in a
     // node's text — an incoming update would swap out the very node
@@ -2184,7 +2392,23 @@
     // something) can still be sitting in persist()'s debounce/awaits for
     // up to ~500ms+ after editingId clears, and pulling in a remote
     // version during that window would silently overwrite it.
-    if (state.editingId || unsavedEdits) return;
+    if (state.editingId || unsavedEdits) {
+      // The full sync has to wait, but the freshness check must not:
+      // otherwise a long edit would age out the "latest version" stamp
+      // (locking mid-typing), and a newer copy saved by another device
+      // in the meantime would go unnoticed.
+      DriveDB.verifying = true;
+      try {
+        await DriveDB.verifyRemote();
+      } catch (e) {
+        console.error("Drive freshness check failed", e);
+        DriveDB.consecutivePollFailures++;
+        if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES) DriveDB.syncBroken = true;
+      }
+      DriveDB.verifying = false;
+      updateDriveUI();
+      return;
+    }
     DriveDB.syncing = true;
     try {
       if (await DriveDB.syncFromDrive()) driveRenderPending = true;
@@ -2233,7 +2457,13 @@
     updateDriveUI();
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") pollDriveUpdates(true);
+    if (document.visibilityState === "visible") {
+      // Polling was paused while hidden, so the "latest version" stamp has
+      // aged out — show the paused state right away instead of leaving
+      // the old copy editable until the check below finishes.
+      updateDriveUI();
+      pollDriveUpdates(true);
+    }
   });
 
   /* ---------------- data model ---------------- */
@@ -4487,7 +4717,7 @@
     if (!state.current) { unsavedEdits = false; return; }
     saveStatus.textContent = "Saving…";
     saveStatus.className = "save-status saving";
-    state.current.updatedAt = Date.now();
+    state.current.updatedAt = nextUpdatedAt(state.current);
     state.current.view = { scale: state.scale, tx: state.tx, ty: state.ty };
     const mapToSave = state.current;
     try {
@@ -4565,7 +4795,7 @@
   function saveLocalWhileBusy() {
     const m = state.current;
     if (!m) return;
-    m.updatedAt = Date.now();
+    m.updatedAt = nextUpdatedAt(m);
     m.view = { scale: state.scale, tx: state.tx, ty: state.ty };
     const deferredPhotoDeletes = takePendingPhotoDeletes();
     DB.put(m)
