@@ -3484,17 +3484,19 @@
     if (typeof t.stars === "number" && !Number.isNaN(t.stars)) return clamp(Math.round(t.stars), 0, 1);
     return t.starred ? 1 : 0;
   }
-  // At most 3 tasks per task list (node or table cell) can be starred at
-  // once — starring a 4th is blocked until one of the others is unstarred.
-  // Lists saved before this limit that already hold more than 3 stars are
+  // Only 1 task per task list (node or table cell) can be starred at
+  // once — starring another is blocked until the current one is unstarred.
+  // Lists saved before this limit that already hold more than 1 star are
   // left as they are; they just can't add another until they're under it.
-  const MAX_STARRED_TASKS = 3;
+  const MAX_STARRED_TASKS = 1;
+  // How many times more a starred task counts toward progress.
+  const STARRED_TASK_WEIGHT = 10;
   function taskStarCapReached(host) {
     return getNodeTasks(host).filter(x => getTaskStars(x) > 0).length >= MAX_STARRED_TASKS;
   }
   function blockedByStarCap(host, t) {
     if (getTaskStars(t) > 0 || !taskStarCapReached(host)) return false;
-    showToast(`Only ${MAX_STARRED_TASKS} starred tasks allowed — unstar one first`);
+    showToast("Only 1 starred task allowed — unstar the other one first");
     return true;
   }
   // A task's optional color label — one swatch from the same shared
@@ -3579,13 +3581,13 @@
     // Progress is subtask-based: a task with subtasks contributes their
     // done/total counts. A task with none of its own counts as a single
     // unit instead (done via its own checkbox), so plain tasks still
-    // move the needle. A starred task counts 3x toward the weight, so
+    // move the needle. A starred task counts 10x toward the weight, so
     // marking (or completing subtasks of) a starred task moves the
     // node's ring/bar further.
     let total = 0, done = 0, failed = 0;
     tasks.forEach((t) => {
       const stars = getTaskStars(t);
-      const weight = stars > 0 ? 3 : 1;
+      const weight = stars > 0 ? STARRED_TASK_WEIGHT : 1;
       const subs = getTaskSubtasks(t);
       if (subs.length) {
         total += subs.length * weight;
@@ -17435,8 +17437,8 @@
       star.className = "task-star" + (stars > 0 ? " starred" : "");
       star.textContent = stars > 0 ? "★" : "☆";
       star.title = stars > 0
-        ? "Starred — counts 3x toward progress. Click to clear."
-        : "Star this task for priority — counts 3x toward progress";
+        ? "Starred — counts 10x toward progress. Click to clear."
+        : "Star this task for priority — counts 10x toward progress";
       star.addEventListener("click", (e) => {
         e.stopPropagation();
         if (blockedByStarCap(host, t)) return;
