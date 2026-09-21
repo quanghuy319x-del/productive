@@ -16939,7 +16939,8 @@
 
     list.addEventListener("mousedown", (e) => {
       const c = e.target.classList;
-      const isGap = e.target === list || (c && (c.contains("subtask-row") || c.contains("subtask-break") || c.contains("subtask-caret")));
+      // (Not the pill itself: cancelling mousedown on it would stop it being dragged.)
+      const isGap = e.target === list || (c && (c.contains("subtask-break") || c.contains("subtask-caret")));
       if (!isGap) { if (subtaskCaret) clearSubtaskCaret(); return; }
       e.preventDefault();
       const idx = gapIndexFor(e);
@@ -17179,14 +17180,11 @@
         moveSubtask(subtaskDragState.taskId, subtaskDragState.subtaskId, t.id, s.id, before);
       });
 
-      const shandle = document.createElement("span");
-      shandle.className = "task-drag-handle subtask-drag-handle";
-      shandle.textContent = "⠿";
-      shandle.title = "Drag to reorder";
-      shandle.draggable = true;
-      shandle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
-      shandle.addEventListener("dragstart", (e) => startSubtaskDrag(e, row, t.id, s.id));
-      shandle.addEventListener("dragend", () => endSubtaskDrag(row));
+      // The whole pill is the drag handle — grab it anywhere to reorder
+      // (turned off while its text is being edited, so text can be selected).
+      row.draggable = true;
+      row.addEventListener("dragstart", (e) => startSubtaskDrag(e, row, t.id, s.id));
+      row.addEventListener("dragend", () => endSubtaskDrag(row));
 
       const stext = document.createElement("span");
       stext.className = "subtask-text";
@@ -17202,13 +17200,12 @@
       stext.title = s.text;
 
       // No more checkbox — a single click anywhere on the pill (other
-      // than its drag handle/copy/delete controls, or while its text is
+      // than its note icon, or while its text is
       // mid-edit) toggles done. A short timer tells a single click apart
       // from the first half of a double-click, which opens text editing
       // instead (see the dblclick handler right below).
       let subtaskClickTimer = null;
       row.addEventListener("click", (e) => {
-        if (e.target.closest(".subtask-drag-handle")) return;
         if (stext.contentEditable === "true") return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
@@ -17222,6 +17219,7 @@
 
       stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
+        row.draggable = false;
         stext.contentEditable = "true";
         stext.focus();
         const sel = window.getSelection();
@@ -17246,6 +17244,7 @@
         }
         stext.title = s.text;
         stext.contentEditable = "false";
+        row.draggable = true;
       });
 
       row.addEventListener("contextmenu", (e) => {
@@ -17282,7 +17281,6 @@
 
       // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
       // lives only in the pill's right-click menu (openSubtaskContextMenu).
-      row.appendChild(shandle);
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
       list.appendChild(row);
@@ -18202,13 +18200,10 @@
         moveCalDaySubtask(t, calDaySubtaskDragState.subtaskId, s.id, before);
       });
 
-      const shandle = document.createElement("span");
-      shandle.className = "task-drag-handle subtask-drag-handle";
-      shandle.textContent = "⠿";
-      shandle.title = "Drag to reorder";
-      shandle.draggable = true;
-      shandle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
-      shandle.addEventListener("dragstart", (e) => {
+      // The whole pill is the drag handle — grab it anywhere to reorder
+      // (turned off while its text is being edited, so text can be selected).
+      row.draggable = true;
+      row.addEventListener("dragstart", (e) => {
         e.stopPropagation();
         if (!requireSignIn()) { e.preventDefault(); return; }
         calDaySubtaskDragState = { taskId: t.id, subtaskId: s.id };
@@ -18216,7 +18211,7 @@
         try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
         row.classList.add("task-dragging");
       });
-      shandle.addEventListener("dragend", () => {
+      row.addEventListener("dragend", () => {
         row.classList.remove("task-dragging");
         calDaySubtaskDragState = null;
         calDayModalList.querySelectorAll(".subtask-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
@@ -18233,13 +18228,12 @@
       stext.title = s.text;
 
       // No more checkbox — a single click anywhere on the pill (other
-      // than its drag handle/delete control, or while its text is
+      // than its note icon, or while its text is
       // mid-edit) toggles done. A short timer tells a single click apart
       // from the first half of a double-click, which opens text editing
       // instead (see the dblclick handler right below).
       let subtaskClickTimer = null;
       row.addEventListener("click", (e) => {
-        if (e.target.closest(".subtask-drag-handle")) return;
         if (stext.contentEditable === "true") return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
@@ -18254,6 +18248,7 @@
 
       stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
+        row.draggable = false;
         stext.contentEditable = "true";
         stext.focus();
         const sel = window.getSelection();
@@ -18278,6 +18273,7 @@
         }
         stext.title = s.text;
         stext.contentEditable = "false";
+        row.draggable = true;
       });
 
       row.addEventListener("contextmenu", (e) => {
@@ -18288,7 +18284,6 @@
 
       // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
       // lives only in the pill's right-click menu (openSubtaskContextMenu).
-      row.appendChild(shandle);
       row.appendChild(stext);
       list.appendChild(row);
     });

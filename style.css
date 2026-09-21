@@ -2879,18 +2879,6 @@ kbd{
   border-style: solid;
   border-color:#1e8449;
 }
-.subtask-drag-handle{
-  width:auto;
-  font-size: 11px;
-  line-height:1;
-  cursor: grab;
-  /* Collapsed out of the pill entirely (not just invisible) until
-     hover, so an idle pill isn't padded out with blank reserved space
-     for the drag handle. */
-  display: none;
-  align-items: center;
-}
-.subtask-row:hover .subtask-drag-handle{ display: inline-flex; }
 /* Drop indicator is now a thin vertical bar on the pill's left/right edge
    (pills sit side by side, not stacked, so "before/after" reads
    left/right rather than top/bottom). */
@@ -3091,8 +3079,6 @@ kbd{
   0%, 100%{ transform: scale(1); }
   50%{ transform: scale(1.06); }
 }
-#tasks-modal .subtask-drag-handle{ color: #bbbbbb; }
-#tasks-modal .subtask-drag-handle:hover{ color: #5a5a5a; }
 #tasks-modal .subtask-text{ color: #000000; }
 #tasks-modal .subtask-text:focus{ background: #ffffff; }
 #tasks-modal .subtask-add-btn{
@@ -5114,8 +5100,6 @@ kbd{
 #cal-day-modal .subtask-row.done .subtask-text{ color:#1e8449; text-decoration: line-through; opacity:1; }
 #cal-day-modal .subtask-row.failed{ background:#fdecea; border-color:#c0392b; }
 #cal-day-modal .subtask-row.failed .subtask-text{ color:#c0392b; }
-#cal-day-modal .subtask-drag-handle{ color:#c8c3b3; }
-#cal-day-modal .subtask-drag-handle:hover{ color:#6f6b5e; }
 #cal-day-modal .subtask-text{ color:#24231f; }
 #cal-day-modal .subtask-text:focus{ background:#ffffff; }
 #cal-day-modal .subtask-new-input{
@@ -5174,47 +5158,15 @@ kbd{
   --sub-bg: var(--panel);
   --sub-ctl: var(--text);
   --sub-ctl-border: var(--text-faint);
-  /* Wide enough that the overlaid drag handle fits even on a very short
-     pill; the text is centred inside. Copy/delete now live in the
-     right-click menu (see openSubtaskContextMenu in app.js). */
+  /* Keeps a very short pill from getting tiny; the text is centred inside.
+     Copy/delete live in the right-click menu (see openSubtaskContextMenu
+     in app.js), and the whole pill is draggable to reorder. */
   min-width: 44px;
   justify-content: center;
 }
 #tasks-modal .subtask-row{ --sub-bg: #f0f0f0; --sub-ctl: #2b2b2b; --sub-ctl-border: #8f8f8f; }
 #cal-day-modal .subtask-row{ --sub-bg: #f4f2ec; --sub-ctl: #24231f; --sub-ctl-border: #a9a493; }
 
-/* (:is() with an id just raises specificity above the per-modal colour
-   rules that made these icons very faint.) */
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle{
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  margin: 0;
-  box-sizing: border-box;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--sub-bg);
-  color: var(--sub-ctl);
-  border: 1px solid var(--sub-ctl-border);
-  border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.22);
-  font-weight: 700;
-  cursor: pointer;
-}
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle{
-  left: 3px;
-  border-radius: 5px;
-  font-size: 12px;
-  cursor: grab;
-}
-:is(#tasks-modal, #cal-day-modal, body) .subtask-row:hover .subtask-drag-handle:hover{
-  background: var(--sub-ctl); color: var(--sub-bg);
-}
 
 /* DRC notebook+pencil image used inline in text rows (see drcIconEl in
    app.js) — the same picture as the DRC marker on a node. */
