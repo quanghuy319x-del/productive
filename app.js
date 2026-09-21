@@ -1230,8 +1230,8 @@
 
   // How often the background poll checks Drive for changes made on other
   // devices. DriveDB.FRESH_WINDOW_MS is derived from this, so change it
-  // here only (e.g. 60000 for once a minute).
-  const DRIVE_POLL_INTERVAL_MS = 30000;
+  // here only.
+  const DRIVE_POLL_INTERVAL_MS = 60000;
 
   const DriveDB = {
     tokenClient: null,
@@ -2326,7 +2326,7 @@
 
   // Signing in only syncs once, at that moment — without this, a change
   // made on another device wouldn't show up here until you next reload
-  // (or manually sign in again). Polls every DRIVE_POLL_INTERVAL_MS (30s)
+  // (or manually sign in again). Polls every DRIVE_POLL_INTERVAL_MS (60s)
   // while the tab is actually visible (skipped in background tabs to save
   // battery/quota), plus once immediately whenever you switch back to
   // this tab.
@@ -17567,12 +17567,17 @@
       // DRC task's note button always shows the DRC image (see
       // taskNotes/noteBtn above).
       const subtaskIsDRC = isDRCNote(subtaskNotesForS[0]) || (s.text || "").trim().toUpperCase() === "DRC";
+      // Same idea for a subtask named "plan": isPlanNoteFor also checks the
+      // subtask's own name, so the plan icon shows up front — before any
+      // note exists — just like the DRC icon does, and like a "plan" task's
+      // note button already does.
+      const subtaskIsPlan = isPlanNoteFor(subtaskNotesForS[0], s);
       let snote = null;
-      if (subtaskNotesForS.length || subtaskIsDRC) {
+      if (subtaskNotesForS.length || subtaskIsDRC || subtaskIsPlan) {
         snote = document.createElement("span");
         snote.className = "subtask-note-icon";
         if (subtaskIsDRC) snote.appendChild(drcIconEl(13));
-        else if (isPlanNoteFor(subtaskNotesForS[0], s)) snote.appendChild(planIconEl(13));
+        else if (subtaskIsPlan) snote.appendChild(planIconEl(13));
         else snote.innerHTML = CELL_NOTE_ICON_SVG; // same sticky-note icon as everywhere else
         snote.title = subtaskNotesForS.length ? `Notes (${subtaskNotesForS.length})` : "Add note";
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
