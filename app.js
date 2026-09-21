@@ -3707,8 +3707,8 @@
     if (s.failed) s.done = false;
     syncTaskDoneFromSubtasks(t);
   }
-  // The little ✗ button used on task rows (cls "task-fail-btn") and
-  // subtask pills (cls "subtask-fail-btn").
+  // The little ✗ button on task rows. (Subtask pills don't have one — they
+  // are marked failed from their right-click menu only.)
   function makeTaskFailButton(failed, onToggle, cls) {
     const b = document.createElement("button");
     b.type = "button";
@@ -17250,17 +17250,11 @@
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
       }
 
-      const sfail = makeTaskFailButton(!!s.failed, () => {
-        pushUndo();
-        setSubtaskFailed(t, s, !s.failed);
-        persist();
-        renderTasksModal();
-      }, "subtask-fail-btn");
-
+      // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
+      // lives only in the pill's right-click menu (openSubtaskContextMenu).
       row.appendChild(shandle);
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
-      row.appendChild(sfail);
       list.appendChild(row);
     });
 
@@ -18262,17 +18256,10 @@
         openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => { renderCalDayModal(); renderCalendar(); });
       });
 
-      const sfail = makeTaskFailButton(!!s.failed, () => {
-        pushUndo();
-        setSubtaskFailed(t, s, !s.failed);
-        persist();
-        renderCalDayModal();
-        renderCalendar();
-      }, "subtask-fail-btn");
-
+      // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
+      // lives only in the pill's right-click menu (openSubtaskContextMenu).
       row.appendChild(shandle);
       row.appendChild(stext);
-      row.appendChild(sfail);
       list.appendChild(row);
     });
 
