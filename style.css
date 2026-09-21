@@ -2626,7 +2626,7 @@ kbd{
 .task-row.failed .task-text{ color:#c0392b; }
 .subtask-row.failed{
   background: transparent; /* shows the panel's fill = the task row's own (colored) fill */
-  border-style: solid;
+  border-style: dashed;
   border-color: rgba(192,57,43,0.35);
 }
 .subtask-row.failed .subtask-text{ color:#c98079; }
@@ -2876,7 +2876,7 @@ kbd{
 }
 .subtask-row.done{
   background: transparent; /* shows the panel's fill = the task row's own (colored) fill */
-  border-style: solid;
+  border-style: dashed;
   border-color: rgba(30,132,73,0.35);
 }
 /* Drop indicator is now a thin vertical bar on the pill's left/right edge
@@ -5178,6 +5178,17 @@ kbd{
 }
 .favoritesbrowser-row-icon .drc-icon-inline{ margin-right: 0; vertical-align: middle; }
 
+/* PLAN checklist-sheet image used inline in text rows (see planIconEl in
+   app.js) — same picture as the plan marker on a node. Mirrors
+   .drc-icon-inline above. */
+.plan-icon-inline{
+  display: inline-block;
+  flex: none;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+.favoritesbrowser-row-icon .plan-icon-inline{ margin-right: 0; vertical-align: middle; }
+
 /* Sticky-note image used inline in text rows (see noteIconEl in app.js)
    — the same picture as the note marker on a node/cell, so a favorited
    or browsed note always reads as the same yellow note as everywhere
@@ -5210,6 +5221,11 @@ kbd{
 .task-note-btn:hover .drc-icon-inline,
 .task-note-btn.has-note .drc-icon-inline{ filter: none; opacity: 1; }
 .subtask-note-icon .drc-icon-inline{ margin-right: 0; vertical-align: top; }
+/* Same dim-until-it-has-notes treatment for the PLAN image. */
+.task-note-btn .plan-icon-inline{ margin-right: 0; vertical-align: middle; filter: grayscale(1); opacity: .55; transition: opacity .12s ease, filter .12s ease; }
+.task-note-btn:hover .plan-icon-inline,
+.task-note-btn.has-note .plan-icon-inline{ filter: none; opacity: 1; }
+.subtask-note-icon .plan-icon-inline{ margin-right: 0; vertical-align: top; }
 
 /* ← Back buttons on the note editor, photo viewer and video player (see
    "viewer ← Back navigation" in app.js) — all pinned to the top-left. */

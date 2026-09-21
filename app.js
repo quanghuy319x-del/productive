@@ -3172,6 +3172,9 @@
         // DRC notes get the same notebook+pencil image as everywhere else.
         labelSpan.textContent = notePreviewText(n);
         labelSpan.prepend(drcIconEl(16));
+      } else if (isPlanNote(n)) {
+        labelSpan.textContent = notePreviewText(n);
+        labelSpan.prepend(planIconEl(16));
       } else {
         labelSpan.textContent = "📝 " + notePreviewText(n);
       }
@@ -3978,6 +3981,22 @@
   // check above uses (trim + uppercase).
   function isDRCNote(note) {
     return !!(note && (note.title || "").trim().toUpperCase() === "DRC");
+  }
+  // "Plan" gets its own icon too (the green-checklist PLAN sheet — see
+  // NODE_PLAN_ICON_IMG). It applies when the note's own title is "plan",
+  // or — for a task's/subtask's note, where the owner's name doubles as
+  // the note's title — when the task/subtask itself is named "plan".
+  // Case-insensitive, trimmed, same comparison as DRC above. Unlike DRC
+  // this is icon-only: no template, points, or single-note rule.
+  function isPlanText(str) {
+    return (str || "").trim().toLowerCase() === "plan";
+  }
+  function isPlanNote(note) {
+    return !!(note && isPlanText(note.title));
+  }
+  // owner = the task/subtask the note belongs to (omit for node/cell notes).
+  function isPlanNoteFor(note, owner) {
+    return isPlanNote(note) || !!(owner && isPlanText(owner.text));
   }
   function drcNoteIsFilled(note) {
     const labels = drcTemplateLines();
@@ -7067,6 +7086,21 @@
     el.innerHTML = NODE_DRC_ICON_IMG;
     return el;
   }
+  // The PLAN checklist-sheet icon — shown instead of the yellow sticky
+  // note for any note titled "plan" or belonging to a task/subtask named
+  // "plan" (see isPlanNote/isPlanNoteFor). Same embedding approach as the
+  // DRC icon: a base64 PNG with the outer white background made
+  // transparent.
+  const NODE_PLAN_ICON_DATA_URL = "data:image/png;base64,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";
+  const NODE_PLAN_ICON_IMG = '<img src="' + NODE_PLAN_ICON_DATA_URL + '" alt="Plan" style="width:100%;height:100%;object-fit:contain;">';
+  function planIconEl(px) {
+    const el = document.createElement("span");
+    el.className = "plan-icon-inline";
+    el.style.width = px + "px";
+    el.style.height = px + "px";
+    el.innerHTML = NODE_PLAN_ICON_IMG;
+    return el;
+  }
   const CELL_NOTE_ICON_SVG = '<svg viewBox="0 0 24 24"><rect x="2.3" y="6.3" width="15.4" height="15.4" rx="1" fill="#E08A2E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.3 4.3a1 1 0 011-1h12a1 1 0 011 1v12.9l-4.3 4.3H7.3a1 1 0 01-1-1z" fill="#F6E266" stroke="#000" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/><path d="M20.3 17.2l-4.3 4.3v-3a1.3 1.3 0 011.3-1.3z" fill="#F0C24E" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/><line x1="9" y1="8.2" x2="18" y2="8.2" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="11.1" x2="18" y2="11.1" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><line x1="9" y1="14" x2="14.5" y2="14" stroke="#000" stroke-width="1.15" stroke-linecap="round"/><path d="M14.4 4.6l3.5-3.5" stroke="#000" stroke-width="1.3" stroke-linecap="round"/><circle cx="19" cy="1.9" r="1.5" fill="#DC7A93" stroke="#000" stroke-width="1"/></svg>';
   // Small inline sticky-note icon sized for text rows (Notes/Favorites
   // browser list rows) — the exact same SVG as the node/cell note
@@ -7552,7 +7586,7 @@
       const notes = getCellNotes(a);
       // A cell whose notes are all DRC notes gets the DRC image, same as a
       // node's own DRC marker.
-      noteIcon.innerHTML = notes.every(isDRCNote) ? NODE_DRC_ICON_IMG : CELL_NOTE_ICON_SVG;
+      noteIcon.innerHTML = notes.every(isDRCNote) ? NODE_DRC_ICON_IMG : (notes.every(isPlanNote) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
       noteIcon.title = (notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0])) + " — drag onto a node or cell to move (hold Alt to copy)";
       noteIcon.draggable = true;
       noteIcon.addEventListener("click", () => editCellNote(node, r, c));
@@ -8087,7 +8121,7 @@
       (notesOverflow ? nodeNotes.slice(0, 1) : nodeNotes).forEach((n, i) => {
         const noteIcon = document.createElement("span");
         noteIcon.className = "node-photo-thumb node-note-marker" + (isDRCNote(n) ? " node-drc-marker" : "");
-        noteIcon.innerHTML = isDRCNote(n) ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
+        noteIcon.innerHTML = isDRCNote(n) ? NODE_DRC_ICON_IMG : (isPlanNote(n) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG);
         noteIcon.draggable = true;
         noteIcon.addEventListener("dragend", endMarkerDrag);
         if (notesOverflow) {
@@ -8135,7 +8169,7 @@
         const firstTaskNote = getTaskNotes(t)[0];
         const taskNoteIsDRC = isDRCNote(firstTaskNote);
         taskNoteIcon.className = "node-photo-thumb node-note-marker node-task-note-marker" + (taskNoteIsDRC ? " node-drc-marker" : "");
-        taskNoteIcon.innerHTML = taskNoteIsDRC ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
+        taskNoteIcon.innerHTML = taskNoteIsDRC ? NODE_DRC_ICON_IMG : (isPlanNoteFor(firstTaskNote, t) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG);
         // A task's own name already works as that note's title, so unlike
         // a node's or cell's own notes (notePreviewText), this never falls
         // back to a body-text preview — only the note's own separate
@@ -8172,7 +8206,7 @@
         const firstSubtaskNote = getTaskNotes(s)[0];
         const subtaskNoteIsDRC = isDRCNote(firstSubtaskNote);
         subtaskNoteIcon.className = "node-photo-thumb node-note-marker node-subtask-note-marker" + (subtaskNoteIsDRC ? " node-drc-marker" : "");
-        subtaskNoteIcon.innerHTML = subtaskNoteIsDRC ? NODE_DRC_ICON_IMG : NODE_NOTE_ICON_SVG;
+        subtaskNoteIcon.innerHTML = subtaskNoteIsDRC ? NODE_DRC_ICON_IMG : (isPlanNoteFor(firstSubtaskNote, s) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG);
         if (subtaskNoteIsDRC) {
           const status = drcNoteIsFilled(firstSubtaskNote) ? "filled in (5 pts)" : "not filled in yet";
           subtaskNoteIcon.title = `Subtask "${s.text || "(untitled subtask)"}" (in "${t.text || "(untitled task)"}") — DRC, ${status}`;
@@ -17195,6 +17229,7 @@
         snote = document.createElement("span");
         snote.className = "subtask-note-icon";
         if (subtaskIsDRC) snote.appendChild(drcIconEl(13));
+        else if (isPlanNoteFor(subtaskNotesForS[0], s)) snote.appendChild(planIconEl(13));
         else snote.innerHTML = CELL_NOTE_ICON_SVG; // same sticky-note icon as everywhere else
         snote.title = subtaskNotesForS.length ? `Notes (${subtaskNotesForS.length})` : "Add note";
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
@@ -17504,6 +17539,7 @@
       // A task whose note is a DRC (or a task literally named "DRC", which
       // opens the node's DRC note) shows the DRC image instead.
       if (isDRCNote(taskNotes[0]) || (t.text || "").trim().toUpperCase() === "DRC") noteBtn.appendChild(drcIconEl(16));
+      else if (isPlanNoteFor(taskNotes[0], t)) noteBtn.appendChild(planIconEl(16));
       else noteBtn.innerHTML = CELL_NOTE_ICON_SVG;
       noteBtn.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       noteBtn.addEventListener("click", (e) => {
@@ -20317,7 +20353,7 @@
 
       getNodeNotes(node).forEach((n) => {
         if (!n.favorite) return;
-        items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n), isDRC: isDRCNote(n) });
+        items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n), isDRC: isDRCNote(n), isPlan: isPlanNote(n) });
       });
 
       // A task's own notes (see getTaskNotes) are a separate list from
@@ -20337,6 +20373,7 @@
             nodeLabel: `${nodeLabel} → ${t.text || "Untitled task"}`,
             preview: notePreviewText(n),
             isDRC: isDRCNote(n),
+            isPlan: isPlanNoteFor(n, t),
           });
         });
       });
@@ -20511,7 +20548,7 @@
     } else if (it.type === "note") {
       // Same yellow sticky-note / DRC notebook icons as everywhere else
       // in the app (see noteIconEl/drcIconEl), instead of a generic emoji.
-      icon.appendChild(it.isDRC ? drcIconEl(22) : noteIconEl(22));
+      icon.appendChild(it.isDRC ? drcIconEl(22) : (it.isPlan ? planIconEl(22) : noteIconEl(22)));
     } else if (it.type === "link") {
       // Same recognizable per-destination icon as the link menus/markers
       // elsewhere (see linkIconFor), instead of a generic 🔗 emoji.
@@ -20959,6 +20996,7 @@
           favorite: !!n.favorite,
           ts: n.updatedAt || n.createdAt || 0,
           isDRC: isDRCNote(n),
+          isPlan: isPlanNote(n),
         });
       });
       // A task's own notes (see getTaskNotes) live in a separate list
@@ -20980,6 +21018,7 @@
             favorite: !!n.favorite,
             ts: n.updatedAt || n.createdAt || 0,
             isDRC: isDRCNote(n),
+            isPlan: isPlanNoteFor(n, t),
           });
         });
       });
@@ -21058,6 +21097,7 @@
     const icon = document.createElement("span");
     icon.className = "favoritesbrowser-row-icon";
     if (it.isDRC) icon.appendChild(drcIconEl(22));
+    else if (it.isPlan) icon.appendChild(planIconEl(22));
     else icon.appendChild(noteIconEl(22));
 
     // A single combined line — "node → task → title", each segment
