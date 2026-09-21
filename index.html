@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=97">
+<link rel="stylesheet" href="style.css?v=98">
 </head>
 <body>
 <div id="app">
@@ -89,6 +89,7 @@
       </div>
       <span id="save-status" class="save-status">Saved</span>
       <button id="btn-load-latest" class="btn-ghost" title="Pull the newest version of your maps from Google Drive right now">⟳ Load latest</button>
+      <button id="btn-upload-now" class="btn-ghost" title="Upload the map you have open to Google Drive right now — for when you want to be sure it went up">⬆ Upload</button>
       <div class="undo-controls">
         <button id="btn-undo" title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" disabled>↶</button>
         <button id="btn-redo" title="Redo (Ctrl/Cmd+Shift+Z)" aria-label="Redo" disabled>↷</button>
@@ -198,7 +199,7 @@
       <tr><td>Right‑click a node</td><td>More actions (color, collapse, strikethrough, delete, reset position, add URL)</td></tr>
       <tr><td>Add URL…</td><td>Right-click a node, choose "Add URL…" (or press <kbd>Ctrl/⌘</kbd> + <kbd>K</kbd> with a node selected), then type or paste a web address. Repeat to attach more than one link. Nodes with a URL show a small 🔗 marker alongside any photo thumbnails — click it to open the link (or, with several, pick which one). Right-click the 🔗 marker itself to edit an existing link.</td></tr>
       <tr><td>Add note…</td><td>Right-click a node and choose "Add note…" to attach a longer note — and you can attach more than one. Each note has an optional title field on its first line (<kbd>Enter</kbd> jumps from the title into the body) — the picker menus below use it, falling back to a preview of the body text if it's left blank. Nodes with notes show one small note-shaped marker per note, alongside any photo thumbnails. Click a marker to open that note; inside the editor use <kbd>Alt</kbd> + arrow keys to page between them, "+ New note" to start another, and 🗑 to delete the one on screen. Right-click any note marker for a quick list of every note on the node, each with its own ✕ to delete without opening the editor.</td></tr>
-      <tr><td>Tasks…</td><td>Right-click a node and choose "Add tasks…" to keep a checklist for it (e.g. today's to-dos). Nodes with tasks show a small ring marker with a fraction like "2/5" — its fill grows as you check tasks off, and a progress bar on the node fills the same way. Click the ⏱ next to any task to start a 1-minute focus timer for it — click "+1m" any time to add more, it keeps running even if you close the modal, chimes when time's up, and counts down right in the browser tab's title alongside the task name (e.g. "⏱ 0:42 · Water the plants") so you can see it from another tab.</td></tr>
+      <tr><td>Tasks…</td><td>Right-click a node and choose "Add tasks…" to keep a checklist for it (e.g. today's to-dos). Nodes with tasks show a small ring marker with a fraction like "2/5" — its fill grows as you check tasks off, and a progress bar on the node fills the same way. Every task row has a ✗ button right after its checkbox (and every subtask pill has one at its end) that marks it <b>failed</b> — the opposite of done. Click it again to clear; marking something done clears failed, and vice versa. Failed items stay in the total, are counted separately (e.g. "3 of 8 done · 2 failed"), and are never shown as overdue. Click the ⏱ next to any task to start a 1-minute focus timer for it — click "+1m" any time to add more, it keeps running even if you close the modal, chimes when time's up, and counts down right in the browser tab's title alongside the task name (e.g. "⏱ 0:42 · Water the plants") so you can see it from another tab.</td></tr>
       <tr><td>Drag markers to another node</td><td>A node's note icon, link icon (both shown alongside its photo thumbnails), task ring/progress bar, or any individual photo thumbnail can all be dragged onto a different node to move that note, link, checklist, or photo over — hold <kbd>Alt</kbd>/<kbd>⌥</kbd> while dropping to copy instead of move. Each note marker drags just that one note. Dragging the "+N" photo badge moves the rest of that node's photos as a batch.</td></tr>
       <tr><td>← Back</td><td>The note editor, photo viewer and YouTube player each have a ← Back button. If you opened one from a list (Notes, Photos, Videos, Favorites, a tag gallery…), Back returns to that list with the same folder, search and scroll position; from the map or from Tasks/Calendar it simply closes the viewer, leaving you where you were.</td></tr>
       <tr><td>Add image to note</td><td>In the note editor, click the 🖼 button to pick a photo, or paste (Ctrl/⌘+V) or drag-and-drop an image straight into the note.</td></tr>
@@ -793,6 +794,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=175"></script>
+<script src="app.js?v=178"></script>
 </body>
 </html>

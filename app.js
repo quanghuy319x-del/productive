@@ -1417,6 +1417,7 @@
           updateDriveUI();
           startDriveSyncPolling();
           this.scheduleRefresh();
+          syncTaskTemplatesWithDrive();
           return;
         } catch (e) {
           console.error("Cached Drive token didn't work, falling back", e);
@@ -1661,6 +1662,7 @@
       updateDriveUI();
       startDriveSyncPolling();
       this.scheduleRefresh();
+      syncTaskTemplatesWithDrive();
     },
 
     signOut() {
@@ -1805,6 +1807,36 @@
         if (!this.accessToken || Date.now() >= this.tokenExpiresAt) this.needsReauth = true;
         try { updateDriveUI(); } catch (e2) {}
       }
+    },
+
+    // ---- Shared settings file (currently: saved task-list templates) ----
+    // Things that used to live only in one browser's localStorage and so
+    // never reached the phone. Kept in ONE small Drive file, tagged
+    // appProperties.branchlineSettings (NOT branchlineId), so listRemote()/
+    // syncFromDrive() never mistake it for a map. Oldest-created first so
+    // every device agrees which file is the "primary" if a race ever
+    // produces two.
+    async listSettingsFiles() {
+      const q = encodeURIComponent("trashed=false and appProperties has { key='branchlineSettings' and value='1' }");
+      const fields = encodeURIComponent("files(id,name)");
+      const res = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&spaces=drive&pageSize=20&orderBy=createdTime`);
+      if (!res.ok) throw new Error("Couldn't list Drive settings (" + res.status + ")");
+      const data = await res.json();
+      return data.files || [];
+    },
+    async writeSettingsFile(fileId, payload) {
+      const metadata = { name: "branchline-settings.json", appProperties: { branchlineSettings: "1" } };
+      const url = fileId
+        ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`
+        : "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id";
+      const uploadUrl = await this.startResumableSession(url, fileId ? "PATCH" : "POST", metadata);
+      const putRes = await this.api(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!putRes.ok) throw new Error("Couldn't upload settings to Drive (" + putRes.status + ")");
+      return fileId || (await putRes.json()).id;
     },
 
     async remove(map) {
@@ -2463,6 +2495,7 @@
       // the old copy editable until the check below finishes.
       updateDriveUI();
       pollDriveUpdates(true);
+      if (Date.now() - taskTemplateLastSyncAt > 30000) syncTaskTemplatesWithDrive();
     }
   });
 
@@ -2514,6 +2547,7 @@
       renderSidebar();
       renderAll();
       updateDriveUI();
+      await syncTaskTemplatesWithDrive();
       if (DriveDB.driveBroken()) showToast("Loaded from Drive, but some of your changes still aren't uploading \u2014 retrying");
       else showToast(changed ? "\u2705 Loaded the latest from Drive" : "\u2705 Already on the latest version");
     } catch (e) {
@@ -2526,6 +2560,108 @@
     }
   }
   loadLatestBtn.addEventListener("click", loadLatestFromDrive);
+
+  // "⬆ Upload" — the push counterpart to "⟳ Load latest". Uploads the map
+  // that's open right now to Google Drive immediately, for when you'd
+  // rather not just trust that the automatic upload happened. It:
+  //   1. commits anything mid-edit and lets in-flight saves finish,
+  //   2. checks Drive first — if another device saved a NEWER copy of
+  //      this map, it asks before replacing it and keeps that copy as its
+  //      own map so nothing is lost (same rule as the background sync),
+  //   3. force-uploads the map even if it already looks "synced",
+  //   4. re-reads Drive afterwards to confirm the upload really landed.
+  const uploadNowBtn = document.getElementById("btn-upload-now");
+  let uploadNowRunning = false;
+  async function uploadCurrentMapToDrive() {
+    if (uploadNowRunning) return;
+    if (!state.current) { showToast("Open a map first"); return; }
+    if (!DriveDB.signedIn) {
+      DriveDB.signIn(false).catch(err => alert(err.message || "Google sign-in failed."));
+      return;
+    }
+    if (!isOnline) { showToast("You're offline \u2014 can't reach Google Drive"); return; }
+    uploadNowRunning = true;
+    const originalLabel = uploadNowBtn.textContent;
+    uploadNowBtn.disabled = true;
+    uploadNowBtn.textContent = "\u2b06 Uploading\u2026";
+    let holdingFlags = false;
+    try {
+      if (DriveDB.needsReauth) {
+        // Expired Google session: a real click is the fix.
+        await DriveDB.signIn(false);
+        if (!state.current) return;
+      }
+      // Commit whatever is mid-edit (including a note still in its
+      // autosave debounce), then let any save/upload/poll in flight
+      // finish so two uploads of the same map can't overlap.
+      try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+      try { flushAllPendingSaves(); } catch (e) {}
+      const t0 = Date.now();
+      const busy = () => DriveDB.syncing || DriveDB.verifying || DriveDB.pushingLocal || localSaveBusy();
+      while (busy() && Date.now() - t0 < 20000) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (busy()) { showToast("Still saving \u2014 try Upload again in a moment"); return; }
+      if (!state.current) return;
+
+      // Claim the sync flags so the background poll doesn't start its own
+      // upload of this same map while ours is running.
+      DriveDB.syncing = true;
+      DriveDB.pushingLocal = true;
+      holdingFlags = true;
+
+      const map = state.current;
+      const stamp = map.updatedAt || 0;
+      const findRemote = async () => (await DriveDB.listRemote())
+        .find(f => f.appProperties && f.appProperties.branchlineId === map.id);
+
+      const before = await findRemote();
+      if (before) {
+        const remoteStamp = Number((before.appProperties && before.appProperties.updatedAt) || 0);
+        // Make sure save() updates the existing Drive file rather than
+        // creating a duplicate if this device hadn't indexed it yet.
+        if (!DriveDB.fileIndex[map.id]) DriveDB.fileIndex[map.id] = { fileId: before.id, updatedAt: remoteStamp };
+        if (remoteStamp > stamp) {
+          const ok = confirm("Google Drive already has a NEWER version of this map (saved from another device).\n\nUploading will replace it with this device's version. Drive's version will be kept as a separate map in your list so nothing is lost.\n\nUpload anyway?");
+          if (!ok) { showToast("Upload cancelled \u2014 tap \u27f3 Load latest to get Drive's newer version instead"); return; }
+          let kept = null;
+          try {
+            const other = await DriveDB.downloadFile(before.id);
+            if (other && other.root) kept = await saveConflictCopy(other, "other device");
+          } catch (e) { console.error("Couldn't fetch Drive's newer copy", e); }
+          if (!kept) { showToast("Couldn't back up Drive's newer copy first \u2014 nothing was uploaded"); return; }
+          renderSidebar();
+        }
+      }
+
+      await DriveDB.save(map);
+      if (DriveDB.uploadFailing) {
+        showToast("\u26a0 Upload to Drive failed \u2014 check your connection and try again");
+        return;
+      }
+
+      // Don't just trust that the PUT returned OK: ask Drive what it holds now.
+      const after = await findRemote();
+      const afterStamp = after ? Number((after.appProperties && after.appProperties.updatedAt) || 0) : 0;
+      syncTaskTemplatesWithDrive();
+      if (after && afterStamp >= stamp) {
+        const name = (map.title || "Untitled map").slice(0, 40);
+        showToast("\u2705 Uploaded \u201c" + name + "\u201d to Google Drive");
+      } else {
+        showToast("\u26a0 Upload finished but Drive doesn't show it yet \u2014 try again");
+      }
+    } catch (e) {
+      console.error("Manual upload failed", e);
+      showToast("Couldn't upload to Drive: " + ((e && e.message) || e));
+    } finally {
+      if (holdingFlags) { DriveDB.syncing = false; DriveDB.pushingLocal = false; }
+      uploadNowRunning = false;
+      uploadNowBtn.disabled = false;
+      uploadNowBtn.textContent = originalLabel;
+      try { updateDriveUI(); } catch (e) {}
+    }
+  }
+  uploadNowBtn.addEventListener("click", uploadCurrentMapToDrive);
 
   /* ---------------- data model ---------------- */
 
@@ -3446,7 +3582,7 @@
     // move the needle. A starred task counts 3x toward the weight, so
     // marking (or completing subtasks of) a starred task moves the
     // node's ring/bar further.
-    let total = 0, done = 0;
+    let total = 0, done = 0, failed = 0;
     tasks.forEach((t) => {
       const stars = getTaskStars(t);
       const weight = stars > 0 ? 3 : 1;
@@ -3454,9 +3590,11 @@
       if (subs.length) {
         total += subs.length * weight;
         done += subs.filter(s => s.done).length * weight;
+        failed += subs.filter(s => s.failed && !s.done).length * weight;
       } else {
         total += weight;
         if (t.done) done += weight;
+        else if (t.failed) failed += weight;
       }
     });
     // Each completed round of the affirmation typing game (node.affirmation.wins
@@ -3506,7 +3644,7 @@
       total += drcPts;
       done += drcPts;
     }
-    return { done, total, pct: total ? done / total : 0 };
+    return { done, total, failed, pct: total ? done / total : 0 };
   }
 
   // Subtasks — a small checklist living on a single task, stored as
@@ -3535,7 +3673,53 @@
   // done). No-op for tasks without any subtasks yet.
   function syncTaskDoneFromSubtasks(t) {
     const subs = getTaskSubtasks(t);
-    if (subs.length) t.done = subs.every(s => s.done);
+    if (subs.length) {
+      t.done = subs.every(s => s.done);
+      // Mirror image: a task is failed once EVERY subtask is failed.
+      t.failed = subs.every(s => s.failed);
+    }
+  }
+
+  // "Failed" — the opposite of done. A task/subtask is done, failed, or
+  // neither, never both: marking one clears the other. It counts toward
+  // the progress total like any unfinished item (it isn't "done") but is
+  // shown separately, and a failed task is never flagged overdue.
+  // Stored as `failed: true` on the task/subtask object, so it rides
+  // along with the map through IndexedDB, Drive and Export like `done`.
+  function setTaskDone(t, on) {
+    t.done = !!on;
+    if (t.done) t.failed = false;
+    getTaskSubtasks(t).forEach(s => { s.done = t.done; if (t.done) s.failed = false; });
+  }
+  function setTaskFailed(t, on) {
+    t.failed = !!on;
+    if (t.failed) t.done = false;
+    // Cascades to every subtask, same as the done checkbox does.
+    getTaskSubtasks(t).forEach(s => { s.failed = t.failed; if (t.failed) s.done = false; });
+  }
+  function setSubtaskDone(t, s, on) {
+    s.done = !!on;
+    if (s.done) s.failed = false;
+    syncTaskDoneFromSubtasks(t);
+  }
+  function setSubtaskFailed(t, s, on) {
+    s.failed = !!on;
+    if (s.failed) s.done = false;
+    syncTaskDoneFromSubtasks(t);
+  }
+  // The little ✗ button used on task rows (cls "task-fail-btn") and
+  // subtask pills (cls "subtask-fail-btn").
+  function makeTaskFailButton(failed, onToggle, cls) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = (cls || "task-fail-btn") + (failed ? " failed" : "");
+    b.textContent = "\u2717";
+    b.title = failed ? "Marked as failed \u2014 click to clear" : "Mark as failed";
+    b.setAttribute("aria-label", failed ? "Clear failed mark" : "Mark as failed");
+    b.setAttribute("aria-pressed", failed ? "true" : "false");
+    b.addEventListener("mousedown", (e) => e.stopPropagation());
+    b.addEventListener("click", (e) => { e.stopPropagation(); onToggle(); });
+    return b;
   }
 
   // Task-list templates — a whole node's task list, saved as one named
@@ -3582,10 +3766,11 @@
   function saveTaskListAsTemplate(host, name) {
     const tasks = snapshotTasksForTemplate(host);
     if (!tasks.length) return null;
-    const tpl = { id: uid(), name: (name || "").trim() || "Untitled template", tasks };
+    const tpl = { id: uid(), name: (name || "").trim() || "Untitled template", tasks, updatedAt: Date.now() };
     const list = getTaskListTemplates();
     list.push(tpl);
     saveTaskListTemplates(list);
+    scheduleTaskTemplateSync();
     return tpl;
   }
   // Overwrites an existing template's task snapshot in place (same id and
@@ -3599,11 +3784,126 @@
     const tpl = list.find(t => t.id === id);
     if (!tpl) return false;
     tpl.tasks = tasks;
+    tpl.updatedAt = Date.now();
     saveTaskListTemplates(list);
+    scheduleTaskTemplateSync();
     return true;
   }
   function deleteTaskListTemplate(id) {
     saveTaskListTemplates(getTaskListTemplates().filter(tpl => tpl.id !== id));
+    // Remember the deletion (a "tombstone") so the other device's copy
+    // doesn't just bring the template back on the next sync.
+    const gone = getDeletedTaskTemplates();
+    gone[id] = Date.now();
+    saveDeletedTaskTemplates(gone);
+    scheduleTaskTemplateSync();
+  }
+
+  /* ---- Task-template sync across devices (via Google Drive) ----
+     Templates are stored per browser, so a phone never saw the ones made
+     on the PC. This mirrors them through the settings file above:
+     union of both sides by template id, newest edit wins, and a
+     deletion record beats an older copy. Never touches maps, and any
+     failure here is logged and ignored. */
+  const TASK_TEMPLATES_DELETED_KEY = "branchlineTaskListTemplatesDeleted_v1";
+  function getDeletedTaskTemplates() {
+    try {
+      const o = JSON.parse(localStorage.getItem(TASK_TEMPLATES_DELETED_KEY));
+      if (o && typeof o === "object" && !Array.isArray(o)) return o;
+    } catch (e) {}
+    return {};
+  }
+  function saveDeletedTaskTemplates(o) {
+    try { localStorage.setItem(TASK_TEMPLATES_DELETED_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+  // a = local (its order is kept), b = remote.
+  function mergeTaskTemplateSets(a, b) {
+    const deleted = {};
+    for (const src of [a.deleted, b.deleted]) {
+      for (const id in (src || {})) deleted[id] = Math.max(deleted[id] || 0, Number(src[id]) || 0);
+    }
+    const best = new Map();
+    const order = [];
+    for (const t of [...(a.items || []), ...(b.items || [])]) {
+      if (!t || !t.id) continue;
+      const cur = best.get(t.id);
+      if (!cur) { best.set(t.id, t); order.push(t.id); }
+      else if ((t.updatedAt || 0) > (cur.updatedAt || 0)) best.set(t.id, t);
+    }
+    const items = [];
+    for (const id of order) {
+      const t = best.get(id);
+      if (deleted[id] && deleted[id] >= (t.updatedAt || 0)) continue;
+      items.push(t);
+    }
+    return { items, deleted };
+  }
+  // Order-insensitive fingerprint, so two devices that list the same
+  // templates in a different order don't keep re-uploading forever.
+  function taskTemplateSetSig(s) {
+    const items = (s.items || []).map(t => t.id + ":" + (t.updatedAt || 0)).sort().join(",");
+    const del = Object.keys(s.deleted || {}).map(id => id + ":" + s.deleted[id]).sort().join(",");
+    return items + "|" + del;
+  }
+  let taskTemplateSyncRunning = false;
+  let taskTemplateSyncQueued = false;
+  let taskTemplateSyncTimer = null;
+  let taskTemplateLastSyncAt = 0;
+  function scheduleTaskTemplateSync() {
+    clearTimeout(taskTemplateSyncTimer);
+    taskTemplateSyncTimer = setTimeout(() => { syncTaskTemplatesWithDrive(); }, 1000);
+  }
+  // Resolves true if this device's template list changed as a result.
+  async function syncTaskTemplatesWithDrive() {
+    if (!DriveDB.signedIn || DriveDB.needsReauth || !isOnline) return false;
+    if (taskTemplateSyncRunning) { taskTemplateSyncQueued = true; return false; }
+    taskTemplateSyncRunning = true;
+    let changedLocal = false;
+    try {
+      const files = await DriveDB.listSettingsFiles();
+      // Read every settings file; if any read fails, stop — writing a merge
+      // built from incomplete data could drop someone's templates.
+      const remoteDocs = [];
+      for (const f of files) remoteDocs.push(await DriveDB.downloadFile(f.id));
+      let remote = { items: [], deleted: {} };
+      for (const doc of remoteDocs) {
+        const tt = (doc && doc.taskTemplates) || {};
+        remote = mergeTaskTemplateSets(remote, {
+          items: Array.isArray(tt.items) ? tt.items : [],
+          deleted: (tt.deleted && typeof tt.deleted === "object") ? tt.deleted : {}
+        });
+      }
+      const local = { items: getTaskListTemplates(), deleted: getDeletedTaskTemplates() };
+      const merged = mergeTaskTemplateSets(local, remote);
+      const mergedSig = taskTemplateSetSig(merged);
+      if (mergedSig !== taskTemplateSetSig(local)) {
+        saveTaskListTemplates(merged.items);
+        saveDeletedTaskTemplates(merged.deleted);
+        changedLocal = true;
+      }
+      const somethingToStore = merged.items.length || Object.keys(merged.deleted).length;
+      if (somethingToStore && (!files.length || files.length > 1 || mergedSig !== taskTemplateSetSig(remote))) {
+        // Keep any other keys a newer app version may have put in the file.
+        const payload = Object.assign({}, remoteDocs[0] || {}, {
+          v: 1, savedAt: Date.now(),
+          taskTemplates: { items: merged.items, deleted: merged.deleted }
+        });
+        const primaryId = await DriveDB.writeSettingsFile(files.length ? files[0].id : null, payload);
+        // Two files only ever appear from a simultaneous first save on two
+        // devices; both were merged above, so the extras are now redundant.
+        for (const extra of files.slice(1)) {
+          try { await DriveDB.api(`https://www.googleapis.com/drive/v3/files/${extra.id}`, { method: "DELETE" }); } catch (e) {}
+        }
+        void primaryId;
+      }
+      taskTemplateLastSyncAt = Date.now();
+    } catch (e) {
+      console.error("Task template sync failed", e);
+    } finally {
+      taskTemplateSyncRunning = false;
+      if (taskTemplateSyncQueued) { taskTemplateSyncQueued = false; scheduleTaskTemplateSync(); }
+    }
+    return changedLocal;
   }
   // Appends a fresh copy of every task in a saved template onto `host`'s
   // existing task list — every task/subtask id is regenerated so they're
@@ -16000,7 +16300,7 @@
   // each paired with the task it belongs to.
   function unfinishedSubtasksOfHost(host) {
     return getNodeTasks(host).flatMap((t) =>
-      getTaskSubtasks(t).filter((s) => !s.done).map((s) => ({ t, s }))
+      getTaskSubtasks(t).filter((s) => !s.done && !s.failed).map((s) => ({ t, s }))
     );
   }
 
@@ -16183,6 +16483,13 @@
     renderTaskTemplatesPopover();
     taskTemplatesPopover.classList.remove("hidden");
     positionTaskTemplatesPopover(btn);
+    // Pull whatever the other device saved, then redraw if it added any.
+    syncTaskTemplatesWithDrive().then((changed) => {
+      if (changed && !taskTemplatesPopover.classList.contains("hidden")) {
+        renderTaskTemplatesPopover();
+        positionTaskTemplatesPopover(btn);
+      }
+    });
   }
   function closeTaskTemplatesPopover() {
     taskTemplatesPopover.classList.add("hidden");
@@ -16778,6 +17085,12 @@
       const n = getTaskNotes(s).length;
       addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", openNotes);
     }
+    addItem(s.failed ? "\u21a9 Clear failed" : "\u2717 Mark failed", "", () => {
+      pushUndo();
+      setSubtaskFailed(t, s, !s.failed);
+      persist();
+      rerender();
+    });
     addItem("Copy text", "", () => copySubtaskText(s.text));
     addItem("Delete subtask", "danger", () => {
       if (!requireSignIn()) return;
@@ -16807,7 +17120,7 @@
 
     getTaskSubtasks(t).forEach((s) => {
       const row = document.createElement("li");
-      row.className = "subtask-row" + (s.done ? " done" : "") + (!s.done && s.id === randomPickedSubtaskId ? " picked" : "");
+      row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "") + (!s.done && !s.failed && s.id === randomPickedSubtaskId ? " picked" : "");
       row.dataset.subtaskId = s.id;
 
       row.addEventListener("dragover", (e) => {
@@ -16853,7 +17166,7 @@
       // Skip the auto color once done — the .subtask-row.done .subtask-text
       // rule (dim + strikethrough) is the done indicator and would
       // otherwise be masked by this inline color, which always wins.
-      if (!s.done) stext.style.color = taskFontColor(t);
+      if (!s.done && !s.failed) stext.style.color = taskFontColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
@@ -16871,8 +17184,7 @@
         subtaskClickTimer = setTimeout(() => {
           subtaskClickTimer = null;
           pushUndo();
-          s.done = !s.done;
-          syncTaskDoneFromSubtasks(t);
+          setSubtaskDone(t, s, !s.done);
           persist();
           renderTasksModal();
         }, 220);
@@ -16938,9 +17250,17 @@
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
       }
 
+      const sfail = makeTaskFailButton(!!s.failed, () => {
+        pushUndo();
+        setSubtaskFailed(t, s, !s.failed);
+        persist();
+        renderTasksModal();
+      }, "subtask-fail-btn");
+
       row.appendChild(shandle);
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
+      row.appendChild(sfail);
       list.appendChild(row);
     });
 
@@ -16994,8 +17314,9 @@
           if (!Array.isArray(t.subtasks)) t.subtasks = [];
           t.subtasks.push({ id: uid(), text: v, done: false });
           // A brand-new subtask is unchecked, so the parent can no longer
-          // be considered fully done.
+          // be considered fully done (or fully failed).
           t.done = false;
+          t.failed = false;
           persist();
           renderTasksModal();
           // Re-render rebuilds the DOM, so re-focus the (new) input for
@@ -17043,7 +17364,7 @@
       // by default.
       const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
       const showingSubtasks = subExpanded && subProg.total > 0;
-      li.className = "task-row" + (t.done ? " done" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (showingSubtasks ? " has-open-subtasks" : "");
+      li.className = "task-row" + (t.done ? " done" : "") + (t.failed ? " failed" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (showingSubtasks ? " has-open-subtasks" : "");
       const rowColor = getTaskColor(t);
       li.style.background = taskColorTint(rowColor) || "";
 
@@ -17098,11 +17419,18 @@
       cb.checked = !!t.done;
       cb.addEventListener("change", () => {
         pushUndo();
-        t.done = cb.checked;
         // Checking/unchecking a task with subtasks cascades to all of
         // them, mirroring the auto-complete-parent behavior below.
-        const subs = getTaskSubtasks(t);
-        if (subs.length) subs.forEach(s => { s.done = t.done; });
+        // (Marking done also clears a failed mark.)
+        setTaskDone(t, cb.checked);
+        persist();
+        renderTasksModal();
+      });
+
+      // ✗ — mark this task failed (the opposite of the done checkbox).
+      const failBtn = makeTaskFailButton(!!t.failed, () => {
+        pushUndo();
+        setTaskFailed(t, !t.failed);
         persist();
         renderTasksModal();
       });
@@ -17151,7 +17479,7 @@
       // Skip the auto color once done — .task-row.done .task-text (dim)
       // is the done indicator and would otherwise be masked by this
       // inline color, which always wins over a class-based rule.
-      if (!t.done) text.style.color = taskFontColor(t);
+      if (!t.done && !t.failed) text.style.color = taskFontColor(t);
       text.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); text.blur(); }
@@ -17175,7 +17503,7 @@
         ? "Double-click to hide subtasks"
         : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
       li.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-note-btn, .task-due-btn, .task-text")) return;
+        if (e.target.closest(".task-checkbox, .task-fail-btn, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-note-btn, .task-due-btn, .task-text")) return;
         if (subExpanded) {
           collapsedSubtaskIds.add(t.id);
         } else {
@@ -17193,7 +17521,7 @@
       // a plain "YYYY-MM-DD" string, same convention as the standalone
       // Tasks app.
       const dueDate = t.due ? fromISODate(t.due) : null;
-      const isOverdue = !!(dueDate && !t.done && dueDate < startOfToday());
+      const isOverdue = !!(dueDate && !t.done && !t.failed && dueDate < startOfToday());
       const dueBtn = document.createElement("span");
       dueBtn.className = "task-due-btn" + (t.due ? " has-due" : "") + (isOverdue ? " overdue" : "");
       dueBtn.title = t.due ? "Change or clear due date" : "Set a due date";
@@ -17272,6 +17600,7 @@
 
       li.appendChild(handle);
       li.appendChild(cb);
+      li.appendChild(failBtn);
       li.appendChild(text);
       // Add-subtask "+" sits right at the end of the task name (before the
       // due date / note icons) — still hidden until the row is hovered,
@@ -17290,7 +17619,9 @@
     const prog = nodeTaskProgress(host);
     tasksProgressBar.style.width = Math.round(prog.pct * 100) + "%";
     tasksProgressBar.classList.toggle("done", prog.pct >= 1);
-    tasksProgressLabel.textContent = prog.total ? `${prog.done} of ${prog.total} done` : "No tasks yet";
+    tasksProgressLabel.textContent = prog.total
+      ? `${prog.done} of ${prog.total} done` + (prog.failed ? ` \u00b7 ${prog.failed} failed` : "")
+      : "No tasks yet";
     tasksSortStarsBtn.disabled = tasks.length < 2;
     tasksRandomBtn.disabled = unfinishedSubtasksOfHost(host).length === 0;
     updateTaskFontColorToggleBtn();
@@ -17448,10 +17779,10 @@
       const subs = getTaskSubtasks(t);
       if (subs.length >= 2) {
         subs.forEach((s) => {
-          items.push({ kind: "subtask", task: t, subtask: s, node, done: !!s.done, label: `${t.text || "Untitled task"} — ${s.text || "Untitled subtask"}` });
+          items.push({ kind: "subtask", task: t, subtask: s, node, done: !!s.done, failed: !!s.failed && !s.done, label: `${t.text || "Untitled task"} — ${s.text || "Untitled subtask"}` });
         });
       } else {
-        items.push({ kind: "task", task: t, node, done: !!t.done, label: t.text || "Untitled task" });
+        items.push({ kind: "task", task: t, node, done: !!t.done, failed: !!t.failed && !t.done, label: t.text || "Untitled task" });
       }
     });
     return items;
@@ -17515,7 +17846,8 @@
         const counter = document.createElement("span");
         counter.className = "calendar-day-counter" + (doneCount === dayItems.length ? " all-done" : "");
         counter.textContent = `✓${doneCount}`;
-        counter.title = `${doneCount} of ${dayItems.length} done`;
+        const failedCount = dayItems.filter((it) => it.failed).length;
+        counter.title = `${doneCount} of ${dayItems.length} done` + (failedCount ? `, ${failedCount} failed` : "");
         dayHead.appendChild(counter);
       }
 
@@ -17526,8 +17858,8 @@
       tasksWrap.style.fontSize = calendarBoxFontSize(dayItems.length);
       dayItems.forEach((it) => {
         const box = document.createElement("span");
-        box.className = "calendar-task-box" + (it.done ? " done" : "") + (it.kind === "subtask" ? " calendar-subtask-box" : "");
-        box.textContent = it.done ? "☑" : "☐";
+        box.className = "calendar-task-box" + (it.done ? " done" : "") + (it.failed ? " failed" : "") + (it.kind === "subtask" ? " calendar-subtask-box" : "");
+        box.textContent = it.done ? "☑" : (it.failed ? "☒" : "☐");
         box.title = it.label || "Untitled task";
         tasksWrap.appendChild(box);
       });
@@ -17610,7 +17942,7 @@
     const host = resolveHost(node.id, r, c);
     const subProg = taskSubtaskProgress(t);
     const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
-    li.className = "task-row" + (t.done ? " done" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (subExpanded ? " has-open-subtasks" : "");
+    li.className = "task-row" + (t.done ? " done" : "") + (t.failed ? " failed" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (subExpanded ? " has-open-subtasks" : "");
     const rowColor = getTaskColor(t);
     li.style.background = taskColorTint(rowColor) || "";
 
@@ -17664,9 +17996,16 @@
     cb.checked = !!t.done;
     cb.addEventListener("change", () => {
       pushUndo();
-      t.done = cb.checked;
-      const subs = getTaskSubtasks(t);
-      if (subs.length) subs.forEach(s => { s.done = t.done; });
+      setTaskDone(t, cb.checked);
+      persist();
+      renderCalDayModal();
+      renderCalendar();
+    });
+
+    // ✗ — mark this task failed (the opposite of the done checkbox).
+    const failBtn = makeTaskFailButton(!!t.failed, () => {
+      pushUndo();
+      setTaskFailed(t, !t.failed);
       persist();
       renderCalDayModal();
       renderCalendar();
@@ -17691,7 +18030,7 @@
     const text = document.createElement("span");
     text.className = "task-text";
     text.textContent = t.text || "Untitled task";
-    if (!t.done) text.style.color = taskFontColor(t);
+    if (!t.done && !t.failed) text.style.color = taskFontColor(t);
     text.title = subProg.total ? `${subProg.done} of ${subProg.total} subtasks` : "";
 
     // ★ priority — same 0/1 star toggle as the Tasks modal.
@@ -17761,7 +18100,7 @@
       ? "Double-click to hide subtasks"
       : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
     li.addEventListener("dblclick", (e) => {
-      if (e.target.closest(".task-checkbox, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-source-node")) return;
+      if (e.target.closest(".task-checkbox, .task-fail-btn, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-source-node")) return;
       if (subExpanded) {
         collapsedSubtaskIds.add(t.id);
       } else {
@@ -17773,6 +18112,7 @@
 
     li.appendChild(handle);
     li.appendChild(cb);
+    li.appendChild(failBtn);
     li.appendChild(text);
     li.appendChild(subtaskBtn);
     li.appendChild(star);
@@ -17812,7 +18152,7 @@
 
     getTaskSubtasks(t).forEach((s) => {
       const row = document.createElement("li");
-      row.className = "subtask-row" + (s.done ? " done" : "");
+      row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "");
 
       row.addEventListener("dragover", (e) => {
         if (!calDaySubtaskDragState || calDaySubtaskDragState.taskId !== t.id || calDaySubtaskDragState.subtaskId === s.id) return;
@@ -17863,7 +18203,7 @@
       stext.contentEditable = "false";
       stext.spellcheck = false;
       stext.textContent = s.text;
-      if (!s.done) stext.style.color = taskFontColor(t);
+      if (!s.done && !s.failed) stext.style.color = taskFontColor(t);
       // The pill ellipsizes long text, so the title tooltip is the only
       // way to read it in full without double-clicking into edit mode.
       stext.title = s.text;
@@ -17881,8 +18221,7 @@
         subtaskClickTimer = setTimeout(() => {
           subtaskClickTimer = null;
           pushUndo();
-          s.done = !s.done;
-          syncTaskDoneFromSubtasks(t);
+          setSubtaskDone(t, s, !s.done);
           persist();
           renderCalDayModal();
           renderCalendar();
@@ -17923,8 +18262,17 @@
         openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => { renderCalDayModal(); renderCalendar(); });
       });
 
+      const sfail = makeTaskFailButton(!!s.failed, () => {
+        pushUndo();
+        setSubtaskFailed(t, s, !s.failed);
+        persist();
+        renderCalDayModal();
+        renderCalendar();
+      }, "subtask-fail-btn");
+
       row.appendChild(shandle);
       row.appendChild(stext);
+      row.appendChild(sfail);
       list.appendChild(row);
     });
 
@@ -17973,6 +18321,7 @@
           if (!Array.isArray(t.subtasks)) t.subtasks = [];
           t.subtasks.push({ id: uid(), text: v, done: false });
           t.done = false;
+          t.failed = false;
           persist();
           renderCalDayModal();
           requestAnimationFrame(() => {
