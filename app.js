@@ -3470,7 +3470,35 @@
   // text, done}], separate from the freeform note so progress can be
   // computed and shown right on the node in the mindmap.
   function getNodeTasks(node) {
-    return (node && Array.isArray(node.tasks)) ? node.tasks : [];
+    if (!(node && Array.isArray(node.tasks))) return [];
+    if (!node.starsReset) {
+      // One-time reset for lists saved under the old 3-star / 3x rules:
+      // every existing star is removed (even a lone one), then the list is
+      // marked so stars the user adds from now on are kept. Same
+      // lazy-upgrade idea as getCellAttach below, so it covers maps loaded
+      // from anywhere (this browser, Drive, an import), and it's saved
+      // along with the next normal save.
+      node.tasks.forEach((t) => {
+        if (t && getTaskStars(t) > 0) { t.stars = 0; t.starred = false; }
+      });
+      node.starsReset = true;
+    } else {
+      enforceSingleStar(node.tasks);
+    }
+    return node.tasks;
+  }
+  // Safety net: only one starred task is allowed per list (see
+  // MAX_STARRED_TASKS). If a list somehow ends up with more than one (e.g. a
+  // copy synced from a device on an older version), all its stars are removed.
+  function enforceSingleStar(tasks) {
+    let starred = 0;
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i] && getTaskStars(tasks[i]) > 0) starred++;
+    }
+    if (starred <= MAX_STARRED_TASKS) return;
+    tasks.forEach((t) => {
+      if (t && getTaskStars(t) > 0) { t.stars = 0; t.starred = false; }
+    });
   }
   function nodeHasTasks(node) {
     return getNodeTasks(node).length > 0;
@@ -3486,8 +3514,8 @@
   }
   // Only 1 task per task list (node or table cell) can be starred at
   // once — starring another is blocked until the current one is unstarred.
-  // Lists saved before this limit that already hold more than 1 star are
-  // left as they are; they just can't add another until they're under it.
+  // Lists saved before this limit have all their stars removed once (see
+  // getNodeTasks / enforceSingleStar).
   const MAX_STARRED_TASKS = 1;
   // How many times more a starred task counts toward progress.
   const STARRED_TASK_WEIGHT = 10;
