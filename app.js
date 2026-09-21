@@ -11170,8 +11170,9 @@
   // line; the classes/CSS variables that draw the card are stripped again
   // before a note/template is saved (see drcStripCardMarkup).
   //
-  // Which lines count as headings: any line of a DRC note whose text
-  // equals one of the "DRC" note template's lines.
+  // Which lines count as headings: any line marked data-card (added with
+  // the note editor's card button), and — in a DRC note — any line whose
+  // text equals one of the "DRC" note template's lines.
   const DRC_CARD_COLORS = ["#6F94CC", "#5DBB63", "#E84D42", "#F39236", "#756BD1", "#0BC09C", "#E86BB8", "#F2C94C"];
   const DRC_CARD_NEUTRAL = "#9A9A94";
   const DRC_CARD_CLASSES = ["drc-card-line", "drc-card-head", "drc-card-last", "drc-card-gap"];
@@ -11246,7 +11247,10 @@
     return found.map((c, i) => ({ title: c.title, color: c.color || DRC_CARD_COLORS[i % DRC_CARD_COLORS.length] }));
   }
 
-  // mode: "note" | null (null = not a card view: clear it).
+  // mode: "note" (a DRC note: headings are the "DRC" template's lines plus
+  // any line marked data-card) | "cards" (any other note that has cards:
+  // headings are only the lines marked data-card — see noteAddCard) |
+  // null (not a card view: clear it).
   function decorateDRCCards(root, mode) {
     if (!root) return;
     const kids = Array.from(root.children).filter((el) => el.tagName !== "BR");
@@ -11256,10 +11260,16 @@
       return;
     }
     root.classList.add("drc-cards");
-    const titleColor = new Map(drcTemplateCards().map((c) => [drcNorm(c.title), c.color]));
+    const titleColor = mode === "note"
+      ? new Map(drcTemplateCards().map((c) => [drcNorm(c.title), c.color]))
+      : new Map();
     const isHead = (el) => {
+      // A card added with the editor's "🗂 Add card" button is marked on
+      // the line itself — even while its heading is still blank.
+      if (el.hasAttribute("data-card")) return true;
       const t = drcNorm(el.textContent);
-      // A blank line is never a heading — it belongs to the card above it.
+      // Otherwise a blank line is never a heading — it belongs to the
+      // card above it.
       if (!t) return false;
       return titleColor.has(t);
     };
@@ -14803,11 +14813,13 @@
     noteNavFolder.classList.toggle("has-folder", !!folder);
   }
 
-  // Shows the open note as DRC cards when (and only when) its title is
-  // "DRC" — see decorateDRCCards. Cheap and idempotent, so it's simply
+  // Shows the open note as cards when its title is "DRC", or when it has
+  // any card added with the 🗂 button — see decorateDRCCards. Cheap and idempotent, so it's simply
   // re-run after every load/edit/undo and whenever the title changes.
   function refreshDRCCards() {
-    decorateDRCCards(noteTextarea, isDRCNote({ title: noteTitleInput.value }) ? "note" : null);
+    const mode = isDRCNote({ title: noteTitleInput.value }) ? "note"
+      : (noteTextarea.querySelector(":scope > [data-card]") ? "cards" : null);
+    decorateDRCCards(noteTextarea, mode);
   }
   let drcNoteCardsRaf = 0;
   function refreshDRCCardsSoon() {
@@ -15793,6 +15805,48 @@
     e.preventDefault();
     noteToggleOrderedList();
   });
+  // "🗂 Add card": starts a new colored section card — a heading line
+  // (marked data-card, with its own color) that the lines typed under it
+  // belong to, until the next card. Goes on the caret's blank line if it's
+  // on one; otherwise after the current card (if the caret is inside one)
+  // or after the current line; with no caret in the note, at the end.
+  function noteAddCard() {
+    notePushUndo();
+    const count = noteTextarea.querySelectorAll(":scope > .drc-card-head, :scope > [data-card]").length;
+    const color = DRC_CARD_COLORS[count % DRC_CARD_COLORS.length];
+    const sel = window.getSelection();
+    let line = (sel.rangeCount && noteTextarea.contains(sel.anchorNode)) ? noteCurrentLine() : null;
+    if (line && line.nodeType !== 1) line = null; // bare first-line text node: add at the end instead
+    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img");
+    let card;
+    if (line && !line.hasAttribute("data-card") && isBlank(line)) {
+      card = line; // the empty line the caret is on becomes the heading
+    } else {
+      if (line && line.classList.contains("drc-card-line")) {
+        // Inside a card: the new one goes right after that card's last line.
+        while (!line.classList.contains("drc-card-last") && line.nextElementSibling) line = line.nextElementSibling;
+      }
+      card = document.createElement("div");
+      card.appendChild(document.createElement("br"));
+      if (line) line.parentNode.insertBefore(card, line.nextSibling);
+      else noteTextarea.appendChild(card);
+    }
+    card.setAttribute("data-card", "1");
+    card.setAttribute("data-card-color", color);
+    noteTextarea.focus();
+    const range = document.createRange();
+    range.selectNodeContents(card);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    refreshDRCCards();
+    scheduleNoteAutosave();
+    scrollCaretIntoView(card);
+  }
+  $("#note-tool-card").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    noteAddCard();
+  });
   $("#note-tool-check").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteToggleLinePrefix(/^[☐☑]\s+/, () => "☐ ");
@@ -15975,7 +16029,21 @@
       updateNoteToolActiveStates();
     }
   });
-  noteTextarea.addEventListener("input", () => { noteAutoColorParagraphs(); scheduleNoteAutosave(); refreshDRCCardsSoon(); });
+  noteTextarea.addEventListener("input", (e) => {
+    // Chrome's own Enter handling copies a line's attributes onto the line
+    // it splits off — so pressing Enter in a card heading would otherwise
+    // make the new line a second heading. Only the original stays one.
+    if (e && e.inputType === "insertParagraph") {
+      const ln = noteCurrentLine();
+      const prev = ln && ln.previousElementSibling;
+      if (ln && ln.nodeType === 1 && ln.hasAttribute("data-card") && prev && prev.hasAttribute("data-card")
+          && (prev.textContent || "").trim()) {
+        ln.removeAttribute("data-card");
+        ln.removeAttribute("data-card-color");
+      }
+    }
+    noteAutoColorParagraphs(); scheduleNoteAutosave(); refreshDRCCardsSoon();
+  });
   // DRC notes show a color ring at the right edge of each section card;
   // clicking it recolors that card. The color is stored on the heading
   // line itself (data-card-color, honored by decorateDRCCards), so it is
