@@ -15875,7 +15875,7 @@
     const block = document.createElement("div");
     block.className = "note-mood";
     block.setAttribute("data-mood-block", "1");
-    block.contentEditable = "false";
+    block.setAttribute("contenteditable", "false");
     const title = document.createElement("div");
     title.className = "note-mood-title";
     title.textContent = "Mood To Day";
@@ -15934,7 +15934,7 @@
   noteTextarea.addEventListener("click", (e) => {
     const face = e.target && e.target.closest ? e.target.closest(".note-mood-face") : null;
     if (!face || !noteTextarea.contains(face)) return;
-    if (!noteTextarea.isContentEditable) return; // read-only (not connected to Drive): look, don't change
+    if (noteTextarea.getAttribute("contenteditable") === "false") return; // read-only (not connected to Drive): look, don't change
     const block = face.closest(".note-mood");
     if (!block) return;
     notePushUndo();
