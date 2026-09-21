@@ -4202,11 +4202,29 @@ kbd{
    whole player still fits on screen instead of being clipped. The cap
    is 90vh minus the actions bar's own height + the card's gap (now that
    the actions row sits above the frame, not below it), so the buttons
-   stay on-screen instead of being pushed past the top edge. */
+   stay on-screen instead of being pushed past the top edge. This is a
+   best-effort estimate of the actions bar's height, so it can be off in
+   either direction depending on window shape/zoom — see the safe-center
+   fallback on #video-modal below, which is what actually guarantees the
+   buttons stay visible no matter the window size. */
 .video-modal-card.size-full .video-modal-frame-wrap{
   max-height: calc(90vh - 44px);
   width: min(96vw, calc(90vh - 44px) * 16 / 9);
   margin: 0 auto;
+}
+/* Belt-and-suspenders fix for the button-clipping issue above: the base
+   .modal centers its card with align-items:center, which — if the card
+   ever ends up taller than the viewport (any window size/shape, not
+   just short-and-wide ones) — overflows equally off the top AND bottom,
+   silently pushing the actions bar (now the card's first child) above
+   the visible area. "safe center" centers when there's room but falls
+   back to top-alignment when there isn't, so the actions bar (top of
+   the card) is always the part that stays on-screen; overflow-y:auto
+   lets the rest of the video scroll into view instead of being cropped
+   with no way to reach it. */
+#video-modal{
+  align-items: safe center;
+  overflow-y: auto;
 }
 .video-modal-iframe{
   position: absolute;
@@ -4365,6 +4383,8 @@ kbd{
 
 .video-modal-comment-row{
   width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
 }
 .video-modal-comment-input{
   width: 100%;
