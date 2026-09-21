@@ -4114,6 +4114,14 @@ kbd{
   background: var(--dc-tint);
   pointer-events: none;
 }
+/* The recolor ring only shows while the pointer is over its card's
+   heading (mouse devices); touch screens have no hover, so it stays
+   visible there. It is still clickable while hidden, but you can't reach
+   it without hovering the heading first. */
+@media (any-hover: hover) and (any-pointer: fine) {
+  .drc-cards > .drc-card-head::after{ opacity: 0; transition: opacity .12s ease; }
+  .drc-cards > .drc-card-head:hover::after{ opacity: 1; }
+}
 .drc-cards > .drc-card-last{
   border-radius: 0 0 8px 8px;
   padding-bottom: 6px;
