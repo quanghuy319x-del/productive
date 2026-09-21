@@ -4199,10 +4199,13 @@ kbd{
 }
 /* On very wide/short viewports, a "full" width 16:9 box can exceed the
    viewport height — cap it there and let width relax below 96vw so the
-   whole player still fits on screen instead of being clipped. */
+   whole player still fits on screen instead of being clipped. The cap
+   is 90vh minus the actions bar's own height + the card's gap (now that
+   the actions row sits above the frame, not below it), so the buttons
+   stay on-screen instead of being pushed past the top edge. */
 .video-modal-card.size-full .video-modal-frame-wrap{
-  max-height: 90vh;
-  width: min(96vw, 90vh * 16 / 9);
+  max-height: calc(90vh - 44px);
+  width: min(96vw, calc(90vh - 44px) * 16 / 9);
   margin: 0 auto;
 }
 .video-modal-iframe{
