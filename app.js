@@ -11769,7 +11769,6 @@
     renderVideoModalFolder();
     renderVideoModalPhotos();
     zoomModalOpen(videoModal);
-    if (commentCtx) requestAnimationFrame(() => autoGrowTextarea(videoModalCommentInput));
 
     videoModalIframe.classList.remove("hidden");
 
@@ -11888,7 +11887,6 @@
     e.stopPropagation();
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); videoModalCommentInput.blur(); }
   });
-  videoModalCommentInput.addEventListener("input", () => autoGrowTextarea(videoModalCommentInput));
 
   // Photos attached to the video's comment (see getLinkPhotos/addLinkPhoto/
   // removeLinkPhoto and their table-cell equivalents) — a simple thumbnail

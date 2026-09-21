@@ -4370,8 +4370,9 @@ kbd{
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
-  min-height: 76px;
-  max-height: 320px;
+  height: 90px;
+  min-height: 60px;
+  max-height: 240px;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid #d8dae0;
