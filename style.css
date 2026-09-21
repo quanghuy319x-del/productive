@@ -2152,7 +2152,7 @@ kbd{
      selectors, which would otherwise outrank the .hidden class's
      `display:none` (a class selector) and leave the popover stuck open,
      the exact bug already fixed once for the photo-combine popover. */
-  #note-color-popover, #brainstorm-color-popover, #drc-color-popover{
+  #note-color-popover, #brainstorm-color-popover{
     flex-direction: row;
     flex-wrap: wrap;
     /* border-box, so this is 2×38px buttons + 1 gap (84px) plus the 8px
@@ -2163,8 +2163,7 @@ kbd{
     padding:8px;
   }
   #note-color-popover .note-tool-btn,
-  #brainstorm-color-popover .note-tool-btn,
-  #drc-color-popover .note-tool-btn{
+  #brainstorm-color-popover .note-tool-btn{
     width: 38px;
     height: 38px;
     font-size: 16px;
@@ -2742,6 +2741,7 @@ kbd{
 .task-template-save-btn:hover{ background: var(--panel-2); }
 .task-template-save-btn:disabled{ opacity:.4; cursor:default; }
 .task-template-save-btn:disabled:hover{ background:transparent; }
+.task-templates-hint{ font-size: 11px; line-height: 1.35; color: var(--text-faint); border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; }
 .task-templates-divider{
   height:1px;
   margin: 4px 2px;
@@ -4077,31 +4077,6 @@ kbd{
   margin-top:10px;
 }
 .quote-banner-actions .btn-ghost, .quote-banner-actions .btn-primary{ flex:1; }
-.drc-template-textarea{
-  width:100%;
-  min-height: 40vh;
-  max-height: 60vh;
-  margin: 4px 0 4px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.6;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  outline:none;
-  box-sizing:border-box;
-}
-.drc-template-textarea:empty::before{
-  content: attr(data-placeholder);
-  color: var(--paper-text-dim);
-}
-.drc-template-textarea div{ min-height: 1.6em; }
-.drc-template-textarea:focus{ border-color: var(--accent); }
-.drc-template-toolbar{ margin-top: 8px; justify-content: flex-start; }
 
 /* ---- DRC cards: each section heading + the lines under it drawn as one
    tinted, rounded card (like a colored task row), recolored from the ring
@@ -4144,46 +4119,11 @@ kbd{
   padding-bottom: 6px;
 }
 .drc-cards > .drc-card-head.drc-card-last{ border-radius: 8px; }
-/* DRC Template editor: no bold accent bar on the left of each card — the
-   tint and the recolor ring already carry the card's color. Padding grows
-   by the 4px the border took up, so the text (and the empty-state hint,
-   left:18px below) stay exactly where they were. DRC notes are unchanged. */
-.drc-template-textarea.drc-cards > .drc-card-line{
-  border-left: none;
-  padding-left: 18px;
-}
-/* DRC *notes* have no card-color ring at the heading's right edge (it
-   stays in the template editor above, where card colors are chosen — see
-   also the missing bindDRCCardColorDot for noteTextarea in app.js, which
-   would otherwise still open the swatch popover on a click there). The
-   46px of right padding only existed to make room for that ring. */
-#note-textarea.drc-cards > .drc-card-head::after{ display: none; }
-#note-textarea.drc-cards > .drc-card-head{ padding-right: 14px; }
 /* Blank lines under a card's last filled line stay INSIDE that card (they
    used to be a card-less ".drc-card-gap" spacer, which left the caret
    outside every card). The space between cards comes from the heading's
    margin-top above. .drc-card-gap is no longer produced by app.js. */
 
-/* Template editor with nothing typed yet: a single blank card with the
-   hint drawn inside it. Absolutely positioned so the caret sits at the
-   start of the line, not after the hint. */
-.drc-template-textarea.drc-is-empty > .drc-card-head::before{
-  content: "One section per line…";
-  position: absolute;
-  left: 18px;
-  top: 6px;
-  color: var(--paper-text-dim);
-  pointer-events: none;
-  white-space: nowrap;
-}
-.drc-color-swatch{ color: var(--sw-color, #2b2a25); font-weight:700; }
-.drc-color-swatch[data-color="#2b2a25"]{ color:#2b2a25; }
-.drc-color-swatch[data-color="#000000"]{ color:#000000; }
-.drc-color-swatch[data-color="#b5504a"]{ color:#b5504a; }
-.drc-color-swatch[data-color="#c98a3a"]{ color:#c98a3a; }
-.drc-color-swatch[data-color="#5a8f5a"]{ color:#5a8f5a; }
-.drc-color-swatch[data-color="#4a72b5"]{ color:#4a72b5; }
-.drc-color-swatch[data-color="#7c7c76"]{ color:#7c7c76; }
 .theme-note{
   font-size: 11.5px;
   color: var(--text-faint);

@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=105">
+<link rel="stylesheet" href="style.css?v=106">
 </head>
 <body>
 <div id="app">
@@ -518,39 +518,6 @@
   </div>
 </div>
 
-<div id="drc-template-modal" class="modal hidden">
-  <div class="modal-card quote-banner-modal-card">
-    <h2>DRC Template</h2>
-    <p class="quote-banner-hint">One section per line, in order — each line is a card. These become the section cards of every new DRC note. Click the ring at the right of a card to change its color.</p>
-    <div class="note-toolbar drc-template-toolbar">
-      <div class="note-color-picker">
-        <button type="button" id="drc-tool-color" class="note-tool-btn note-color-trigger" title="Text color">
-          <span class="note-color-trigger-glyph">A</span>
-          <span id="drc-color-trigger-swatch" class="note-color-trigger-swatch"></span>
-        </button>
-      </div>
-    </div>
-    <div id="drc-template-textarea" class="drc-template-textarea" contenteditable="true" spellcheck="false" data-placeholder="One section per line…"></div>
-    <div id="drc-color-popover" class="note-color-popover hidden">
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#2b2a25" title="Default text">A</button>
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#000000" title="Black">A</button>
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#b5504a" title="Red">A</button>
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#c98a3a" title="Orange">A</button>
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#5a8f5a" title="Green">A</button>
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#4a72b5" title="Blue">A</button>
-      <button type="button" class="note-tool-btn drc-color-swatch" data-color="#7c7c76" title="Gray">A</button>
-      <label class="note-tool-btn note-color-custom-wrap" title="Custom color">
-        <span>+</span>
-        <input type="color" id="drc-color-custom" value="#2b2a25">
-      </label>
-    </div>
-    <div class="quote-banner-actions">
-      <button id="drc-template-reset" class="btn-ghost">↩️ Reset to default</button>
-      <button id="drc-template-close" class="btn-primary">Done</button>
-    </div>
-  </div>
-</div>
-
 <div id="note-modal" class="modal hidden">
   <div class="modal-card note-modal-card">
     <button type="button" id="note-nav-back" class="note-nav-btn note-nav-back" title="Back" aria-label="Back">← Back</button>
@@ -795,6 +762,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=184"></script>
+<script src="app.js?v=185"></script>
 </body>
 </html>
