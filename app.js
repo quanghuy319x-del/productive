@@ -1232,73 +1232,62 @@
     tokenClient: null,
     accessToken: null,
     tokenExpiresAt: 0,
-    signedIn: false,
     // The in-flight requestToken() call, if any: { silent, promise, reject }.
     // See _requestTokenNow() — this exists so a later call can tell
     // whether it's safe to cancel the one already running, instead of
     // always barging in front of it.
     _activeRequest: null,
-    // True only once a syncFromDrive() has actually completed after
-    // becoming signedIn — signedIn flips true as soon as we have a token,
-    // which is *before* that first sync has pulled the newest copy of
-    // your maps down. Editing is gated on this too (see
-    // isEditingAllowed()) so you can never start typing into a node
-    // while this device might still be holding a stale copy that a
-    // moment later gets overwritten by (or overwrites) the real latest
-    // version once the sync lands.
-    dataSynced: false,
-    syncing: false,
-    refreshTimer: null,
+
+    // ---- One status field instead of a pile of booleans ----
+    // "out"        — signed out.
+    // "connecting" — signed in, first sync of this session hasn't
+    //                finished yet (editing stays locked until it does,
+    //                so a stale local copy can't get overwritten or
+    //                overwrite something newer).
+    // "ok"         — signed in, synced, everything reaching Drive fine.
+    // "reauth"     — Google session died; needs an explicit reconnect
+    //                click (silent refresh can't recover this on its
+    //                own — see silentRefresh()).
+    // "broken"     — signed in with a live token, but syncing/uploading
+    //                is failing (network, Drive outage, etc.) — usually
+    //                recovers on its own once the connection is back.
+    // isEditingAllowed() only allows edits in "ok" (see below); every UI
+    // string that used to branch on 4-5 separate flags now just branches
+    // on this one.
+    status: "out",
+    get signedIn() { return this.status !== "out"; },
+    get dataSynced() { return this.status === "ok" || this.status === "reauth" || this.status === "broken"; },
+    get needsReauth() { return this.status === "reauth"; },
+    driveBroken() { return this.status === "broken"; },
+
+    // True while a syncFromDrive()/verifyRemote() pass is running —
+    // both are "talk to Drive and reconcile" passes that must never
+    // overlap each other, so callers only ever need to know "busy or
+    // not", not which of the two it is.
+    busy: false,
+    // True while pushLocalNewer() is actively uploading — kept separate
+    // from `busy` because the UI shows a distinct "Uploading changes…"
+    // message for it.
+    pushingLocal: false,
+    lastLocalPushTryAt: 0,
+
     // Timestamp (ms) of the last time this device successfully talked to
-    // Drive — a listRemote()/pull via syncFromDrive() or a push via
-    // save(). Purely a UI value (see updateDriveUI's "Synced Xm ago"),
+    // Drive — purely a UI value (see updateDriveUI's "Synced Xm ago"),
     // never persisted or compared against anything.
     lastSyncedAt: 0,
-    // Bookkeeping for pushLocalNewer() below: when it last tried (so a
-    // failing retry isn't hammered every poll tick) and whether a push
-    // pass is running right now.
-    lastLocalPushTryAt: 0,
-    pushingLocal: false,
-    // Silent-refresh attempts are throttled (see silentRefresh() below)
-    // so a failing one can't be retried more than once per cooldown
-    // window, and capped altogether after a few consecutive failures
-    // (needsReauth) so it stops retrying on its own entirely rather than
-    // flashing the accounts.google.com tab forever.
-    lastSilentFailureAt: 0,
-    SILENT_RETRY_COOLDOWN_MS: 30000,
-    consecutiveSilentFailures: 0,
-    MAX_SILENT_FAILURES: 3,
-    needsReauth: false,
-    // True once a write to Drive has actually failed (or the sync poll
-    // has failed repeatedly). needsReauth alone isn't enough to notice a
-    // lost connection quickly: it only flips after MAX_SILENT_FAILURES
-    // consecutive silent refreshes, each separated by a 30s cooldown, so
-    // there's a multi-minute window where the token is already dead,
-    // every upload is quietly failing in the console, and the app still
-    // happily accepts edits that exist nowhere but this tab. This flag
-    // flips on the FIRST failed upload instead, and isEditingAllowed()
-    // treats it exactly like being signed out — see the edit lock below.
-    syncBroken: false,
+
+    // Failed-attempt counters that feed into `status`. Poll failures
+    // (can't reach Drive at all) push toward "broken"; silent-refresh
+    // failures (token can't renew itself) push toward "reauth" and are
+    // throttled by a cooldown so a dead connection can't hammer Google's
+    // silent sign-in check every second.
     consecutivePollFailures: 0,
     MAX_POLL_FAILURES: 3,
-    // "Am I on the latest version?" — the edit lock's freshness check.
-    // dataSynced above only proves the FIRST sync happened; after that,
-    // another device (the phone) can save a newer copy at any moment,
-    // and this device stays unaware until its next poll finishes
-    // downloading it (or for good while the tab is hidden, since polling
-    // pauses then). Editing in that gap is editing an old version and
-    // overwrites the newer one on the next upload. So editing is only
-    // allowed while a Drive check made within FRESH_WINDOW_MS confirmed
-    // nothing newer exists (lastVerifiedAt), and never while a newer
-    // remote copy is known but not yet applied (remoteAhead).
-    remoteAhead: false,
-    lastVerifiedAt: 0,
-    verifying: false,
-    // True from the moment an upload fails until one succeeds. Unlike
-    // syncBroken it is NOT cleared by a successful download check —
-    // that used to hide failed uploads behind a fresh "Synced just now".
-    uploadFailing: false,
-    driveBroken() { return !!(this.syncBroken || this.uploadFailing); },
+    consecutiveSilentFailures: 0,
+    MAX_SILENT_FAILURES: 3,
+    lastSilentFailureAt: 0,
+    SILENT_RETRY_COOLDOWN_MS: 30000,
+
     // Maps with edits Drive hasn't confirmed receiving yet.
     unsyncedMaps() {
       return state.maps.filter((m) => {
@@ -1306,11 +1295,15 @@
         return !!known && (m.updatedAt || 0) > (known.updatedAt || 0);
       });
     },
+
+    // "Am I on the latest version?" — the edit lock's freshness check.
+    // One timestamp (freshUntil) instead of two flags: a Drive check
+    // that confirms nothing newer exists pushes it FRESH_WINDOW_MS into
+    // the future; a check that finds something newer (or fails) resets
+    // it to 0. isFresh() is just "is that still in the future".
     FRESH_WINDOW_MS: 6000,
-    isFresh() {
-      return !this.remoteAhead && this.lastVerifiedAt > 0
-        && (Date.now() - this.lastVerifiedAt) <= this.FRESH_WINDOW_MS;
-    },
+    freshUntil: 0,
+    isFresh() { return Date.now() < this.freshUntil; },
     // True if Drive holds a newer copy of any map this device already has.
     remoteBehindLocal(remoteFiles) {
       return remoteFiles.some((f) => {
@@ -1324,17 +1317,12 @@
     // Check-only pass (no downloads, nothing touched locally): used while
     // a map edit is in progress, when the full sync can't run because it
     // would swap the tree out from under the editor. It keeps the
-    // freshness stamp current, and flags remoteAhead the moment another
-    // device saves something newer.
+    // freshness stamp current, and clears it the moment another device
+    // saves something newer.
     async verifyRemote() {
       const remoteFiles = await this.listRemote();
       const listedAt = Date.now();
-      if (this.remoteBehindLocal(remoteFiles)) {
-        this.remoteAhead = true;
-      } else {
-        this.remoteAhead = false;
-        this.lastVerifiedAt = listedAt;
-      }
+      this.freshUntil = this.remoteBehindLocal(remoteFiles) ? 0 : listedAt + this.FRESH_WINDOW_MS;
       this.consecutivePollFailures = 0;
     },
     // map id -> { fileId, updatedAt } for every map we know is mirrored to
@@ -1348,20 +1336,14 @@
     // Keeps you signed in for as long as Google will allow without ever
     // needing another click on "Sign in with Google" — refreshes the
     // access token silently in the background, well before it actually
-    // expires. This is deliberately NOT tied to the Drive-sync poll
-    // (which only runs while the tab is visible, to save API quota) or
-    // to any user action — it runs on its own timer so a session stays
-    // alive even while the tab sits in the background or idle.
-    //
-    // The ceiling on "as long as possible" is set by Google, not by this
-    // app: a pure client-side app like this only ever gets short-lived
-    // (~1hr) access tokens, never a long-lived refresh token (that
-    // requires a backend to hold it securely). So this refreshes on a
-    // rolling basis for as long as it keeps succeeding — which in
-    // practice can be indefinitely, for as long as the browser still
-    // allows Google's silent background sign-in check to go through —
-    // and only actually ends the session on an explicit "Sign out" or a
-    // refresh that Google itself has started rejecting.
+    // expires. Runs on its own timer so a session stays alive even while
+    // the tab sits in the background or idle. A pure client-side app
+    // like this only ever gets short-lived (~1hr) access tokens, never a
+    // long-lived refresh token (that requires a backend), so this just
+    // keeps refreshing on a rolling basis for as long as it keeps
+    // succeeding, and only actually ends the session on an explicit
+    // "Sign out" or a refresh Google itself starts rejecting.
+    refreshTimer: null,
     scheduleRefresh() {
       if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
       if (!this.signedIn) return;
@@ -1389,30 +1371,26 @@
     // the same hour); otherwise fall back to a silent (no popup) Google
     // re-auth attempt, but only if we'd signed in successfully before —
     // so a person who's never connected Drive never sees a Google popup
-    // flash by uninvited. That silent fallback isn't 100% guaranteed by
-    // every browser (some block the background auth check as a
-    // third-party cookie), so an occasional real "Sign in with Google"
-    // click is still possible once the cached token itself expires.
+    // flash by uninvited.
     async restore() {
       if (!this.configured()) return;
       const cached = loadCachedDriveToken();
       if (cached) {
         this.accessToken = cached.token;
         this.tokenExpiresAt = cached.expiresAt;
-        this.signedIn = true;
+        this.status = "connecting";
         updateDriveUI("Syncing…");
         try {
           await this.syncFromDrive();
-          this.dataSynced = true;
+          this.status = "ok";
           await this.pushLocalNewer({ force: true, includeNew: true });
           renderSidebar();
           // Repaint the already-open map's canvas with whatever this sync
           // just pulled in — without this, the currently-open map (and any
-          // node badges/score bars on it, e.g. task/affirmation/timer
-          // points) stays showing the pre-sync local copy until the first
-          // 1s poll tick (pollDriveUpdates) happens to call renderAll() for
-          // us. Same guard as pollDriveUpdates: don't tear down an active
-          // edit box mid-keystroke or clobber a change still mid-save.
+          // node badges/score bars on it) stays showing the pre-sync local
+          // copy until the first poll tick happens to call renderAll().
+          // Same guard as pollDriveUpdates: don't tear down an active edit
+          // box mid-keystroke or clobber a change still mid-save.
           if (!state.editingId && !unsavedEdits) renderAll();
           updateDriveUI();
           startDriveSyncPolling();
@@ -1422,8 +1400,7 @@
         } catch (e) {
           console.error("Cached Drive token didn't work, falling back", e);
           this.accessToken = null;
-          this.signedIn = false;
-          this.dataSynced = false;
+          this.status = "out";
           clearCachedDriveToken();
           // fall through to the silent-reauth attempt below
         }
@@ -1457,24 +1434,17 @@
         ));
       }
       // Fast path: GIS has already finished loading, true for the vast
-      // majority of clicks (anything after the first second or so on
-      // the page). Go straight to requestAccessToken() below with no
-      // async gap at all, so the call stays inside this click's own
-      // user gesture — Safari in particular blocks the popup outright
-      // if it isn't.
+      // majority of clicks. Go straight to requestAccessToken() below with
+      // no async gap at all, so the call stays inside this click's own
+      // user gesture — Safari in particular blocks the popup outright if
+      // it isn't.
       if (this.ensureTokenClient()) return this._requestTokenNow(silent);
       // Slow path: the accounts.google.com/gsi/client script (loaded
       // async in index.html) hasn't finished downloading/executing yet.
-      // Very possible on a fresh load or slow connection, since app.js
-      // itself runs and wires up this button well before an async
-      // external script is guaranteed to be ready. This used to fail
-      // immediately with "hasn't loaded yet — try again", which is
-      // exactly why sign-in so often needed a second click: the click
-      // itself did nothing wrong, it just lost a race that had nothing
-      // to do with the user. Wait for GIS instead of bailing out —
-      // there's no popup call to protect here yet anyway (the SDK
-      // object doesn't exist), so there's no user-gesture chain to lose
-      // by waiting for it.
+      // Wait for it instead of bailing out with "hasn't loaded yet — try
+      // again", which is exactly why sign-in so often needed a second
+      // click before — the click itself did nothing wrong, it just lost
+      // a race that had nothing to do with the user.
       return waitForGis(8000).then((ready) => {
         if (!ready) throw new Error("Google sign-in script hasn't loaded — check your connection and try again.");
         return this._requestTokenNow(silent);
@@ -1483,28 +1453,13 @@
 
     _requestTokenNow(silent) {
       // Never let a new call barge in front of one that's already
-      // running — including this call's own predecessor here. The old
-      // version always cancelled whatever was pending, unconditionally,
-      // the instant a new requestToken() call started. That's fine when
-      // the pending one is just the automatic silent restore-on-load
-      // check. It is NOT fine when the pending one is an EXPLICIT
-      // sign-in the person has an open Google popup for and is actively
-      // typing their way through: if the silent check (or the
-      // background token-refresh timer) happened to fire while that
-      // popup was still open, it would locally reject the person's
-      // in-progress attempt right then — and when they finished signing
-      // in a few seconds later and Google's real success callback
-      // arrived, this call had already given up and settled=true meant
-      // it was silently dropped. That's "I signed in once and it still
-      // asks me to sign in": the click and the popup both genuinely
-      // worked, the app just wasn't listening anymore by the time the
-      // answer came back. A silent background check is still allowed to
-      // lose to an explicit click — a person acting right now always
-      // outranks an automatic check — but nothing is ever allowed to
-      // cancel an explicit request that's already in flight; the
-      // safest thing a second call can do there is wait on the one
-      // already running rather than starting a new one (which also
-      // means an accidental double-click never opens a second popup).
+      // running. A silent background check is still allowed to lose to
+      // an explicit click — a person acting right now always outranks an
+      // automatic check — but nothing is ever allowed to cancel an
+      // explicit request that's already in flight; the safest thing a
+      // second call can do there is wait on the one already running
+      // (which also means an accidental double-click never opens a
+      // second popup).
       if (this._activeRequest) {
         if (this._activeRequest.silent && !silent) {
           this._activeRequest.reject(new Error("Superseded by a newer sign-in request"));
@@ -1516,9 +1471,8 @@
       const promise = new Promise((resolve, reject) => {
         if (!this.ensureTokenClient()) { reject(new Error("Google sign-in script hasn't loaded — check your connection and try again.")); return; }
         // Watchdog: if neither the success callback nor error_callback
-        // ever fires (seen in some browsers when the popup is blocked
-        // without triggering GIS's own popup_failed_to_open error), don't
-        // leave the button hung forever with no feedback.
+        // ever fires, don't leave the button hung forever with no
+        // feedback.
         let settled = false;
         const timeoutId = setTimeout(() => {
           if (settled) return;
@@ -1533,12 +1487,9 @@
         };
         rejectExternally = (err) => settle(reject, err);
         // A fresh, throwaway token client for THIS call only, rather than
-        // reusing one shared client across calls. GIS's silent
-        // (prompt:"none", hidden-iframe) and explicit (prompt:"consent",
-        // popup) flows are genuinely separate requests to Google that can
-        // both be in flight at once. Giving each call its own client
-        // means a stale response can only ever reach its own
-        // (already-settled, now-inert) closure, never a newer call's.
+        // reusing one shared client across calls, so a stale response can
+        // only ever reach its own (already-settled, now-inert) closure,
+        // never a newer call's.
         const client = google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: DRIVE_SCOPE,
@@ -1547,11 +1498,11 @@
               this.accessToken = resp.access_token;
               this.tokenExpiresAt = Date.now() + ((resp.expires_in || 3300) * 1000);
               saveCachedDriveToken(this.accessToken, this.tokenExpiresAt);
-              // Any successful token — silent or explicit — clears a prior
-              // reauth-needed state, since it proves Google auth is
-              // working for this session again.
-              this.needsReauth = false;
-              this.syncBroken = false;
+              // Any successful token — silent or explicit — proves Google
+              // auth is working again: drop out of "reauth"/"broken" back
+              // to "ok" (both only ever happen after a first successful
+              // sync, so "ok" is always the right landing spot here).
+              if (this.status === "reauth" || this.status === "broken") this.status = "ok";
               this.consecutivePollFailures = 0;
               this.consecutiveSilentFailures = 0;
               settle(resolve, resp.access_token);
@@ -1572,20 +1523,15 @@
     },
 
     // Silent token refreshes normally happen invisibly, but when the
-    // cached token has been expired for a while (e.g. the phone was
-    // locked/idle for hours), GIS's "prompt: none" check can briefly
-    // flash a real tab to accounts.google.com on mobile Chrome instead
-    // of a truly silent iframe check. That's tolerable as a one-off, but
-    // two things guard against it becoming a repeating annoyance:
-    // - a cooldown, so nothing retries within SILENT_RETRY_COOLDOWN_MS
-    //   of a failure (the 1s Drive-sync poll would otherwise hammer it)
-    // - a hard stop after MAX_SILENT_FAILURES in a row: once that many
-    //   consecutive silent attempts have failed, this gives up trying on
-    //   its own entirely (needsReauth) instead of continuing to retry
-    //   forever every couple of minutes. updateDriveUI() then shows a
-    //   "Reconnect" prompt — a real tap gives Chrome a genuine user
-    //   gesture to work with, which is exactly the case the silent path
-    //   can't handle on some mobile browsers.
+    // cached token has been expired for a while, GIS's "prompt: none"
+    // check can briefly flash a real tab to accounts.google.com on
+    // mobile Chrome instead of a truly silent iframe check. Tolerable as
+    // a one-off; two things stop it becoming a repeating annoyance: a
+    // cooldown between retries, and a hard stop (→ "reauth") after
+    // MAX_SILENT_FAILURES in a row, so updateDriveUI() shows a
+    // "Reconnect" prompt instead — a real tap gives the browser a
+    // genuine user gesture to work with, which the silent path can't get
+    // on some mobile browsers.
     async silentRefresh() {
       if (this.needsReauth) {
         throw new Error("Google session needs to be reconnected — tap \u201cReconnect Google\u201d.");
@@ -1599,17 +1545,15 @@
         this.consecutiveSilentFailures = 0;
         return token;
       } catch (e) {
-        // Being superseded isn't a real auth failure — it just means a
-        // newer (usually explicit, user-initiated) request took over this
-        // same slot, e.g. someone clicked "Sign in" while this silent
-        // background check was still pending. Don't let that count
-        // against MAX_SILENT_FAILURES or flip needsReauth; the request
-        // that superseded it will report its own outcome.
+        // Being superseded isn't a real auth failure — a newer (usually
+        // explicit, user-initiated) request just took over this same
+        // slot. Don't let that count against MAX_SILENT_FAILURES; the
+        // request that superseded it reports its own outcome.
         if (e && e.message === "Superseded by a newer sign-in request") throw e;
         this.lastSilentFailureAt = Date.now();
         this.consecutiveSilentFailures++;
         if (this.consecutiveSilentFailures >= this.MAX_SILENT_FAILURES) {
-          this.needsReauth = true;
+          this.status = "reauth";
           updateDriveUI();
         }
         throw e;
@@ -1643,12 +1587,12 @@
         return;
       }
       await this.requestToken(!!silent);
-      this.signedIn = true;
+      if (this.status === "out") this.status = "connecting";
       try { await DB.setHandle(DRIVE_SIGNED_IN_KEY, true); } catch (e) {}
       updateDriveUI("Syncing…");
       try {
         await this.syncFromDrive();
-        this.dataSynced = true;
+        this.status = "ok";
         await this.pushLocalNewer({ force: true, includeNew: true });
       } catch (e) {
         console.error("Drive sync failed", e);
@@ -1671,17 +1615,12 @@
       // revoke() doesn't just drop this browser's token — it revokes the
       // whole OAuth consent grant for this Google account + this app's
       // client ID, which invalidates every other device/browser's access
-      // token issued under that same grant too. That made "Sign out" on
-      // one device silently sign out every other device the next time it
-      // tried to refresh/poll. A plain local sign-out (forget the token
-      // here, let it expire naturally on Google's side within the hour)
-      // keeps other devices' sessions untouched.
+      // token issued under that same grant too. A plain local sign-out
+      // (forget the token here, let it expire naturally on Google's side
+      // within the hour) keeps other devices' sessions untouched.
       this.accessToken = null;
-      this.signedIn = false;
-      this.dataSynced = false;
-      this.remoteAhead = false;
-      this.lastVerifiedAt = 0;
-      this.uploadFailing = false;
+      this.status = "out";
+      this.freshUntil = 0;
       this.fileIndex = {};
       this.lastSyncedAt = 0;
       DB.setHandle(DRIVE_SIGNED_IN_KEY, false).catch(() => {});
@@ -1695,11 +1634,6 @@
     // metadata we tagged them with — cheap compared to downloading every
     // file's content just to check whether it changed.
     async listRemote() {
-      // Drive's query language needs a specific value inside `has {}` for
-      // property filters — there's no documented "key exists, any value"
-      // form — so rather than fight that, just list every non-trashed
-      // file the app can see (drive.file scope already restricts that to
-      // files this app itself created) and filter for our tag afterward.
       const fields = encodeURIComponent("files(id,name,appProperties)");
       const q = encodeURIComponent("trashed=false");
       const res = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&spaces=drive&pageSize=1000`);
@@ -1721,14 +1655,8 @@
     },
 
     // Both create and update go through Drive's *resumable* upload
-    // protocol rather than the simpler one-shot "multipart" upload used
-    // before — multipart is capped at 5MB per request, which a mindmap
-    // full of full-resolution photos can easily exceed. Resumable upload
-    // has no such cap: it's a two-step handshake (ask Drive for a
-    // one-time upload URL, then PUT the actual content to it) that also
-    // sets the metadata (name, appProperties) and content together in one
-    // session, so the two can't end up out of sync the way two separate
-    // PATCHes could.
+    // protocol (rather than the 5MB-capped "multipart" one) since a
+    // mindmap full of full-resolution photos can easily exceed that.
     async startResumableSession(url, method, metadata) {
       const res = await this.api(url, {
         method,
@@ -1790,9 +1718,8 @@
         }
         setSyncBase(map.id, uploadedStamp);
         this.lastSyncedAt = Date.now();
-        this.uploadFailing = false;
-        this.syncBroken = false;
         this.consecutivePollFailures = 0;
+        if (this.status === "broken") this.status = "ok";
         updateDriveUI();
       } catch (e) {
         // A failed upload used to be a console-only event: the toolbar
@@ -1802,20 +1729,17 @@
         // copy. Treat it as the connection loss it is: flag it, lock
         // editing, and say so on screen.
         console.error("Drive save failed", e);
-        this.syncBroken = true;
-        this.uploadFailing = true;
-        if (!this.accessToken || Date.now() >= this.tokenExpiresAt) this.needsReauth = true;
+        const tokenLooksExpired = !this.accessToken || Date.now() >= this.tokenExpiresAt;
+        this.status = tokenLooksExpired ? "reauth" : "broken";
         try { updateDriveUI(); } catch (e2) {}
       }
     },
 
     // ---- Shared settings file (currently: saved task-list templates) ----
-    // Things that used to live only in one browser's localStorage and so
-    // never reached the phone. Kept in ONE small Drive file, tagged
-    // appProperties.branchlineSettings (NOT branchlineId), so listRemote()/
-    // syncFromDrive() never mistake it for a map. Oldest-created first so
-    // every device agrees which file is the "primary" if a race ever
-    // produces two.
+    // Kept in ONE small Drive file, tagged appProperties.branchlineSettings
+    // (NOT branchlineId), so listRemote()/syncFromDrive() never mistake it
+    // for a map. Oldest-created first so every device agrees which file is
+    // the "primary" if a race ever produces two.
     async listSettingsFiles() {
       const q = encodeURIComponent("trashed=false and appProperties has { key='branchlineSettings' and value='1' }");
       const fields = encodeURIComponent("files(id,name)");
@@ -1850,21 +1774,22 @@
     },
 
     // The push half of sync. syncFromDrive() only ever *pulls*, and skips
-    // any map whose local copy is newer than Drive's — so if an upload was
-    // cut short (phone backgrounded mid-upload, network drop, expired
+    // any map whose local copy is newer than Drive's — so if an upload
+    // was cut short (phone backgrounded mid-upload, network drop, expired
     // login), that edit used to sit on this device only, invisible to
-    // every other device, until the next edit happened to trigger a fresh
-    // upload. This finds every map whose local `updatedAt` is ahead of
-    // what Drive last confirmed and uploads it again. `includeNew` also
-    // uploads maps Drive has never seen (used right after sign-in, when
-    // nothing else could be creating them at the same time).
+    // every other device, until the next edit happened to trigger a
+    // fresh upload. This finds every map whose local `updatedAt` is
+    // ahead of what Drive last confirmed and uploads it again.
+    // `includeNew` also uploads maps Drive has never seen (used right
+    // after sign-in, when nothing else could be creating them at the
+    // same time).
     //
     // Returns true if it pushed anything. Skipped while an edit is still
     // being typed or saved — runPersistNow() uploads those itself, and a
     // second overlapping upload of the same map could land out of order.
     async pushLocalNewer(opts) {
       const { force = false, includeNew = false } = opts || {};
-      if (!this.signedIn || !this.dataSynced || this.needsReauth) return false;
+      if (this.status !== "ok" && this.status !== "broken") return false;
       if (this.pushingLocal) return false;
       // Retry a failing push at most every 15s, but always let an explicit
       // trigger (returning to the tab, coming back online) go straight
@@ -1873,13 +1798,13 @@
       const busy = () => {
         // While uploads are failing, an open editor mustn't block the
         // retry — the lock this causes would otherwise never lift.
-        try { return !!(((state.editingId && !this.uploadFailing)) || unsavedEdits || persistTimer || persistInFlight); }
+        try { return !!(((state.editingId && this.status !== "broken")) || unsavedEdits || persistTimer || persistInFlight); }
         catch (e) { return false; }
       };
       if (busy()) return false;
       const stale = state.maps.filter(m => {
         const known = this.fileIndex[m.id];
-        if (!known) return includeNew || this.uploadFailing;
+        if (!known) return includeNew || this.status === "broken";
         return (m.updatedAt || 0) > (known.updatedAt || 0);
       });
       if (!stale.length) return false;
@@ -1893,11 +1818,10 @@
       } finally {
         this.pushingLocal = false;
       }
-      // save() swallows its own errors and flags syncBroken instead — if
-      // this pass ended that way, wait ~a minute before the timer retries
-      // so a persistent failure doesn't keep re-locking editing every 15s.
-      // (editing is locked while uploads fail, so retry soon: ~5s, not a minute)
-      if (this.uploadFailing) this.lastLocalPushTryAt = Date.now() - 10000;
+      // save() flags status "broken" on failure instead of throwing — if
+      // this pass ended that way, retry soon (~5s) rather than waiting
+      // the full 15s, since editing is locked while uploads fail.
+      if (this.status === "broken") this.lastLocalPushTryAt = Date.now() - 10000;
       return true;
     },
 
@@ -1909,12 +1833,10 @@
     // Also mirrors deletions: if a map this device previously knew was on
     // Drive (it's in fileIndex from an earlier sync) has since vanished
     // from the Drive listing, that means it was deleted on another
-    // device — so it's deleted here too, the same way a local delete
-    // removes it. A map that's only ever existed locally (never made it
-    // into fileIndex yet) is never touched by this — only maps we'd
-    // already confirmed were on Drive.
-    // Resolves to true only if this pass actually changed local data
-    // (downloaded a newer/new map, or removed one deleted elsewhere), so
+    // device — so it's deleted here too. A map that's only ever existed
+    // locally (never made it into fileIndex yet) is never touched by
+    // this.
+    // Resolves to true only if this pass actually changed local data, so
     // callers like pollDriveUpdates can skip re-rendering when nothing did.
     async syncFromDrive() {
       let changed = false;
@@ -1925,7 +1847,7 @@
       // newer, this device is on an old version: lock editing right now,
       // not after the (possibly slow, photo-heavy) download below lands.
       if (this.remoteBehindLocal(remoteFiles)) {
-        this.remoteAhead = true;
+        this.freshUntil = 0;
         try { updateStaleSyncBanner(); refreshEditLockUI(); } catch (e) {}
       }
       const previouslyKnownIds = new Set(Object.keys(this.fileIndex));
@@ -2014,17 +1936,16 @@
       }
       sortMaps(state.maps);
       this.lastSyncedAt = Date.now();
-      // A successful DOWNLOAD check proves the connection works, but says
-      // nothing about whether this device's UPLOADS are landing.
-      if (!this.uploadFailing) this.syncBroken = false;
+      // A successful DOWNLOAD check proves the connection works — clear
+      // "broken" if that's all that was wrong. ("reauth" is untouched
+      // here; only a real token success clears that — see the token
+      // callback above.)
+      if (this.status === "broken") this.status = "ok";
       this.consecutivePollFailures = 0;
       // Only "latest" if every newer map actually came down. A failed
-      // download leaves remoteAhead set, so editing stays locked and the
+      // download leaves freshUntil at 0, so editing stays locked and the
       // next poll retries.
-      if (!downloadFailed) {
-        this.remoteAhead = false;
-        this.lastVerifiedAt = listedAt;
-      }
+      if (!downloadFailed) this.freshUntil = listedAt + this.FRESH_WINDOW_MS;
       return changed;
     }
   };
@@ -2415,7 +2336,7 @@
     if (driveSyncTimer) { clearInterval(driveSyncTimer); driveSyncTimer = null; }
   }
   async function pollDriveUpdates(force) {
-    if (!DriveDB.signedIn || DriveDB.syncing || DriveDB.verifying) return;
+    if (!DriveDB.signedIn || DriveDB.busy) return;
     if (document.visibilityState !== "visible") return;
     // Don't touch the map tree while you're actively mid-keystroke in a
     // node's text — an incoming update would swap out the very node
@@ -2429,19 +2350,19 @@
       // otherwise a long edit would age out the "latest version" stamp
       // (locking mid-typing), and a newer copy saved by another device
       // in the meantime would go unnoticed.
-      DriveDB.verifying = true;
+      DriveDB.busy = true;
       try {
         await DriveDB.verifyRemote();
       } catch (e) {
         console.error("Drive freshness check failed", e);
         DriveDB.consecutivePollFailures++;
-        if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES) DriveDB.syncBroken = true;
+        if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES && DriveDB.status !== "reauth") DriveDB.status = "broken";
       }
-      DriveDB.verifying = false;
+      DriveDB.busy = false;
       updateDriveUI();
       return;
     }
-    DriveDB.syncing = true;
+    DriveDB.busy = true;
     try {
       if (await DriveDB.syncFromDrive()) driveRenderPending = true;
       // Then the other direction: re-upload any map whose local copy is
@@ -2476,12 +2397,12 @@
       // Drive, which the person needs to know before they type another
       // paragraph into it.
       DriveDB.consecutivePollFailures++;
-      if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES) {
-        DriveDB.syncBroken = true;
+      if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES && DriveDB.status !== "reauth") {
+        DriveDB.status = "broken";
         updateDriveUI();
       }
     }
-    DriveDB.syncing = false;
+    DriveDB.busy = false;
     // Refresh the "Synced Xm ago" label every tick regardless of whether
     // this particular poll changed anything — otherwise it'd only ever
     // update at the moment something actually synced, and would sit
@@ -2531,17 +2452,17 @@
       try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
       try { flushPersist(); } catch (e) {}
       const t0 = Date.now();
-      while ((DriveDB.syncing || DriveDB.verifying || localSaveBusy()) && Date.now() - t0 < 15000) {
+      while ((DriveDB.busy || localSaveBusy()) && Date.now() - t0 < 15000) {
         await new Promise((r) => setTimeout(r, 200));
       }
-      DriveDB.syncing = true;
+      DriveDB.busy = true;
       let changed = false;
       try {
         changed = await DriveDB.syncFromDrive();
-        DriveDB.dataSynced = true;
+        DriveDB.status = "ok";
         await DriveDB.pushLocalNewer({ force: true });
       } finally {
-        DriveDB.syncing = false;
+        DriveDB.busy = false;
       }
       driveRenderPending = false;
       renderSidebar();
@@ -2597,7 +2518,7 @@
       try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
       try { flushAllPendingSaves(); } catch (e) {}
       const t0 = Date.now();
-      const busy = () => DriveDB.syncing || DriveDB.verifying || DriveDB.pushingLocal || localSaveBusy();
+      const busy = () => DriveDB.busy || DriveDB.pushingLocal || localSaveBusy();
       while (busy() && Date.now() - t0 < 20000) {
         await new Promise((r) => setTimeout(r, 200));
       }
@@ -2606,7 +2527,7 @@
 
       // Claim the sync flags so the background poll doesn't start its own
       // upload of this same map while ours is running.
-      DriveDB.syncing = true;
+      DriveDB.busy = true;
       DriveDB.pushingLocal = true;
       holdingFlags = true;
 
@@ -2635,7 +2556,7 @@
       }
 
       await DriveDB.save(map);
-      if (DriveDB.uploadFailing) {
+      if (DriveDB.driveBroken()) {
         showToast("\u26a0 Upload to Drive failed \u2014 check your connection and try again");
         return;
       }
@@ -2654,7 +2575,7 @@
       console.error("Manual upload failed", e);
       showToast("Couldn't upload to Drive: " + ((e && e.message) || e));
     } finally {
-      if (holdingFlags) { DriveDB.syncing = false; DriveDB.pushingLocal = false; }
+      if (holdingFlags) { DriveDB.busy = false; DriveDB.pushingLocal = false; }
       uploadNowRunning = false;
       uploadNowBtn.disabled = false;
       uploadNowBtn.textContent = originalLabel;
@@ -5097,7 +5018,7 @@
     if (!state.current || state.current.id !== mapId) return;
     if (unsavedEdits || persistTimer) return; // another edit landed since scheduling — wait for the next idle window instead
     if (document.visibilityState !== "visible") return;
-    if (DriveDB.syncing) return;
+    if (DriveDB.busy) return;
     try {
       await gcOrphanedPhotos(state.current);
     } catch (e) { /* best-effort — a normal manual cleanup can always catch anything missed */ }
