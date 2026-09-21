@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=107">
+<link rel="stylesheet" href="style.css?v=108">
 </head>
 <body>
 <div id="app">
@@ -520,9 +520,8 @@
 
 <div id="note-modal" class="modal hidden">
   <div class="modal-card note-modal-card">
-    <button type="button" id="note-nav-back" class="note-nav-btn note-nav-back" title="Back" aria-label="Back">← Back</button>
-    <input id="note-title-input" class="note-title-input" spellcheck="false">
     <div class="note-nav-row">
+      <button type="button" id="note-nav-back" class="note-nav-btn note-nav-back" title="Back" aria-label="Back">← Back</button>
       <span class="note-nav-gap"></span>
       <button type="button" id="note-nav-add" class="note-nav-btn" title="Start a new note on this node">+ New note</button>
       <button type="button" id="note-nav-templates" class="note-nav-btn" title="Templates — save this note as a template, or insert a saved one" aria-label="Note templates">📋</button>
@@ -531,6 +530,7 @@
       <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
       <button type="button" id="note-nav-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
+    <input id="note-title-input" class="note-title-input" spellcheck="false">
     <div id="note-lock-banner" class="note-lock-banner hidden" role="alert">🔒 Read-only — not connected to Google Drive. Everything up to here is saved.</div>
     <div id="note-textarea" class="note-textarea" contenteditable="true" spellcheck="false" data-placeholder="Add a note for this node…"></div>
     <div class="note-toolbar">

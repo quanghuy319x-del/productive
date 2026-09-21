@@ -5178,7 +5178,9 @@ kbd{
 /* ← Back buttons on the note editor, photo viewer and video player (see
    "viewer ← Back navigation" in app.js) — all pinned to the top-left. */
 /* Note: its own line above the title, inside the card's top-left corner. */
-.note-nav-back{ align-self:flex-start; margin-bottom:8px; }
+/* Back sits at the left end of the same top row as the note's action
+   buttons (new note, templates, favorite, folder, delete, close). */
+.note-nav-back{ flex:none; }
 /* Photo: fixed to the viewport's top-left, mirroring the top-right toolbar. */
 .photo-modal-back{
   position: fixed;
