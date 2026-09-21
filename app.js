@@ -17150,6 +17150,199 @@
     renderTasksModal();
   }
 
+  // Moves a subtask onto a task belonging to a *different* node entirely
+  // (unlike moveSubtask above, which only reshuffles within the currently
+  // open Tasks modal's own host). `targetTaskId` null means "create a new
+  // task on targetNode named newTaskText and drop the subtask into that".
+  function moveSubtaskToNode(sourceTaskId, sourceSubtaskId, targetNode, targetTaskId, newTaskText) {
+    const target = tasksEditingTarget;
+    const sourceHost = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!sourceHost || !targetNode) return;
+    const sourceTasks = getNodeTasks(sourceHost);
+    const sourceTask = sourceTasks.find(x => x.id === sourceTaskId);
+    if (!sourceTask) return;
+    const sourceSubs = getTaskSubtasks(sourceTask).slice();
+    const fromIdx = sourceSubs.findIndex(x => x.id === sourceSubtaskId);
+    if (fromIdx === -1) return;
+
+    pushUndo();
+
+    const [moved] = sourceSubs.splice(fromIdx, 1);
+    sourceTask.subtasks = sourceSubs;
+
+    if (!Array.isArray(targetNode.tasks)) targetNode.tasks = [];
+    let targetTask = targetTaskId ? getNodeTasks(targetNode).find(x => x.id === targetTaskId) : null;
+    if (!targetTask) {
+      targetTask = { id: uid(), text: (newTaskText || "").trim() || "(untitled task)", done: false, stars: 0, due: null, subtasks: [] };
+      targetNode.tasks = targetNode.tasks.concat([targetTask]);
+    }
+    if (!Array.isArray(targetTask.subtasks)) targetTask.subtasks = [];
+    targetTask.subtasks = targetTask.subtasks.concat([moved]);
+
+    // Moving a subtask in or out changes what each task's own subtasks
+    // add up to, which can flip its auto-derived done state.
+    syncTaskDoneFromSubtasks(sourceTask);
+    syncTaskDoneFromSubtasks(targetTask);
+
+    persist();
+    renderTasksModal();
+    showToast(`Moved to "${targetNode.text || "(untitled)"}"`);
+  }
+
+  // Popover for "Move to another node…" (see openSubtaskContextMenu): a
+  // two-step picker since there's no way to drag a subtask onto a node on
+  // the canvas while the Tasks modal — a full-screen overlay — is open.
+  // Step 1 searches/lists every node in the map (collectAllNodesFlat);
+  // picking one moves to step 2, which lists that node's existing tasks
+  // plus a "new task" input, either of which completes the move.
+  let subtaskMovePopoverEl = null;
+  let subtaskMovePopoverOutsideHandler = null;
+  function closeSubtaskMovePopover() {
+    if (subtaskMovePopoverEl) { subtaskMovePopoverEl.remove(); subtaskMovePopoverEl = null; }
+    if (subtaskMovePopoverOutsideHandler) {
+      document.removeEventListener("mousedown", subtaskMovePopoverOutsideHandler);
+      subtaskMovePopoverOutsideHandler = null;
+    }
+  }
+  function openSubtaskMoveToNodePopover(x, y, sourceTask, subtask) {
+    closeSubtaskMovePopover();
+    const pop = document.createElement("div");
+    pop.className = "folder-move-popover subtask-move-popover";
+    let selectedNode = null;
+
+    function reposition() {
+      const margin = 8;
+      let left = x, top = y;
+      left = Math.max(margin, Math.min(left, window.innerWidth - pop.offsetWidth - margin));
+      top = Math.max(margin, Math.min(top, window.innerHeight - pop.offsetHeight - margin));
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+    }
+
+    function renderNodeList() {
+      pop.innerHTML = "";
+      selectedNode = null;
+      const searchRow = document.createElement("div");
+      searchRow.className = "folder-move-add-row";
+      const search = document.createElement("input");
+      search.type = "text";
+      search.className = "folder-move-add-input";
+      search.placeholder = "Search nodes…";
+      search.spellcheck = false;
+      search.autocomplete = "off";
+      search.addEventListener("click", (e) => e.stopPropagation());
+      search.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") { e.preventDefault(); closeSubtaskMovePopover(); }
+      });
+      searchRow.appendChild(search);
+      pop.appendChild(searchRow);
+
+      const list = document.createElement("div");
+      pop.appendChild(list);
+
+      const allNodes = collectAllNodesFlat().filter(n => n.id !== (tasksEditingTarget && tasksEditingTarget.nodeId));
+      function renderMatches() {
+        list.innerHTML = "";
+        const q = search.value.trim().toLowerCase();
+        const matches = (q ? allNodes.filter(n => (n.text || "").toLowerCase().includes(q)) : allNodes).slice(0, 200);
+        if (!matches.length) {
+          const empty = document.createElement("div");
+          empty.className = "folder-move-option";
+          empty.textContent = "No matching nodes";
+          list.appendChild(empty);
+          return;
+        }
+        matches.forEach((n) => {
+          const opt = document.createElement("button");
+          opt.type = "button";
+          opt.className = "folder-move-option";
+          opt.textContent = n.text || "(untitled)";
+          opt.addEventListener("mousedown", (e) => e.preventDefault());
+          opt.addEventListener("click", (e) => {
+            e.stopPropagation();
+            renderTaskList(n);
+            reposition();
+          });
+          list.appendChild(opt);
+        });
+      }
+      search.addEventListener("input", renderMatches);
+      renderMatches();
+      reposition();
+      setTimeout(() => search.focus(), 0);
+    }
+
+    function renderTaskList(node) {
+      selectedNode = node;
+      pop.innerHTML = "";
+
+      const backRow = document.createElement("button");
+      backRow.type = "button";
+      backRow.className = "folder-move-option subtask-move-back";
+      backRow.textContent = `← ${node.text || "(untitled)"}`;
+      backRow.title = "Back to node search";
+      backRow.addEventListener("mousedown", (e) => e.preventDefault());
+      backRow.addEventListener("click", (e) => { e.stopPropagation(); renderNodeList(); });
+      pop.appendChild(backRow);
+
+      getNodeTasks(node).forEach((t) => {
+        const opt = document.createElement("button");
+        opt.type = "button";
+        opt.className = "folder-move-option";
+        opt.textContent = t.text || "(untitled task)";
+        opt.addEventListener("mousedown", (e) => e.preventDefault());
+        opt.addEventListener("click", (e) => {
+          e.stopPropagation();
+          moveSubtaskToNode(sourceTask.id, subtask.id, node, t.id, null);
+          closeSubtaskMovePopover();
+        });
+        pop.appendChild(opt);
+      });
+
+      const addRow = document.createElement("div");
+      addRow.className = "folder-move-add-row";
+      const addInput = document.createElement("input");
+      addInput.type = "text";
+      addInput.className = "folder-move-add-input";
+      addInput.placeholder = "New task…";
+      addInput.spellcheck = false;
+      addInput.autocomplete = "off";
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "folder-move-add-btn";
+      addBtn.textContent = "+";
+      addBtn.title = "Create task and move here";
+      function submitNewTask() {
+        const name = addInput.value.trim();
+        if (!name) { addInput.focus(); return; }
+        moveSubtaskToNode(sourceTask.id, subtask.id, node, null, name);
+        closeSubtaskMovePopover();
+      }
+      addBtn.addEventListener("mousedown", (e) => e.preventDefault());
+      addBtn.addEventListener("click", (e) => { e.stopPropagation(); submitNewTask(); });
+      addInput.addEventListener("click", (e) => e.stopPropagation());
+      addInput.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); submitNewTask(); }
+        else if (e.key === "Escape") { e.preventDefault(); closeSubtaskMovePopover(); }
+      });
+      addRow.append(addInput, addBtn);
+      pop.appendChild(addRow);
+      reposition();
+      setTimeout(() => addInput.focus(), 0);
+    }
+
+    document.body.appendChild(pop);
+    renderNodeList();
+    pop.addEventListener("mousedown", (e) => e.stopPropagation());
+    subtaskMovePopoverEl = pop;
+    subtaskMovePopoverOutsideHandler = (e) => {
+      if (!pop.contains(e.target)) closeSubtaskMovePopover();
+    };
+    setTimeout(() => document.addEventListener("mousedown", subtaskMovePopoverOutsideHandler), 0);
+  }
+
   function openTasksModal(nodeId, r, c) {
     const host = resolveHost(nodeId, r, c);
     if (!host) return;
@@ -17217,6 +17410,9 @@
       rerender();
     });
     addItem("Copy text", "", () => copySubtaskText(s.text));
+    addItem("Move to another node…", "", () => {
+      openSubtaskMoveToNodePopover(x, y, t, s);
+    });
     addItem("Delete subtask", "danger", () => {
       if (!requireSignIn()) return;
       if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;

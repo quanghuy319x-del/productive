@@ -3928,6 +3928,20 @@ kbd{
   color: var(--text);
   font-weight:600;
 }
+/* "Move subtask to another node" reuses the folder-move-popover look —
+   see openSubtaskMoveToNodePopover — just a bit wider since node/task
+   names run longer than folder names, and its first row (in the task-
+   list step) is a "← back to search" option rather than a plain choice. */
+.subtask-move-popover{
+  min-width: 260px;
+  max-width: min(400px, calc(100vw - 24px));
+}
+.subtask-move-popover .subtask-move-back{
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 2px;
+}
 
 /* On a phone the browser modal is barely wider than the list itself, so
    a folder column that grows to 240px would squeeze the thing it's meant
