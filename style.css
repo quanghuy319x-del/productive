@@ -2588,7 +2588,7 @@ kbd{
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.2px;
-  color: var(--text);
+  color: #333333;
   outline:none;
   padding: 2px 4px;
   border-radius: 4px;
@@ -2899,7 +2899,7 @@ kbd{
   min-width:0;
   max-width: 110px;
   font-size: 12px;
-  color: var(--text-dim);
+  color: #333333;
   outline:none;
   padding: 0 2px;
   border-radius: 4px;
@@ -3029,7 +3029,7 @@ kbd{
 #tasks-modal .task-star{ color: #bbbbbb; }
 #tasks-modal .task-star:hover,
 #tasks-modal .task-star.starred{ color: #f5c14b; }
-#tasks-modal .task-text{ color: #000000; }
+#tasks-modal .task-text{ color: #333333; }
 #tasks-modal .task-text:focus{ background: #f2f2f2; }
 #tasks-modal .task-row.done .task-text{ color: #c2c2c2; }
 #tasks-modal .task-fail-btn{ color:#bbbbbb; }
@@ -3079,7 +3079,7 @@ kbd{
   0%, 100%{ transform: scale(1); }
   50%{ transform: scale(1.06); }
 }
-#tasks-modal .subtask-text{ color: #000000; }
+#tasks-modal .subtask-text{ color: #333333; }
 #tasks-modal .subtask-text:focus{ background: #ffffff; }
 #tasks-modal .subtask-add-btn{
   background: #ffffff;
@@ -5005,7 +5005,7 @@ kbd{
 #cal-day-modal .task-checkbox:checked{ background-image:none; transform:none; }
 #cal-day-modal .task-text{
   flex:1; min-width:0; font-size:14.5px; line-height:1.4;
-  word-break: break-word; white-space: pre-wrap; color:#24231f; padding:0;
+  word-break: break-word; white-space: pre-wrap; color:#333333; padding:0;
 }
 #cal-day-modal .task-star{ color:#d8d4c6; }
 #cal-day-modal .task-star:hover,
@@ -5048,7 +5048,7 @@ kbd{
 #cal-day-modal .subtask-row.done .subtask-text{ color:#6ba585; text-decoration: line-through; opacity:1; }
 #cal-day-modal .subtask-row.failed{ background:transparent; border-color:#e6bcb7; }
 #cal-day-modal .subtask-row.failed .subtask-text{ color:#cc8a83; }
-#cal-day-modal .subtask-text{ color:#24231f; }
+#cal-day-modal .subtask-text{ color:#333333; }
 #cal-day-modal .subtask-text:focus{ background:#ffffff; }
 #cal-day-modal .subtask-new-input{
   background:#faf9f5; border:1px solid #e4e0d4; color:#24231f;

@@ -10912,6 +10912,13 @@
     // any English or Vietnamese line contains the letter "n" somewhere.
     const activeIsEditable = document.activeElement && (document.activeElement.isContentEditable || document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA");
     if (activeIsEditable) return;
+    // Same reasoning, for modals with no text field to catch it: the note
+    // editor, task list, photo/video (YouTube) viewer, trash, storage,
+    // etc. — an "n" typed there (nothing focused, or focus on a plain
+    // button) fell through the check above and still spawned a new map
+    // behind the open modal. Same ".modal:not(.hidden)" guard the global
+    // paste handler (further down) already uses, for the same reason.
+    if (document.querySelector(".modal:not(.hidden)")) return;
     if (e.key.toLowerCase() === "n" && !e.ctrlKey && !e.metaKey) createMap();
   });
 
@@ -11244,7 +11251,12 @@
     } else {
       raw.split("\n").map(drcNorm).filter(Boolean).forEach((t) => found.push({ title: t, color: null }));
     }
-    return found.map((c, i) => ({ title: c.title, color: c.color || DRC_CARD_COLORS[i % DRC_CARD_COLORS.length] }));
+    // While 🎨 auto-color is off, a section with no color of its own
+    // (nothing picked via the recolor ring, nothing baked into the
+    // template) falls back to neutral instead of the auto-cycled palette —
+    // same "off means plain/uniform" rule noteAutoColorParagraphs follows
+    // for line text, now applied to card backgrounds too.
+    return found.map((c, i) => ({ title: c.title, color: c.color || (noteAutoColorEnabled ? DRC_CARD_COLORS[i % DRC_CARD_COLORS.length] : null) }));
   }
 
   // mode: "note" (a DRC note: headings are the "DRC" template's lines plus
@@ -15892,6 +15904,10 @@
   noteAutoColorBtn.addEventListener("mousedown", (e) => {
     e.preventDefault(); // keep focus off this button, same as the other toolbar buttons
     setNoteAutoColorEnabled(!noteAutoColorEnabled);
+    // DRC cards' own section coloring now follows this same toggle (see
+    // drcTemplateCards) — refresh immediately so an open DRC note updates
+    // right away instead of waiting for the next edit/reopen.
+    refreshDRCCards();
     if (!noteAutoColorEnabled) {
       // Once lines stop getting auto-colored, plain default-color typing
       // would be hard to tell apart from a still-active line — default
