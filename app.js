@@ -3590,14 +3590,10 @@
       total += brainstormPts;
       done += brainstormPts;
     }
-    // Every filled-in DRC note (note.title === "DRC" — see
-    // drcPoints/drcNoteIsFilled) is worth another flat 5 points, same
-    // "always fully done" treatment as the above.
-    const drcPts = drcPoints(node);
-    if (drcPts > 0) {
-      total += drcPts;
-      done += drcPts;
-    }
+    // DRC notes no longer add points to the task tally (used to add a
+    // flat 5 per filled-in DRC note via drcPoints — see drcPoints/
+    // drcNoteIsFilled, still used elsewhere for the icon/tooltip status,
+    // just not counted toward done/total here anymore).
     return { done, total, failed, pct: total ? done / total : 0 };
   }
 
@@ -4140,10 +4136,10 @@
     const typedChars = typedLines.join("").length;
     return typedLines.length > 1 || typedChars >= 10;
   }
-  // Every filled-in DRC note on the node (there can be more than one —
+  // Count of filled-in DRC notes on the node (there can be more than one —
   // each "📋 DRC…" click starts a fresh one, so this adds up like a daily
-  // streak) is worth a flat 5 points, same "always fully done" treatment
-  // as the other bonuses in nodeTaskProgress above.
+  // streak). No longer fed into nodeTaskProgress's score — kept only for
+  // the "(N filled in)" count in the DRC context-menu row.
   function drcPoints(node) {
     return getNodeNotes(node).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length * 5;
   }
@@ -8267,12 +8263,11 @@
           badge.textContent = String(nodeNotes.length);
           noteIcon.appendChild(badge);
         } else {
-          // DRC notes get a status-aware tooltip (filled-in or not, and
-          // its point value) instead of the plain content preview, so
-          // hovering tells you at a glance whether today's report still
-          // needs filling out.
+          // DRC notes get a status-aware tooltip (filled-in or not)
+          // instead of the plain content preview, so hovering tells you
+          // at a glance whether today's report still needs filling out.
           noteIcon.title = isDRCNote(n)
-            ? (drcNoteIsFilled(n) ? "DRC — filled in (5 pts)" : "DRC — not filled in yet")
+            ? (drcNoteIsFilled(n) ? "DRC — filled in" : "DRC — not filled in yet")
             : notePreviewText(n);
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
           noteIcon.addEventListener("click", (e) => {
@@ -8312,7 +8307,7 @@
         // filled-in-or-not status line the node-level DRC icon uses,
         // instead of that title suffix.
         if (taskNoteIsDRC) {
-          const status = drcNoteIsFilled(firstTaskNote) ? "filled in (5 pts)" : "not filled in yet";
+          const status = drcNoteIsFilled(firstTaskNote) ? "filled in" : "not filled in yet";
           taskNoteIcon.title = `Task "${t.text || "(untitled task)"}" — DRC, ${status}`;
         } else {
           const noteTitle = (firstTaskNote.title || "").trim();
@@ -8342,7 +8337,7 @@
         subtaskNoteIcon.className = "node-photo-thumb node-note-marker node-subtask-note-marker" + (subtaskNoteIsDRC ? " node-drc-marker" : "");
         subtaskNoteIcon.innerHTML = subtaskNoteIsDRC ? NODE_DRC_ICON_IMG : (isPlanNoteFor(firstSubtaskNote, s) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG);
         if (subtaskNoteIsDRC) {
-          const status = drcNoteIsFilled(firstSubtaskNote) ? "filled in (5 pts)" : "not filled in yet";
+          const status = drcNoteIsFilled(firstSubtaskNote) ? "filled in" : "not filled in yet";
           subtaskNoteIcon.title = `Subtask "${s.text || "(untitled subtask)"}" (in "${t.text || "(untitled task)"}") — DRC, ${status}`;
         } else {
           const noteTitle = (firstSubtaskNote.title || "").trim();
@@ -9869,11 +9864,11 @@
         // branch in openNoteModal) the first time, or just reopens the
         // existing one on every click after that — only one DRC note is
         // allowed per node. Unlike the automatic prefill, this isn't tied
-        // to any task being named "DRC". The label shows points earned so
-        // far from filled-in DRC notes (see drcPoints/drcNoteIsFilled),
-        // same pattern as Brainstorm/Timer.
-        const drcPts = drcPoints(node);
-        const label = drcPts > 0 ? `DRC (${drcPts} pt${drcPts === 1 ? "" : "s"})…` : "DRC…";
+        // to any task being named "DRC". The label shows how many filled-in
+        // DRC notes exist so far (see drcNoteIsFilled) — no longer a point
+        // value, since DRC notes stopped contributing to the task score.
+        const drcFilled = getNodeNotes(node).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
+        const label = drcFilled > 0 ? `DRC (${drcFilled} filled in)…` : "DRC…";
         const drcItem = addGroupRow(label, () => openNoteModal(node.id, undefined, null, null, null, true));
         // Same notebook+pencil image as the DRC marker on the node itself,
         // instead of a 📋 emoji, so the two match.
