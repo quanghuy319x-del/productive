@@ -2625,11 +2625,11 @@ kbd{
 .task-fail-btn.failed{ color:#ffffff; background:#c0392b; font-size:12px; }
 .task-row.failed .task-text{ color:#c0392b; }
 .subtask-row.failed{
-  background: rgba(192,57,43,0.08);
+  background: rgba(192,57,43,0.04);
   border-style: solid;
-  border-color:#c0392b;
+  border-color: rgba(192,57,43,0.35);
 }
-.subtask-row.failed .subtask-text{ color:#c0392b; }
+.subtask-row.failed .subtask-text{ color:#c98079; }
 /* With a mouse the ✗ stays out of the way until you hover the row (like
    the star/due/note buttons); a failed one always shows. On touch screens
    there is no hover, so it just stays visible. */
@@ -2875,9 +2875,9 @@ kbd{
   cursor: pointer; /* whole pill toggles done on a single click now */
 }
 .subtask-row.done{
-  background: rgba(30,132,73,0.08);
+  background: rgba(30,132,73,0.04);
   border-style: solid;
-  border-color:#1e8449;
+  border-color: rgba(30,132,73,0.35);
 }
 /* Drop indicator is now a thin vertical bar on the pill's left/right edge
    (pills sit side by side, not stacked, so "before/after" reads
@@ -2927,7 +2927,7 @@ kbd{
   overflow-wrap: anywhere;
 }
 .subtask-text:focus{ background: var(--panel-2); }
-.subtask-row.done .subtask-text{ color:#1e8449; text-decoration: line-through; }
+.subtask-row.done .subtask-text{ color:#6ba585; text-decoration: line-through; }
 /* Small note icon on a subtask pill that has notes — click opens them (see
    openSubtaskNotes in app.js). Adding the first note is done from the
    pill's right-click menu. */
@@ -3063,10 +3063,10 @@ kbd{
 #tasks-modal .tasks-new-input:focus,
 #tasks-modal .subtask-new-input:focus{ border-color: #5a5a5a; }
 #tasks-modal .subtask-row{ background: #f0f0f0; border-color: #d5d5d5; }
-#tasks-modal .subtask-row.done{ background:#e8f6ee; border-color:#1e8449; }
-#tasks-modal .subtask-row.done .subtask-text{ color:#1e8449; opacity:1; text-decoration: line-through; }
-#tasks-modal .subtask-row.failed{ background:#fdecea; border-color:#c0392b; }
-#tasks-modal .subtask-row.failed .subtask-text{ color:#c0392b; }
+#tasks-modal .subtask-row.done{ background:#f3f9f5; border-color:#b5d9c3; }
+#tasks-modal .subtask-row.done .subtask-text{ color:#6ba585; opacity:1; text-decoration: line-through; }
+#tasks-modal .subtask-row.failed{ background:#fcf4f3; border-color:#e6bcb7; }
+#tasks-modal .subtask-row.failed .subtask-text{ color:#cc8a83; }
 /* Subtask chosen by the 🎲 Random button */
 #tasks-modal .subtask-row.picked{
   background: #fff2a8;
@@ -5096,10 +5096,10 @@ kbd{
   box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
 }
 #cal-day-modal .subtask-row{ background:#f4f2ec; border-color:#e4e0d4; }
-#cal-day-modal .subtask-row.done{ background:#e8f6ee; border-color:#1e8449; }
-#cal-day-modal .subtask-row.done .subtask-text{ color:#1e8449; text-decoration: line-through; opacity:1; }
-#cal-day-modal .subtask-row.failed{ background:#fdecea; border-color:#c0392b; }
-#cal-day-modal .subtask-row.failed .subtask-text{ color:#c0392b; }
+#cal-day-modal .subtask-row.done{ background:#f3f9f5; border-color:#b5d9c3; }
+#cal-day-modal .subtask-row.done .subtask-text{ color:#6ba585; text-decoration: line-through; opacity:1; }
+#cal-day-modal .subtask-row.failed{ background:#fcf4f3; border-color:#e6bcb7; }
+#cal-day-modal .subtask-row.failed .subtask-text{ color:#cc8a83; }
 #cal-day-modal .subtask-text{ color:#24231f; }
 #cal-day-modal .subtask-text:focus{ background:#ffffff; }
 #cal-day-modal .subtask-new-input{
