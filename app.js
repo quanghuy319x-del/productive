@@ -3820,11 +3820,20 @@
       const remoteDocs = [];
       for (const f of files) remoteDocs.push(await DriveDB.downloadFile(f.id));
       let remote = { items: [], deleted: {} };
+      let remoteNotes = { items: [], deleted: {} };
       for (const doc of remoteDocs) {
         const tt = (doc && doc.taskTemplates) || {};
         remote = mergeTaskTemplateSets(remote, {
           items: Array.isArray(tt.items) ? tt.items : [],
           deleted: (tt.deleted && typeof tt.deleted === "object") ? tt.deleted : {}
+        });
+        // Saved note templates ride in the same settings file, under
+        // their own key, merged the exact same way (by id, newest wins,
+        // deletion records beat older copies).
+        const nt = (doc && doc.noteTemplates) || {};
+        remoteNotes = mergeTaskTemplateSets(remoteNotes, {
+          items: Array.isArray(nt.items) ? nt.items : [],
+          deleted: (nt.deleted && typeof nt.deleted === "object") ? nt.deleted : {}
         });
       }
       const local = { items: getTaskListTemplates(), deleted: getDeletedTaskTemplates() };
@@ -3835,12 +3844,23 @@
         saveDeletedTaskTemplates(merged.deleted);
         changedLocal = true;
       }
-      const somethingToStore = merged.items.length || Object.keys(merged.deleted).length;
-      if (somethingToStore && (!files.length || files.length > 1 || mergedSig !== taskTemplateSetSig(remote))) {
+      const localNotes = { items: getNoteTemplates(), deleted: getDeletedNoteTemplates() };
+      const mergedNotes = mergeTaskTemplateSets(localNotes, remoteNotes);
+      const mergedNotesSig = taskTemplateSetSig(mergedNotes);
+      if (mergedNotesSig !== taskTemplateSetSig(localNotes)) {
+        saveNoteTemplates(mergedNotes.items);
+        saveDeletedNoteTemplates(mergedNotes.deleted);
+        changedLocal = true;
+      }
+      const somethingToStore = merged.items.length || Object.keys(merged.deleted).length
+        || mergedNotes.items.length || Object.keys(mergedNotes.deleted).length;
+      if (somethingToStore && (!files.length || files.length > 1
+          || mergedSig !== taskTemplateSetSig(remote) || mergedNotesSig !== taskTemplateSetSig(remoteNotes))) {
         // Keep any other keys a newer app version may have put in the file.
         const payload = Object.assign({}, remoteDocs[0] || {}, {
           v: 1, savedAt: Date.now(),
-          taskTemplates: { items: merged.items, deleted: merged.deleted }
+          taskTemplates: { items: merged.items, deleted: merged.deleted },
+          noteTemplates: { items: mergedNotes.items, deleted: mergedNotes.deleted }
         });
         const primaryId = await DriveDB.writeSettingsFile(files.length ? files[0].id : null, payload);
         // Two files only ever appear from a simultaneous first save on two
@@ -3881,6 +3901,100 @@
     });
     host.tasks = host.tasks.concat(newTasks);
     persist();
+  }
+
+  /* ---- Note templates ----
+     Same idea as the task-list templates above, for a single note: the
+     note editor's "📋" button saves the open note (its title + rich text)
+     under a name, then any other note — on any node, cell, task or
+     subtask, in any map — can pull it in. Stored per browser in
+     localStorage and mirrored through the same Drive settings file (see
+     syncTaskTemplatesWithDrive), so they follow the person across
+     devices. A template is a reusable shape: inline photos are left out
+     (they're per-map records that wouldn't exist elsewhere) and ticked
+     checklist lines come back unticked. */
+  const NOTE_TEMPLATES_KEY = "branchlineNoteTemplates_v1";
+  const NOTE_TEMPLATES_DELETED_KEY = "branchlineNoteTemplatesDeleted_v1";
+  function getNoteTemplates() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(NOTE_TEMPLATES_KEY));
+      if (Array.isArray(saved)) return saved;
+    } catch (e) {}
+    return [];
+  }
+  function saveNoteTemplates(list) {
+    try { localStorage.setItem(NOTE_TEMPLATES_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  function getDeletedNoteTemplates() {
+    try {
+      const o = JSON.parse(localStorage.getItem(NOTE_TEMPLATES_DELETED_KEY));
+      if (o && typeof o === "object" && !Array.isArray(o)) return o;
+    } catch (e) {}
+    return {};
+  }
+  function saveDeletedNoteTemplates(o) {
+    try { localStorage.setItem(NOTE_TEMPLATES_DELETED_KEY, JSON.stringify(o)); } catch (e) {}
+  }
+  // The reusable shape of `note` ({title, html}) — or null if there's
+  // nothing worth saving (no title and no text once photos are dropped).
+  function snapshotNoteForTemplate(note) {
+    if (!note) return null;
+    const tmp = document.createElement("div");
+    tmp.innerHTML = noteHtmlFromRaw(note.html || "");
+    tmp.querySelectorAll("img").forEach((img) => {
+      const parent = img.parentElement;
+      img.remove();
+      // A line that only held a photo would be left as an empty <div>.
+      if (parent && parent !== tmp && !parent.textContent.trim() && !parent.children.length) parent.remove();
+    });
+    // Ticked checklist lines (☑, struck through) go back to unticked.
+    [tmp, ...Array.from(tmp.children)].forEach((el) => {
+      const first = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+      if (first && /^☑/.test(first.nodeValue)) first.nodeValue = first.nodeValue.replace(/^☑/, "☐");
+      el.classList.remove("note-line-checked");
+      if (el.getAttribute("class") === "") el.removeAttribute("class");
+    });
+    const title = (note.title || "").trim();
+    if (!title && !tmp.textContent.trim()) return null;
+    return { title, html: tmp.textContent.trim() ? tmp.innerHTML : "" };
+  }
+  // Saves `note` as a new named template. Returns it, or null if empty.
+  function saveNoteAsTemplate(note, name) {
+    const snap = snapshotNoteForTemplate(note);
+    if (!snap) return null;
+    const tpl = {
+      id: uid(),
+      name: (name || "").trim() || snap.title || "Untitled template",
+      title: snap.title,
+      html: snap.html,
+      updatedAt: Date.now()
+    };
+    const list = getNoteTemplates();
+    list.push(tpl);
+    saveNoteTemplates(list);
+    scheduleTaskTemplateSync();
+    return tpl;
+  }
+  // Overwrites an existing template's content in place (same id + name).
+  function updateNoteTemplate(id, note) {
+    const snap = snapshotNoteForTemplate(note);
+    if (!snap) return false;
+    const list = getNoteTemplates();
+    const tpl = list.find(t => t.id === id);
+    if (!tpl) return false;
+    tpl.title = snap.title;
+    tpl.html = snap.html;
+    tpl.updatedAt = Date.now();
+    saveNoteTemplates(list);
+    scheduleTaskTemplateSync();
+    return true;
+  }
+  function deleteNoteTemplate(id) {
+    saveNoteTemplates(getNoteTemplates().filter(tpl => tpl.id !== id));
+    const gone = getDeletedNoteTemplates();
+    gone[id] = Date.now();
+    saveDeletedNoteTemplates(gone);
+    scheduleTaskTemplateSync();
   }
 
   // The affirmation typing game lives on its own per node — reached from
@@ -15016,6 +15130,7 @@
   }
 
   function closeNoteModal() {
+    closeNoteTemplatesPopover();
     flushNoteAutosave();
     noteEditingId = null;
     noteEditingPhotoId = null;
@@ -16170,6 +16285,185 @@
       openFolderMovePopover(noteNavFolder, notesFolderMgr, current.id, updateNoteFolderUI);
     });
   }
+  // ---- Note templates popover ("📋" in the note editor's nav row) ----
+  // Top row saves the open note as a template; below it, every saved
+  // template — click one to pull it into the open note (fills an empty
+  // note, otherwise adds it at the end), 🔁 to overwrite it with the open
+  // note, × to delete. Same fixed-position popover pattern as the task
+  // list's "📋 Templates" one (see renderTaskTemplatesPopover).
+  const noteNavTemplates = $("#note-nav-templates");
+  const noteTemplatesPopover = document.createElement("div");
+  noteTemplatesPopover.className = "task-templates-popover note-templates-popover hidden";
+  document.body.appendChild(noteTemplatesPopover);
+
+  // Adds a template's content to the note that's open right now. An empty
+  // note is simply filled in (title too, if it has none); a note that
+  // already has text gets the template added after it, separated by a
+  // blank line. Goes through the editor's own undo stack, so ↶ takes it
+  // straight back out.
+  function insertNoteTemplate(tpl) {
+    if (!tpl || !noteWorkingList[noteActiveIndex]) return;
+    const html = noteHtmlFromRaw(tpl.html || "");
+    if (!html && !tpl.title) return;
+    notePushUndo();
+    const bodyEmpty = !noteTextarea.textContent.trim() && !noteTextarea.querySelector("img");
+    if (!noteTitleInput.value.trim() && tpl.title) noteTitleInput.value = tpl.title;
+    if (html) {
+      if (bodyEmpty) noteTextarea.innerHTML = html;
+      else noteTextarea.insertAdjacentHTML("beforeend", "<div><br></div>" + html);
+    }
+    noteSyncAllCheckedLines();
+    noteSyncAllOrderedColors();
+    noteAutoColorParagraphs();
+    refreshDRCCards();
+    scheduleNoteAutosave();
+    noteTextarea.focus();
+    const range = document.createRange();
+    range.selectNodeContents(noteTextarea);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    noteTextarea.scrollTop = noteTextarea.scrollHeight;
+  }
+
+  function renderNoteTemplatesPopover() {
+    noteTemplatesPopover.innerHTML = "";
+    const current = noteWorkingList[noteActiveIndex];
+    if (current) captureActiveNote(); // pick up whatever's typed so far
+    const canSave = !!(current && snapshotNoteForTemplate(current));
+
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "task-template-save-btn";
+    saveBtn.textContent = "💾 Save this note as a template…";
+    saveBtn.disabled = !canSave;
+    saveBtn.title = canSave
+      ? "Save this note's title and text as a reusable template (photos aren't included)"
+      : "This note is empty — write something first";
+    saveBtn.addEventListener("click", () => {
+      const cur = noteWorkingList[noteActiveIndex];
+      if (!cur) return;
+      captureActiveNote();
+      const name = window.prompt("Name this note template:", (cur.title || "").trim());
+      if (name === null) return; // cancelled
+      const clean = name.trim();
+      const existing = clean && getNoteTemplates().find(t => (t.name || "").trim().toLowerCase() === clean.toLowerCase());
+      if (existing) {
+        if (!confirm(`A template named "${existing.name}" already exists. Replace it with this note?`)) return;
+        updateNoteTemplate(existing.id, cur);
+        showToast(`Replaced template "${existing.name}"`);
+      } else {
+        saveNoteAsTemplate(cur, name);
+        showToast("Saved note as a template");
+      }
+      renderNoteTemplatesPopover();
+    });
+    noteTemplatesPopover.appendChild(saveBtn);
+
+    const templates = getNoteTemplates();
+    if (!templates.length) {
+      const empty = document.createElement("div");
+      empty.className = "task-templates-empty";
+      empty.textContent = "No saved note templates yet.";
+      noteTemplatesPopover.appendChild(empty);
+      return;
+    }
+    const divider = document.createElement("div");
+    divider.className = "task-templates-divider";
+    noteTemplatesPopover.appendChild(divider);
+    templates.forEach((tpl) => {
+      const row = document.createElement("div");
+      row.className = "task-template-row";
+      const label = document.createElement("span");
+      label.className = "task-template-row-label";
+      label.textContent = tpl.name || "Untitled template";
+      label.title = "Add this template to the open note";
+      label.addEventListener("click", () => {
+        insertNoteTemplate(tpl);
+        closeNoteTemplatesPopover();
+      });
+      const replace = document.createElement("button");
+      replace.type = "button";
+      replace.className = "task-template-row-replace";
+      replace.textContent = "🔁";
+      replace.disabled = !canSave;
+      replace.title = canSave
+        ? `Replace "${tpl.name}" with the open note`
+        : "This note is empty — write something first";
+      replace.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cur = noteWorkingList[noteActiveIndex];
+        if (!cur || !canSave) return;
+        if (!confirm(`Replace template "${tpl.name}" with the open note?`)) return;
+        captureActiveNote();
+        updateNoteTemplate(tpl.id, cur);
+        renderNoteTemplatesPopover();
+        showToast(`Replaced template "${tpl.name}"`);
+      });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "task-template-row-del";
+      del.title = "Delete this template";
+      del.textContent = "×";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete the template "${tpl.name}"?`)) return;
+        deleteNoteTemplate(tpl.id);
+        renderNoteTemplatesPopover();
+      });
+      row.appendChild(label);
+      row.appendChild(replace);
+      row.appendChild(del);
+      noteTemplatesPopover.appendChild(row);
+    });
+  }
+  function positionNoteTemplatesPopover(btn) {
+    const margin = 8;
+    const btnRect = btn.getBoundingClientRect();
+    const popRect = noteTemplatesPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, btnRect.top - popRect.height - 6);
+    }
+    noteTemplatesPopover.style.left = `${left}px`;
+    noteTemplatesPopover.style.top = `${top}px`;
+  }
+  function openNoteTemplatesPopover(btn) {
+    renderNoteTemplatesPopover();
+    noteTemplatesPopover.classList.remove("hidden");
+    positionNoteTemplatesPopover(btn);
+    // Pull whatever the other device saved, then redraw if it added any.
+    syncTaskTemplatesWithDrive().then((changed) => {
+      if (changed && !noteTemplatesPopover.classList.contains("hidden")) {
+        renderNoteTemplatesPopover();
+        positionNoteTemplatesPopover(btn);
+      }
+    });
+  }
+  function closeNoteTemplatesPopover() {
+    noteTemplatesPopover.classList.add("hidden");
+  }
+  if (noteNavTemplates) {
+    // Keep the editor's selection/caret where it is while clicking this.
+    noteNavTemplates.addEventListener("mousedown", (e) => e.preventDefault());
+    noteNavTemplates.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (noteTemplatesPopover.classList.contains("hidden")) openNoteTemplatesPopover(noteNavTemplates);
+      else closeNoteTemplatesPopover();
+    });
+  }
+  noteTemplatesPopover.addEventListener("mousedown", (e) => e.stopPropagation());
+  document.addEventListener("mousedown", (e) => {
+    if (!noteTemplatesPopover.classList.contains("hidden") &&
+        !noteTemplatesPopover.contains(e.target) &&
+        e.target !== noteNavTemplates) {
+      closeNoteTemplatesPopover();
+    }
+  });
+
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
   $("#note-nav-close").addEventListener("click", closeNoteModal);
