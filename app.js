@@ -1228,6 +1228,11 @@
     try { localStorage.removeItem(DRIVE_TOKEN_CACHE_KEY); } catch (e) {}
   }
 
+  // How often the background poll checks Drive for changes made on other
+  // devices. DriveDB.FRESH_WINDOW_MS is derived from this, so change it
+  // here only (e.g. 60000 for once a minute).
+  const DRIVE_POLL_INTERVAL_MS = 30000;
+
   const DriveDB = {
     tokenClient: null,
     accessToken: null,
@@ -1301,7 +1306,10 @@
     // that confirms nothing newer exists pushes it FRESH_WINDOW_MS into
     // the future; a check that finds something newer (or fails) resets
     // it to 0. isFresh() is just "is that still in the future".
-    FRESH_WINDOW_MS: 6000,
+    // Must be longer than DRIVE_POLL_INTERVAL_MS (plus a few seconds of
+    // slack for the request itself), or the stamp expires between polls
+    // and editing locks itself for part of every cycle.
+    FRESH_WINDOW_MS: DRIVE_POLL_INTERVAL_MS + 6000,
     freshUntil: 0,
     isFresh() { return Date.now() < this.freshUntil; },
     // True if Drive holds a newer copy of any map this device already has.
@@ -2318,10 +2326,10 @@
 
   // Signing in only syncs once, at that moment — without this, a change
   // made on another device wouldn't show up here until you next reload
-  // (or manually sign in again). Polls every 1s while the tab is
-  // actually visible (skipped in background tabs to save battery/quota —
-  // Drive's API quota is generous enough that 1s is fine while visible),
-  // plus once immediately whenever you switch back to this tab.
+  // (or manually sign in again). Polls every DRIVE_POLL_INTERVAL_MS (30s)
+  // while the tab is actually visible (skipped in background tabs to save
+  // battery/quota), plus once immediately whenever you switch back to
+  // this tab.
   let driveSyncTimer = null;
   // Set when a poll pulled in remote changes that the screen doesn't show
   // yet; cleared once the map/sidebar have actually been redrawn. Needed
@@ -2330,7 +2338,7 @@
   let driveRenderPending = false;
   function startDriveSyncPolling() {
     stopDriveSyncPolling();
-    driveSyncTimer = setInterval(pollDriveUpdates, 1000);
+    driveSyncTimer = setInterval(pollDriveUpdates, DRIVE_POLL_INTERVAL_MS);
   }
   function stopDriveSyncPolling() {
     if (driveSyncTimer) { clearInterval(driveSyncTimer); driveSyncTimer = null; }
@@ -2368,7 +2376,7 @@
       // Then the other direction: re-upload any map whose local copy is
       // newer than Drive's (an earlier upload that never finished — see
       // pushLocalNewer). `force` is true when this poll was triggered by
-      // returning to the tab or coming back online, false for the 1s timer.
+      // returning to the tab or coming back online, false for the interval timer.
       await DriveDB.pushLocalNewer({ force: force === true });
       // Re-check both conditions: either can flip from clear to set while
       // the syncFromDrive() network call above was in flight (the guards
@@ -2380,7 +2388,7 @@
       // a change that's still mid-save.
       // Only redraw when this poll (or an earlier one that had to wait)
       // actually brought in changes. This used to rebuild the sidebar AND
-      // every node of the canvas from scratch on every 1-second tick even
+      // every node of the canvas from scratch on every poll tick even
       // when nothing had changed — which made the whole map stutter, and
       // dropped any click whose press and release straddled a rebuild
       // (the element pressed no longer exists, so no click event fires).
