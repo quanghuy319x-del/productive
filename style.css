@@ -5252,3 +5252,55 @@ kbd{
 /* The minimized player has no dimmed overlay to anchor a corner button to
    (and the overlay ignores clicks there) — ✕ is still on the mini card. */
 .video-modal.mini .video-modal-back{ display:none; }
+
+/* "Mood To Day" block — inserted from the note toolbar's 😊 button (see
+   noteInsertMoodBlock in app.js). A non-editable heading + five faces;
+   the tapped face gets the .selected ring. */
+.note-textarea .note-mood{
+  width: fit-content;
+  max-width: 100%;
+  min-height: 0;
+  margin: 8px auto;
+  padding: 6px 12px 8px;
+  text-align: center;
+  border-top: 1px dashed #2a9d8f;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.note-textarea .note-mood-title{
+  min-height: 0;
+  padding-bottom: 3px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  color: var(--paper-text);
+  border-bottom: 2px solid #2a9d8f;
+}
+.note-textarea .note-mood-faces{
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+.note-mood-face{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+.note-mood-face:hover{ opacity: 1; }
+.note-mood-face.selected{
+  opacity: 1;
+  border-color: #2a9d8f;
+  background: rgba(42, 157, 143, 0.16);
+}

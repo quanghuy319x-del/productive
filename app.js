@@ -15120,6 +15120,7 @@
     if (!noteAutoColorEnabled) return;
     let idx = 0;
     Array.from(container.children).forEach(el => {
+      if (el.classList && el.classList.contains("note-mood")) return; // the Mood To Day block has its own colors
       const text = el.textContent || "";
       // Numbered/checklist lines keep their own ordinal-based color, and an
       // image line has no text to color — skip both instead of assigning
@@ -15859,6 +15860,97 @@
   $("#note-tool-card").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteAddCard();
+  });
+
+  // ---- "😊 Mood To Day" block ----
+  // A reusable, non-editable block dropped into the note from the toolbar:
+  // a heading plus a row of five faces. Tapping a face marks it (tap it
+  // again to clear). The block is plain markup (class + data attributes,
+  // no state kept in JS), so it saves with the note, survives undo/redo
+  // and reload, and copies/pastes between notes like any other content —
+  // the click handler below is delegated on the editor, so a pasted or
+  // reloaded block works without any re-wiring.
+  const NOTE_MOOD_FACES = [["😀", "Great"], ["🙂", "Good"], ["😐", "Okay"], ["🙁", "Low"], ["😞", "Bad"]];
+  function noteBuildMoodBlock() {
+    const block = document.createElement("div");
+    block.className = "note-mood";
+    block.setAttribute("data-mood-block", "1");
+    block.contentEditable = "false";
+    const title = document.createElement("div");
+    title.className = "note-mood-title";
+    title.textContent = "Mood To Day";
+    const row = document.createElement("div");
+    row.className = "note-mood-faces";
+    NOTE_MOOD_FACES.forEach(([ch, label], i) => {
+      const face = document.createElement("span");
+      face.className = "note-mood-face";
+      face.dataset.moodValue = String(i + 1);
+      face.title = label;
+      face.setAttribute("role", "button");
+      face.setAttribute("aria-pressed", "false");
+      face.textContent = ch;
+      row.appendChild(face);
+    });
+    block.append(title, row);
+    return block;
+  }
+  // Goes on the caret's blank line if it's on one; otherwise right after
+  // the current line; with no caret in the note, at the end. A blank line
+  // is always left after it (the block itself can't hold a caret) and the
+  // caret is put there so typing can carry on straight away.
+  function noteInsertMoodBlock() {
+    notePushUndo();
+    const sel = window.getSelection();
+    let line = (sel.rangeCount && noteTextarea.contains(sel.anchorNode)) ? noteCurrentLine() : null;
+    if (line && line.nodeType !== 1) line = null; // bare first-line text node: add at the end instead
+    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img") && !el.hasAttribute("data-mood-block");
+    const block = noteBuildMoodBlock();
+    if (line && line.parentNode === noteTextarea) {
+      if (!line.hasAttribute("data-card") && isBlank(line)) line.replaceWith(block);
+      else line.after(block);
+    } else {
+      noteTextarea.appendChild(block);
+    }
+    let tail = block.nextElementSibling;
+    if (!tail || !isBlank(tail)) {
+      tail = document.createElement("div");
+      tail.appendChild(document.createElement("br"));
+      block.after(tail);
+    }
+    noteTextarea.focus();
+    const range = document.createRange();
+    range.selectNodeContents(tail);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    refreshDRCCards();
+    scheduleNoteAutosave();
+    scrollCaretIntoView(tail);
+  }
+  $("#note-tool-mood").addEventListener("mousedown", (e) => {
+    e.preventDefault(); // keep focus (and the caret position) off this button
+    noteInsertMoodBlock();
+  });
+  noteTextarea.addEventListener("click", (e) => {
+    const face = e.target && e.target.closest ? e.target.closest(".note-mood-face") : null;
+    if (!face || !noteTextarea.contains(face)) return;
+    if (!noteTextarea.isContentEditable) return; // read-only (not connected to Drive): look, don't change
+    const block = face.closest(".note-mood");
+    if (!block) return;
+    notePushUndo();
+    const wasSelected = face.classList.contains("selected");
+    block.querySelectorAll(".note-mood-face").forEach((f) => {
+      f.classList.remove("selected");
+      f.setAttribute("aria-pressed", "false");
+    });
+    if (wasSelected) {
+      block.removeAttribute("data-mood");
+    } else {
+      face.classList.add("selected");
+      face.setAttribute("aria-pressed", "true");
+      block.setAttribute("data-mood", face.dataset.moodValue);
+    }
+    scheduleNoteAutosave();
   });
   $("#note-tool-check").addEventListener("mousedown", (e) => {
     e.preventDefault();
