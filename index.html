@@ -320,9 +320,6 @@
 <div id="video-modal" class="modal video-modal hidden">
   <button id="video-modal-back" class="video-modal-back" title="Back" aria-label="Back">←</button>
   <div class="modal-card video-modal-card">
-    <div class="video-modal-frame-wrap">
-      <div id="video-modal-iframe" class="video-modal-iframe"></div>
-    </div>
     <div class="video-modal-actions">
       <a id="video-modal-open-link" class="video-modal-open-link" target="_blank" rel="noopener">Open on YouTube ↗</a>
       <button id="video-modal-favorite" class="video-modal-size item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
@@ -330,6 +327,9 @@
       <button id="video-modal-minimize" class="video-modal-size" title="Minimize player" aria-label="Minimize player">─</button>
       <button id="video-modal-size" class="video-modal-size" title="Make player bigger" aria-label="Change player size">⤢</button>
       <button id="video-modal-close" class="video-modal-close" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div class="video-modal-frame-wrap">
+      <div id="video-modal-iframe" class="video-modal-iframe"></div>
     </div>
     <div id="video-modal-comment-row" class="video-modal-comment-row hidden">
       <textarea id="video-modal-comment-input" class="video-modal-comment-input" rows="4" maxlength="2000" spellcheck="false" placeholder="Add a comment about this link… Paste a screenshot to attach it. Press Enter for a new paragraph."></textarea>
