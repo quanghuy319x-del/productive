@@ -1882,18 +1882,40 @@
         if (existing) {
           // First time this device sees the map since sync tracking
           // began: assume it's clean, so nothing gets a false alarm.
-          if (getSyncBase(id) === undefined) setSyncBase(id, Math.min(existing.updatedAt || 0, remoteUpdatedAt));
-          if ((existing.updatedAt || 0) === remoteUpdatedAt) { setSyncBase(id, remoteUpdatedAt); continue; }
+          if (getSyncBase(id) === undefined) {
+            setSyncBase(id, Math.min(existing.updatedAt || 0, remoteUpdatedAt));
+            await setSyncSnapshot(id, existing);
+          }
+          if ((existing.updatedAt || 0) === remoteUpdatedAt) { setSyncBase(id, remoteUpdatedAt); await setSyncSnapshot(id, existing); continue; }
           if ((existing.updatedAt || 0) > remoteUpdatedAt) {
             // Ours is newer and will be uploaded. But if Drive ALSO
             // changed since we last synced, uploading would erase the
-            // other device's edit — keep it as a copy first.
+            // other device's edit — try to merge the two sets of
+            // changes first, and only fall back to keeping Drive's
+            // version as a separate copy if the merge can't be sure.
             const base = getSyncBase(id);
             if (base !== undefined && (existing.updatedAt || 0) > base && remoteUpdatedAt > base) {
               try {
                 const other = await this.downloadFile(f.id);
-                if (other && other.root) await saveConflictCopy(other, "other device");
+                if (other && other.root) {
+                  let merged = null;
+                  try {
+                    const snapshot = await getSyncSnapshot(id);
+                    if (snapshot) merged = mergeMapContent(snapshot, existing, other);
+                  } catch (e) { merged = null; } // MERGE_CONFLICT or bad snapshot — fall back below
+                  if (merged) {
+                    existing.root = merged.root;
+                    existing.links = merged.links;
+                    existing.title = merged.title;
+                    existing.updatedAt = nextUpdatedAt(existing);
+                    await DB.put(existing);
+                    showToast("Combined your edits with changes from another device");
+                  } else {
+                    await saveConflictCopy(other, "other device");
+                  }
+                }
                 setSyncBase(id, remoteUpdatedAt); // acknowledged — don't copy again next poll
+                await setSyncSnapshot(id, existing);
                 changed = true;
               } catch (e) { console.error("Couldn't fetch the other device's copy", e); downloadFailed = true; }
             }
@@ -1905,13 +1927,23 @@
           if (!data || !data.id || !data.root) continue;
           // About to replace this device's copy with Drive's. If this
           // device has edits Drive never received (an upload that failed
-          // or was cut off, then a refresh), don't destroy them — keep
-          // them as their own map first.
+          // or was cut off, then a refresh), try to merge them into
+          // Drive's copy first — only keep them as a separate "unsynced
+          // copy" map if the merge can't be sure they don't collide.
+          let mergedContent = null;
           if (existing) {
             const base = getSyncBase(id);
             if (base !== undefined && (existing.updatedAt || 0) > base) {
-              const localPortable = await inlinePhotosForPortableCopy(existing);
-              await saveConflictCopy(localPortable, "unsynced copy");
+              try {
+                const snapshot = await getSyncSnapshot(id);
+                if (snapshot) mergedContent = mergeMapContent(snapshot, existing, data);
+              } catch (e) { mergedContent = null; }
+              if (mergedContent) {
+                showToast("Combined your edits with changes from another device");
+              } else {
+                const localPortable = await inlinePhotosForPortableCopy(existing);
+                await saveConflictCopy(localPortable, "unsynced copy");
+              }
             }
           }
           ensureTheme(data);
@@ -1924,12 +1956,19 @@
           await ensurePhotosMigrated(data);
           if (existing) {
             Object.assign(existing, data);
+            if (mergedContent) {
+              existing.root = mergedContent.root;
+              existing.links = mergedContent.links;
+              existing.title = mergedContent.title;
+              existing.updatedAt = nextUpdatedAt(existing);
+            }
             await DB.put(existing);
           } else {
             state.maps.push(data);
             await DB.put(data);
           }
           setSyncBase(id, Math.max(remoteUpdatedAt, data.updatedAt || 0));
+          await setSyncSnapshot(id, existing || data);
           changed = true;
         } catch (e) { console.error("Drive download failed for one map", e); downloadFailed = true; }
       }
@@ -2041,6 +2080,181 @@
       console.error("Couldn't keep a conflict copy", e);
       return null;
     }
+  }
+
+  /* ---------------- node-level three-way merge ----------------
+     Before this, ANY overlap (this device changed a map AND Drive's
+     copy also changed since they last agreed) fell straight back to
+     keeping the loser as a separate "conflict copy" map — safe, but it
+     meant two people editing two *different* nodes of the same map
+     always split into two maps instead of combining into one.
+
+     This attempts a conservative three-way merge first: base (the tree
+     as it stood the last time this device and Drive were known to
+     agree — see getSyncSnapshot), local (this device's tree now), and
+     remote (Drive's tree now). It only ever combines changes it's
+     CERTAIN don't collide:
+       - a node edited on only one side since base → take that side's edit
+       - a node added on only one side → keep it
+       - a node deleted on only one side → keep it anyway (losing a node
+         is worse than an occasional node that should have been deleted
+         coming back — the person can delete it again)
+       - a node edited (or reparented) DIFFERENTLY on both sides → bail
+         out of the whole merge immediately
+
+     "Bail out" means throw MERGE_CONFLICT, which the caller catches and
+     falls back to the exact old behavior (keep the loser as a separate
+     map). So this can only ever make conflict copies rarer — it never
+     makes the safety net weaker. */
+  const MERGE_CONFLICT = Symbol("merge-conflict");
+
+  function ownFieldsOf(node) {
+    const { children, ...rest } = node || {};
+    return rest;
+  }
+
+  // node id -> its parent's id (or null for the root), for every node in
+  // the tree. Used to detect "moved to a different parent" — the one
+  // kind of change this pass refuses to guess about.
+  function buildParentMap(root) {
+    const map = new Map();
+    (function walk(node, parentId) {
+      if (!node) return;
+      map.set(node.id, parentId);
+      (node.children || []).forEach(c => walk(c, node.id));
+    })(root, null);
+    return map;
+  }
+
+  // node id -> node, for every node in the tree.
+  function buildNodeMap(root) {
+    const map = new Map();
+    (function walk(node) {
+      if (!node) return;
+      map.set(node.id, node);
+      (node.children || []).forEach(walk);
+    })(root);
+    return map;
+  }
+
+  // Merges one node's own fields (not children) three ways. Returns the
+  // merged own-fields object, or throws MERGE_CONFLICT if both sides
+  // changed it differently since base.
+  function mergeOwnFields(baseNode, localNode, remoteNode) {
+    const baseOwn = JSON.stringify(ownFieldsOf(baseNode));
+    const localOwn = JSON.stringify(ownFieldsOf(localNode));
+    const remoteOwn = JSON.stringify(ownFieldsOf(remoteNode));
+    if (localOwn === remoteOwn) return ownFieldsOf(localNode);
+    if (localOwn === baseOwn) return ownFieldsOf(remoteNode); // only remote changed it
+    if (remoteOwn === baseOwn) return ownFieldsOf(localNode); // only local changed it
+    throw MERGE_CONFLICT; // both changed it, differently
+  }
+
+  // Merges the tree rooted at each of base/local/remote. baseParent is
+  // only used to detect reparenting; a node whose parent differs between
+  // local and remote (and neither matches base) is a move-vs-move
+  // collision and bails the whole merge.
+  function mergeTree(baseRoot, localRoot, remoteRoot, baseParent) {
+    const baseNodes = buildNodeMap(baseRoot);
+    const localNodes = buildNodeMap(localRoot);
+    const remoteNodes = buildNodeMap(remoteRoot);
+    const localParent = buildParentMap(localRoot);
+    const remoteParent = buildParentMap(remoteRoot);
+
+    function mergeSubtree(id) {
+      const baseNode = baseNodes.get(id);
+      const localNode = localNodes.get(id);
+      const remoteNode = remoteNodes.get(id);
+      if (!localNode && !remoteNode) return null; // gone from both — drop it
+      if (!baseNode) {
+        // New since base — can only exist on one side (ids are random),
+        // so just keep that side's whole subtree untouched.
+        const src = localNode || remoteNode;
+        return { ...ownFieldsOf(src), children: (src.children || []).map(c => mergeSubtree(c.id)).filter(Boolean) };
+      }
+      if (!localNode || !remoteNode) {
+        // Deleted on exactly one side — keep it rather than lose it, and
+        // still walk its children against whichever copy survived.
+        const src = localNode || remoteNode;
+        return { ...mergeOwnFields(baseNode, src, src), children: (src.children || []).map(c => mergeSubtree(c.id)).filter(Boolean) };
+      }
+      // Present on both sides — check it wasn't moved to two different
+      // new parents (a moved-here-and-there-differently collision).
+      const lp = localParent.get(id), rp = remoteParent.get(id), bp = baseParent.get(id);
+      if (lp !== bp && rp !== bp && lp !== rp) throw MERGE_CONFLICT;
+      const own = mergeOwnFields(baseNode, localNode, remoteNode);
+      const baseChildIds = new Set((baseNode.children || []).map(c => c.id));
+      const localChildIds = (localNode.children || []).map(c => c.id);
+      const remoteChildIds = (remoteNode.children || []).map(c => c.id);
+      const ordered = [];
+      const seen = new Set();
+      localChildIds.concat(remoteChildIds).forEach(cid => {
+        if (!seen.has(cid)) { seen.add(cid); ordered.push(cid); }
+      });
+      const children = ordered.map(mergeSubtree).filter(Boolean);
+      return { ...own, children };
+    }
+
+    return mergeSubtree(baseRoot.id === localRoot.id && baseRoot.id === remoteRoot.id ? baseRoot.id : localRoot.id);
+  }
+
+  // Merges links (cross-connections between nodes, {id, a, b}) by
+  // simple union on id, then drops any link pointing at a node the
+  // merged tree no longer has (never dangling).
+  function mergeLinks(baseLinks, localLinks, remoteLinks, mergedNodeIds) {
+    const byId = new Map();
+    (baseLinks || []).forEach(l => byId.set(l.id, l));
+    (localLinks || []).forEach(l => byId.set(l.id, l));
+    (remoteLinks || []).forEach(l => byId.set(l.id, l));
+    return Array.from(byId.values()).filter(l => mergedNodeIds.has(l.a) && mergedNodeIds.has(l.b));
+  }
+
+  // Merges a whole map's content three ways: root tree, links, and
+  // title. Returns { root, links, title } on success, or throws
+  // MERGE_CONFLICT (caller should fall back to the old conflict-copy
+  // behavior) if any part collided.
+  function mergeMapContent(base, local, remote) {
+    if (!base || !base.root || !local || !local.root || !remote || !remote.root) throw MERGE_CONFLICT;
+    const baseParent = buildParentMap(base.root);
+    const mergedRoot = mergeTree(base.root, local.root, remote.root, baseParent);
+    if (!mergedRoot) throw MERGE_CONFLICT;
+    // Safety net: if the merge somehow produced the same node id twice
+    // (a corner case in reparenting this pass doesn't fully reason
+    // about), refuse the merge rather than hand back a broken tree.
+    const seenIds = new Set();
+    let duplicate = false;
+    (function walk(n) {
+      if (!n) return;
+      if (seenIds.has(n.id)) duplicate = true;
+      seenIds.add(n.id);
+      (n.children || []).forEach(walk);
+    })(mergedRoot);
+    if (duplicate) throw MERGE_CONFLICT;
+    const links = mergeLinks(base.links, local.links, remote.links, seenIds);
+    let title;
+    if (local.title === remote.title) title = local.title;
+    else if (local.title === base.title) title = remote.title;
+    else if (remote.title === base.title) title = local.title;
+    else throw MERGE_CONFLICT;
+    return { root: mergedRoot, links, title };
+  }
+
+  // The last content both this device and Drive are known to have
+  // agreed on for a map — the "base" a three-way merge compares
+  // against. Stored in IndexedDB (via the generic handle store), not
+  // localStorage, since a mind map's tree can be too big for
+  // localStorage's much smaller quota. Best-effort: if it's missing,
+  // callers just skip the merge attempt and fall back to the old
+  // conflict-copy behavior, so a failed read here never breaks sync.
+  async function getSyncSnapshot(id) {
+    try { return await DB.getHandle("syncSnapshot:" + id); } catch (e) { return null; }
+  }
+  async function setSyncSnapshot(id, mapLike) {
+    try {
+      await DB.setHandle("syncSnapshot:" + id, {
+        root: mapLike.root, links: mapLike.links || [], title: mapLike.title || ""
+      });
+    } catch (e) { console.error("Couldn't save sync snapshot", e); }
   }
 
   function driveSyncStatusText() {
