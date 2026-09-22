@@ -1301,17 +1301,25 @@
       });
     },
 
-    // "Am I on the latest version?" — the edit lock's freshness check.
-    // One timestamp (freshUntil) instead of two flags: a Drive check
-    // that confirms nothing newer exists pushes it FRESH_WINDOW_MS into
-    // the future; a check that finds something newer (or fails) resets
-    // it to 0. isFresh() is just "is that still in the future".
-    // Must be longer than DRIVE_POLL_INTERVAL_MS (plus a few seconds of
-    // slack for the request itself), or the stamp expires between polls
-    // and editing locks itself for part of every cycle.
+    // "Am I on the latest version?" — kept for informational/UI timing
+    // purposes (freshUntil/isFresh). It is NOT what gates the edit lock
+    // or the "checking for a newer version" banner anymore — those are
+    // driven by conflictDetected below, so a routine poll that simply
+    // hasn't run yet (the timer aging out between cycles) never pauses
+    // editing on its own; only Drive actually confirming another device
+    // saved something newer does.
     FRESH_WINDOW_MS: DRIVE_POLL_INTERVAL_MS + 6000,
     freshUntil: 0,
     isFresh() { return Date.now() < this.freshUntil; },
+    // True only when a Drive check has actually confirmed this device is
+    // behind — either another device's saved copy is newer
+    // (remoteBehindLocal), or a download of that newer copy just failed
+    // (so it's still out there, unconfirmed). Cleared the moment a full
+    // sync pass completes with nothing outstanding. This — not the
+    // freshUntil timer — is what the edit lock and "checking for a
+    // newer version" banner key off, so editing only ever pauses for a
+    // real, known reason, never for a routine periodic recheck.
+    conflictDetected: false,
     // True if Drive holds a newer copy of any map this device already has.
     remoteBehindLocal(remoteFiles) {
       return remoteFiles.some((f) => {
@@ -1330,7 +1338,9 @@
     async verifyRemote() {
       const remoteFiles = await this.listRemote();
       const listedAt = Date.now();
-      this.freshUntil = this.remoteBehindLocal(remoteFiles) ? 0 : listedAt + this.FRESH_WINDOW_MS;
+      const behind = this.remoteBehindLocal(remoteFiles);
+      this.conflictDetected = behind;
+      this.freshUntil = behind ? 0 : listedAt + this.FRESH_WINDOW_MS;
       this.consecutivePollFailures = 0;
     },
     // map id -> { fileId, updatedAt } for every map we know is mirrored to
@@ -1629,6 +1639,7 @@
       this.accessToken = null;
       this.status = "out";
       this.freshUntil = 0;
+      this.conflictDetected = false;
       this.fileIndex = {};
       this.lastSyncedAt = 0;
       DB.setHandle(DRIVE_SIGNED_IN_KEY, false).catch(() => {});
@@ -1856,6 +1867,7 @@
       // not after the (possibly slow, photo-heavy) download below lands.
       if (this.remoteBehindLocal(remoteFiles)) {
         this.freshUntil = 0;
+        this.conflictDetected = true;
         try { updateStaleSyncBanner(); refreshEditLockUI(); } catch (e) {}
       }
       const previouslyKnownIds = new Set(Object.keys(this.fileIndex));
@@ -1951,9 +1963,15 @@
       if (this.status === "broken") this.status = "ok";
       this.consecutivePollFailures = 0;
       // Only "latest" if every newer map actually came down. A failed
-      // download leaves freshUntil at 0, so editing stays locked and the
-      // next poll retries.
-      if (!downloadFailed) this.freshUntil = listedAt + this.FRESH_WINDOW_MS;
+      // download means Drive is known to hold something this device
+      // doesn't yet have, so conflictDetected stays true and editing
+      // stays locked until a later poll's download succeeds.
+      if (!downloadFailed) {
+        this.freshUntil = listedAt + this.FRESH_WINDOW_MS;
+        this.conflictDetected = false;
+      } else {
+        this.conflictDetected = true;
+      }
       return changed;
     }
   };
@@ -2041,10 +2059,12 @@
     const banner = $("#stale-sync-banner");
     if (!banner) return;
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
-    // Synced once already, but not confirmed as the latest right now
-    // (see DriveDB.isFresh) — editing is paused until the next check.
+    // Drive has actually confirmed another device saved something newer
+    // (see DriveDB.conflictDetected) — editing is paused until this
+    // device catches up. Never true just because the routine poll
+    // timer hasn't ticked yet.
     const checking = DriveDB.signedIn && DriveDB.dataSynced && isOnline
-      && !driveLockReason() && !DriveDB.isFresh();
+      && !driveLockReason() && DriveDB.conflictDetected;
     banner.classList.toggle("hidden", !(stillSyncing || checking));
     const text = $("#stale-sync-text");
     if (text) {
@@ -2133,7 +2153,7 @@
       status.textContent = "Google session expired \u2014 editing paused";
     } else if (DriveDB.driveBroken()) {
       status.textContent = "Changes NOT on Drive \u2014 retrying, editing paused";
-    } else if (DriveDB.signedIn && DriveDB.dataSynced && !DriveDB.isFresh()) {
+    } else if (DriveDB.signedIn && DriveDB.dataSynced && DriveDB.conflictDetected) {
       status.textContent = "Checking for a newer version\u2026 editing paused";
     } else if (DriveDB.signedIn && DriveDB.dataSynced && (DriveDB.pushingLocal || localSaveBusy())) {
       status.textContent = "Uploading changes\u2026";
@@ -2175,15 +2195,15 @@
   // place to update and the rest of the gate logic stays simple.
   let isOnline = navigator.onLine;
 
-  // Signed in + first sync done + online + Drive actually reachable.
-  // The last two matter as much as the first two: a token that expired
-  // an hour ago still leaves signedIn/dataSynced true, so without
-  // needsReauth/syncBroken here the app would keep accepting edits it
-  // can only ever write to this one browser.
+  // Signed in + first sync done + online + Drive actually reachable, and
+  // no confirmed newer copy sitting on Drive from another device. The
+  // last one only ever becomes true from an actual Drive check that
+  // found (or failed to fetch) something newer — never merely because
+  // the routine poll timer hasn't run yet.
   function isEditingAllowed() {
     return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
       && !DriveDB.needsReauth && !DriveDB.driveBroken()
-      && DriveDB.isFresh();
+      && !DriveDB.conflictDetected;
   }
 
   // Set only while flushing already-typed work to disk as the lock comes
@@ -2226,7 +2246,7 @@
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
     const offline = !isOnline;
     const disconnected = driveLockReason() === "reauth" || driveLockReason() === "broken";
-    const checkingNewer = DriveDB.signedIn && DriveDB.dataSynced && !offline && !disconnected && !DriveDB.isFresh();
+    const checkingNewer = DriveDB.signedIn && DriveDB.dataSynced && !offline && !disconnected && DriveDB.conflictDetected;
     if (heading) heading.textContent = offline
       ? "You're offline"
       : disconnected
