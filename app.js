@@ -19291,10 +19291,131 @@
       const text = el.textContent || "";
       if (/^(\d+\.\s|[☐☑])\s?/.test(text)) return;
       if (el.querySelector && el.querySelector("img")) return;
+      if (el.classList && el.classList.contains("note-mood")) return; // the Mood To Day block has its own colors
       if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
       idx++;
     });
   }
+
+  // ---- "🗂 Add card" — brainstorm version ----
+  // Same card mechanics as the note editor's noteAddCard/refreshDRCCards
+  // (decorateDRCCards and bindDRCCardColorDot are shared, generic helpers
+  // that already take any container as their root); duplicated against
+  // this editor's own undo/current-line/autosave helpers for the same
+  // reason the mood block is. Brainstorm has no "DRC" template, so cards
+  // here only ever come from this button — refreshBrainstormCards' mode
+  // is "cards" or nothing, never "note".
+  function refreshBrainstormCards() {
+    const mode = brainstormTextarea.querySelector(":scope > [data-card]") ? "cards" : null;
+    decorateDRCCards(brainstormTextarea, mode);
+  }
+  function brainstormAddCard() {
+    brainstormPushUndo();
+    const count = brainstormTextarea.querySelectorAll(":scope > .drc-card-head, :scope > [data-card]").length;
+    const color = DRC_CARD_COLORS[count % DRC_CARD_COLORS.length];
+    const sel = window.getSelection();
+    let line = (sel.rangeCount && brainstormTextarea.contains(sel.anchorNode)) ? brainstormCurrentLine() : null;
+    if (line && line.nodeType !== 1) line = null;
+    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img");
+    let card;
+    if (line && !line.hasAttribute("data-card") && isBlank(line)) {
+      card = line;
+    } else {
+      if (line && line.classList.contains("drc-card-line")) {
+        while (!line.classList.contains("drc-card-last") && line.nextElementSibling) line = line.nextElementSibling;
+      }
+      card = document.createElement("div");
+      card.appendChild(document.createElement("br"));
+      if (line) line.parentNode.insertBefore(card, line.nextSibling);
+      else brainstormTextarea.appendChild(card);
+    }
+    card.setAttribute("data-card", "1");
+    card.setAttribute("data-card-color", color);
+    brainstormTextarea.focus();
+    const range = document.createRange();
+    range.selectNodeContents(card);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    refreshBrainstormCards();
+    scheduleBrainstormAutosave();
+  }
+  $("#brainstorm-tool-card").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormAddCard();
+  });
+  // Same recolor ring as the note editor's cards (see the note editor's
+  // bindDRCCardColorDot call for the DRC-note version of this comment).
+  bindDRCCardColorDot(
+    brainstormTextarea,
+    () => brainstormTextarea.getAttribute("contenteditable") !== "false" && brainstormTextarea.classList.contains("drc-cards"),
+    (head, color) => {
+      brainstormPushUndo();
+      head.setAttribute("data-card-color", color);
+      refreshBrainstormCards();
+      scheduleBrainstormAutosave();
+    }
+  );
+
+  // ---- "😊 Mood To Day" block, brainstorm version ----
+  // Same block and behavior as the note editor's (see noteInsertMoodBlock/
+  // noteBuildMoodBlock above); duplicated against this editor's own
+  // undo/current-line/autosave helpers rather than shared, since the two
+  // editors don't share a DOM root.
+  function brainstormInsertMoodBlock() {
+    brainstormPushUndo();
+    const sel = window.getSelection();
+    let line = (sel.rangeCount && brainstormTextarea.contains(sel.anchorNode)) ? brainstormCurrentLine() : null;
+    if (line && line.nodeType !== 1) line = null;
+    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img") && !el.hasAttribute("data-mood-block");
+    const block = noteBuildMoodBlock();
+    if (line && line.parentNode === brainstormTextarea) {
+      if (isBlank(line)) line.replaceWith(block);
+      else line.after(block);
+    } else {
+      brainstormTextarea.appendChild(block);
+    }
+    let tail = block.nextElementSibling;
+    if (!tail || !isBlank(tail)) {
+      tail = document.createElement("div");
+      tail.appendChild(document.createElement("br"));
+      block.after(tail);
+    }
+    brainstormTextarea.focus();
+    const range = document.createRange();
+    range.selectNodeContents(tail);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    refreshBrainstormCards();
+    brainstormAutoColorLines();
+    scheduleBrainstormAutosave();
+  }
+  $("#brainstorm-tool-mood").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormInsertMoodBlock();
+  });
+  brainstormTextarea.addEventListener("click", (e) => {
+    const face = e.target && e.target.closest ? e.target.closest(".note-mood-face") : null;
+    if (!face || !brainstormTextarea.contains(face)) return;
+    if (brainstormTextarea.getAttribute("contenteditable") === "false") return;
+    const block = face.closest(".note-mood");
+    if (!block) return;
+    brainstormPushUndo();
+    const wasSelected = face.classList.contains("selected");
+    block.querySelectorAll(".note-mood-face").forEach((f) => {
+      f.classList.remove("selected");
+      f.setAttribute("aria-pressed", "false");
+    });
+    if (wasSelected) {
+      block.removeAttribute("data-mood");
+    } else {
+      face.classList.add("selected");
+      face.setAttribute("aria-pressed", "true");
+      block.setAttribute("data-mood", face.dataset.moodValue);
+    }
+    scheduleBrainstormAutosave();
+  });
 
   // Colors a line based on the number in its own "N. " prefix, or clears
   // the color if the line isn't numbered — same idea as the note
@@ -19373,6 +19494,7 @@
     brainstormSyncAllCheckedLines();
     brainstormSyncAllOrderedColors();
     brainstormAutoColorLines();
+    refreshBrainstormCards();
     brainstormResetUndoHistory();
     renderBrainstormProgress(host);
   }
@@ -19494,6 +19616,7 @@
     brainstormSyncAllCheckedLines();
     brainstormSyncAllOrderedColors();
     brainstormAutoColorLines();
+    refreshBrainstormCards();
     placeCaretAtEnd(brainstormTextarea);
     scheduleBrainstormAutosave();
     updateBrainstormUndoButtons();
@@ -20102,7 +20225,10 @@
     }
     if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
-      if (brainstormHandleEnter()) e.preventDefault();
+      if (brainstormHandleEnter()) {
+        e.preventDefault();
+        refreshBrainstormCards();
+      }
     }
   });
 

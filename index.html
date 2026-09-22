@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=112">
+<link rel="stylesheet" href="style.css?v=114">
 </head>
 <body>
 <div id="app">
@@ -727,6 +727,9 @@
       <button type="button" id="brainstorm-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
       <input type="file" id="brainstorm-image-input" accept="image/*" multiple hidden>
       <span class="note-tool-sep"></span>
+      <button type="button" id="brainstorm-tool-card" class="note-tool-btn" title="Add a card — a colored section: type its heading, then the lines that belong under it">🗂</button>
+      <button type="button" id="brainstorm-tool-mood" class="note-tool-btn" title="Insert a “Mood To Day” block — tap a face to pick your mood">😊</button>
+      <span class="note-tool-sep"></span>
       <div class="note-color-picker">
         <button type="button" id="brainstorm-tool-color" class="note-tool-btn note-color-trigger" title="Text color">
           <span class="note-color-trigger-glyph">A</span>
@@ -735,7 +738,7 @@
       </div>
       <span class="note-tool-sep"></span>
       <div class="note-color-picker">
-        <button type="button" id="brainstorm-tool-symbol" class="note-tool-btn" title="Insert a symbol">👉</button>
+        <button type="button" id="brainstorm-tool-symbol" class="note-tool-btn" title="Insert a symbol">➡️</button>
       </div>
     </div>
     <div id="brainstorm-resize-handle" class="note-resize-handle" title="Drag to resize"></div>
@@ -765,6 +768,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=192"></script>
+<script src="app.js?v=194"></script>
 </body>
 </html>
