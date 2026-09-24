@@ -18406,7 +18406,7 @@
       const n = getTaskNotes(s).length;
       addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", openNotes);
     }
-    addItem(s.failed ? "\u21a9 Clear failed" : "\u2717 Mark failed", "", () => {
+    addItem(s.failed ? "\u21a9 Clear failed" : "Mark failed", "", () => {
       pushUndo();
       setSubtaskFailed(t, s, !s.failed);
       persist();
