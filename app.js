@@ -329,6 +329,24 @@
         tx.onerror = (e) => reject(e.target.error);
       });
     },
+    // Bulk insert is dramatically faster during a first/new-device sync:
+    // a Drive map can contain dozens or hundreds of inline photos. The old
+    // migration opened one IndexedDB transaction per photo, so the browser
+    // spent most of the sync repeatedly creating/committing transactions.
+    // One transaction for the whole batch keeps the same data model while
+    // cutting that overhead down to a single commit.
+    async putMany(records) {
+      if (!records || !records.length) return;
+      const db = await DB.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_STORE, "readwrite");
+        const store = tx.objectStore(PHOTO_STORE);
+        records.forEach((rec) => store.put(rec));
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+        tx.onabort = (e) => reject((e && e.target && e.target.error) || new Error("Photo batch write aborted"));
+      });
+    },
     async delete(id) {
       const db = await DB.open();
       return new Promise((resolve, reject) => {
@@ -786,7 +804,7 @@
           if (typeof val === "string" && val.startsWith("data:")) {
             const id = uid();
             idForOldValue.set(val, id);
-            puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(val) }));
+            puts.push({ id, mapId: map.id, blob: dataUrlToBlob(val) });
             return id;
           }
           return val;
@@ -827,14 +845,14 @@
           if (!a) return;
           if (typeof a.image === "string" && a.image.startsWith("data:")) {
             const id = uid();
-            puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(a.image) }));
+            puts.push({ id, mapId: map.id, blob: dataUrlToBlob(a.image) });
             a.image = id;
           }
           if (Array.isArray(a.images) && a.images.length) {
             a.images = a.images.map((val) => {
               if (typeof val === "string" && val.startsWith("data:")) {
                 const id = uid();
-                puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(val) }));
+                puts.push({ id, mapId: map.id, blob: dataUrlToBlob(val) });
                 return id;
               }
               return val;
@@ -857,7 +875,7 @@
           if (!n || !n.html || n.html.indexOf("<img") === -1) return;
           n.html = n.html.replace(/<img\b[^>]*\bsrc="(data:[^"]*)"[^>]*>/g, (tag, dataUrl) => {
             const id = uid();
-            puts.push(PhotoDB.put({ id, mapId: map.id, blob: dataUrlToBlob(dataUrl) }));
+            puts.push({ id, mapId: map.id, blob: dataUrlToBlob(dataUrl) });
             return tag
               .replace(`src="${dataUrl}"`, "")
               .replace("<img", `<img data-photo-id="${id}"`);
@@ -880,7 +898,7 @@
       }
       (node.children || []).forEach(walk);
     })(map.root);
-    if (puts.length) await Promise.all(puts);
+    if (puts.length) await PhotoDB.putMany(puts);
     map._photosMigrated = true;
   }
 
@@ -1320,6 +1338,23 @@
     // newer version" banner key off, so editing only ever pauses for a
     // real, known reason, never for a routine periodic recheck.
     conflictDetected: false,
+
+    // Human-readable progress for the sync pill/modal. The old UI could sit
+    // on a generic "Syncing…" for a long time, which made a large first sync
+    // look frozen even while it was downloading photo-heavy maps. These are
+    // deliberately UI-only; they never participate in conflict decisions.
+    syncPhase: "",
+    syncProgressDone: 0,
+    syncProgressTotal: 0,
+    syncStartedAt: 0,
+    setSyncProgress(phase, done, total) {
+      this.syncPhase = phase || "";
+      this.syncProgressDone = Number(done || 0);
+      this.syncProgressTotal = Number(total || 0);
+      if (phase && !this.syncStartedAt) this.syncStartedAt = Date.now();
+      if (!phase) this.syncStartedAt = 0;
+      try { updateDriveUI(); } catch (e) {}
+    },
     // True if Drive holds a newer copy of any map this device already has.
     remoteBehindLocal(remoteFiles) {
       return remoteFiles.some((f) => {
@@ -1397,11 +1432,13 @@
         this.accessToken = cached.token;
         this.tokenExpiresAt = cached.expiresAt;
         this.status = "connecting";
+        this.setSyncProgress("Checking Drive…", 0, 0);
         updateDriveUI("Syncing…");
         try {
           await this.syncFromDrive();
           this.status = "ok";
           await this.pushLocalNewer({ force: true, includeNew: true });
+          this.setSyncProgress("", 0, 0);
           renderSidebar();
           // Repaint the already-open map's canvas with whatever this sync
           // just pulled in — without this, the currently-open map (and any
@@ -1588,10 +1625,25 @@
     // between getToken() returning it and the request actually landing.
     async api(url, opts, _retried) {
       const token = await this.getToken();
-      const res = await fetch(url, {
-        ...opts,
-        headers: { ...(opts && opts.headers), Authorization: `Bearer ${token}` }
-      });
+      const input = opts || {};
+      const timeoutMs = Number(input.timeoutMs || 45000);
+      const fetchOpts = { ...input };
+      delete fetchOpts.timeoutMs;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      let res;
+      try {
+        res = await fetch(url, {
+          ...fetchOpts,
+          signal: fetchOpts.signal || controller.signal,
+          headers: { ...(fetchOpts && fetchOpts.headers), Authorization: `Bearer ${token}` }
+        });
+      } catch (e) {
+        if (e && e.name === "AbortError") throw new Error("Google Drive request timed out");
+        throw e;
+      } finally {
+        clearTimeout(timer);
+      }
       if (res.status === 401 && !_retried) {
         this.accessToken = null;
         return this.api(url, opts, true);
@@ -1607,11 +1659,13 @@
       await this.requestToken(!!silent);
       if (this.status === "out") this.status = "connecting";
       try { await DB.setHandle(DRIVE_SIGNED_IN_KEY, true); } catch (e) {}
+      this.setSyncProgress("Checking Drive…", 0, 0);
       updateDriveUI("Syncing…");
       try {
         await this.syncFromDrive();
         this.status = "ok";
         await this.pushLocalNewer({ force: true, includeNew: true });
+        this.setSyncProgress("", 0, 0);
       } catch (e) {
         console.error("Drive sync failed", e);
         if (!silent) alert("Signed in, but syncing with Drive failed: " + (e.message || e) + "\n\nYour maps are still safe locally — try signing in again, or check the browser console for details.");
@@ -1642,6 +1696,7 @@
       this.conflictDetected = false;
       this.fileIndex = {};
       this.lastSyncedAt = 0;
+      this.setSyncProgress("", 0, 0);
       DB.setHandle(DRIVE_SIGNED_IN_KEY, false).catch(() => {});
       clearCachedDriveToken();
       updateDriveUI();
@@ -1696,7 +1751,8 @@
       const putRes = await this.api(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(map)
+        body: JSON.stringify(map),
+        timeoutMs: 180000
       });
       if (!putRes.ok) throw new Error("Couldn't upload a map to Drive (" + putRes.status + ")");
       const data = await putRes.json();
@@ -1711,7 +1767,8 @@
       const putRes = await this.api(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(map)
+        body: JSON.stringify(map),
+        timeoutMs: 180000
       });
       if (!putRes.ok) throw new Error("Couldn't update a map on Drive (" + putRes.status + ")");
     },
@@ -1800,6 +1857,7 @@
         if (!verified) throw new Error("Drive did not confirm the uploaded revision yet");
         this.fileIndex[map.id] = { fileId, updatedAt: uploadedStamp };
         setSyncBase(map.id, uploadedStamp);
+        await setSyncSnapshot(map.id, map);
         this.lastSyncedAt = Date.now();
         this.consecutivePollFailures = 0;
         if (this.status === "broken") this.status = "ok";
@@ -1896,9 +1954,12 @@
       this.lastLocalPushTryAt = Date.now();
       this.pushingLocal = true;
       try {
-        for (const m of stale) {
+        for (let i = 0; i < stale.length; i++) {
+          const m = stale[i];
           if (busy()) break; // an edit started mid-pass — its own save takes over
+          this.setSyncProgress(`Uploading map ${i + 1}/${stale.length}…`, i, stale.length);
           await this.save(m);
+          this.syncProgressDone = i + 1;
         }
       } finally {
         this.pushingLocal = false;
@@ -1926,8 +1987,23 @@
     async syncFromDrive() {
       let changed = false;
       let downloadFailed = false;
-      const remoteFiles = await this.listRemote();
+      this.setSyncProgress("Listing Drive maps…", 0, 0);
+      const remoteFilesRaw = await this.listRemote();
       const listedAt = Date.now();
+
+      // Prefer the last-opened map first. It doesn't change conflict rules,
+      // but on a phone/PC hand-off it gets its newest bytes into the local
+      // DB before less relevant maps.
+      let lastOpenId = null;
+      try { lastOpenId = localStorage.getItem(LAST_OPENED_MAP_KEY); } catch (e) {}
+      const remoteFiles = remoteFilesRaw.slice().sort((a, b) => {
+        const aid = a.appProperties && a.appProperties.branchlineId;
+        const bid = b.appProperties && b.appProperties.branchlineId;
+        if (aid === lastOpenId && bid !== lastOpenId) return -1;
+        if (bid === lastOpenId && aid !== lastOpenId) return 1;
+        return 0;
+      });
+
       // The instant the listing shows another device saved something
       // newer, this device is on an old version: lock editing right now,
       // not after the (possibly slow, photo-heavy) download below lands.
@@ -1936,8 +2012,64 @@
         this.conflictDetected = true;
         try { updateStaleSyncBanner(); refreshEditLockUI(); } catch (e) {}
       }
+
+      // Decide which files will actually need their JSON body. The old first
+      // sync downloaded each one sequentially; because Drive copies contain
+      // inline photo bytes, a few large maps multiplied network latency badly.
+      // We prefetch up to three bodies in parallel, while keeping all merge /
+      // IndexedDB mutations below sequential so conflict behavior stays stable.
+      const targets = [];
+      for (const f of remoteFiles) {
+        const id = f.appProperties && f.appProperties.branchlineId;
+        if (!id) continue;
+        const remoteUpdatedAt = Number((f.appProperties && f.appProperties.updatedAt) || 0);
+        const existing = state.maps.find(m => m.id === id);
+        if (!existing || (existing.updatedAt || 0) < remoteUpdatedAt) {
+          targets.push(f);
+          continue;
+        }
+        if ((existing.updatedAt || 0) > remoteUpdatedAt) {
+          const base = getSyncBase(id);
+          if (base !== undefined && (existing.updatedAt || 0) > base && remoteUpdatedAt > base) targets.push(f);
+        }
+      }
+
+      const deferredByFile = new Map();
+      targets.forEach((f) => {
+        let resolve;
+        const promise = new Promise((r) => { resolve = r; });
+        deferredByFile.set(f.id, { promise, resolve });
+      });
+      let targetCursor = 0;
+      const workerCount = Math.min(3, targets.length);
+      const workers = Array.from({ length: workerCount }, async () => {
+        while (true) {
+          const idx = targetCursor++;
+          if (idx >= targets.length) return;
+          const f = targets[idx];
+          try {
+            const data = await this.downloadFile(f.id);
+            deferredByFile.get(f.id).resolve({ data, error: null });
+          } catch (error) {
+            deferredByFile.get(f.id).resolve({ data: null, error });
+          }
+        }
+      });
+      const prefetchedDownload = async (fileId) => {
+        const d = deferredByFile.get(fileId);
+        if (!d) return this.downloadFile(fileId);
+        const out = await d.promise;
+        if (out.error) throw out.error;
+        return out.data;
+      };
+
       const previouslyKnownIds = new Set(Object.keys(this.fileIndex));
       const seenRemoteIds = new Set();
+      let processedDownloads = 0;
+      const showDownloadProgress = () => {
+        if (targets.length) this.setSyncProgress(`Downloading changed maps ${Math.min(processedDownloads + 1, targets.length)}/${targets.length}…`, processedDownloads, targets.length);
+      };
+
       for (const f of remoteFiles) {
         const id = f.appProperties && f.appProperties.branchlineId;
         if (!id) continue;
@@ -1946,29 +2078,44 @@
         this.fileIndex[id] = { fileId: f.id, updatedAt: remoteUpdatedAt };
         const existing = state.maps.find(m => m.id === id);
         if (existing) {
-          // First time this device sees the map since sync tracking
-          // began: assume it's clean, so nothing gets a false alarm.
-          if (getSyncBase(id) === undefined) {
-            setSyncBase(id, Math.min(existing.updatedAt || 0, remoteUpdatedAt));
+          const localUpdatedAt = existing.updatedAt || 0;
+          const baseBefore = getSyncBase(id);
+
+          // Critical first-sync/poll optimization: an unchanged map does NOT
+          // need its entire merge-base tree written back to IndexedDB every
+          // 10 seconds. Only refresh that snapshot if the agreed revision has
+          // actually moved. The old unconditional write was costly on large
+          // maps and made a metadata-only sync feel much slower than it was.
+          if (localUpdatedAt === remoteUpdatedAt) {
+            if (baseBefore !== remoteUpdatedAt) {
+              setSyncBase(id, remoteUpdatedAt);
+              await setSyncSnapshot(id, existing);
+            }
+            continue;
+          }
+
+          // First time this device sees a differing map since sync tracking
+          // began: establish a conservative base before conflict handling.
+          if (baseBefore === undefined) {
+            setSyncBase(id, Math.min(localUpdatedAt, remoteUpdatedAt));
             await setSyncSnapshot(id, existing);
           }
-          if ((existing.updatedAt || 0) === remoteUpdatedAt) { setSyncBase(id, remoteUpdatedAt); await setSyncSnapshot(id, existing); continue; }
-          if ((existing.updatedAt || 0) > remoteUpdatedAt) {
-            // Ours is newer and will be uploaded. But if Drive ALSO
-            // changed since we last synced, uploading would erase the
-            // other device's edit — try to merge the two sets of
-            // changes first, and only fall back to keeping Drive's
-            // version as a separate copy if the merge can't be sure.
+
+          if (localUpdatedAt > remoteUpdatedAt) {
+            // Ours is newer and will be uploaded. But if Drive ALSO changed
+            // since our last agreed base, fetch it and three-way merge first.
             const base = getSyncBase(id);
-            if (base !== undefined && (existing.updatedAt || 0) > base && remoteUpdatedAt > base) {
+            if (base !== undefined && localUpdatedAt > base && remoteUpdatedAt > base) {
               try {
-                const other = await this.downloadFile(f.id);
+                showDownloadProgress();
+                const other = await prefetchedDownload(f.id);
+                processedDownloads++;
                 if (other && other.root) {
                   let merged = null;
                   try {
                     const snapshot = await getSyncSnapshot(id);
                     if (snapshot) merged = mergeMapContent(snapshot, existing, other);
-                  } catch (e) { merged = null; } // MERGE_CONFLICT or bad snapshot — fall back below
+                  } catch (e) { merged = null; }
                   if (merged) {
                     existing.root = merged.root;
                     existing.links = merged.links;
@@ -1980,22 +2127,27 @@
                     await saveConflictCopy(other, "other device");
                   }
                 }
-                setSyncBase(id, remoteUpdatedAt); // acknowledged — don't copy again next poll
+                setSyncBase(id, remoteUpdatedAt);
                 await setSyncSnapshot(id, existing);
                 changed = true;
-              } catch (e) { console.error("Couldn't fetch the other device's copy", e); downloadFailed = true; }
+              } catch (e) {
+                console.error("Couldn't fetch the other device's copy", e);
+                downloadFailed = true;
+              }
             }
             continue;
           }
         }
+
         try {
-          const data = await this.downloadFile(f.id);
+          showDownloadProgress();
+          const data = await prefetchedDownload(f.id);
+          processedDownloads++;
           if (!data || !data.id || !data.root) continue;
-          // About to replace this device's copy with Drive's. If this
-          // device has edits Drive never received (an upload that failed
-          // or was cut off, then a refresh), try to merge them into
-          // Drive's copy first — only keep them as a separate "unsynced
-          // copy" map if the merge can't be sure they don't collide.
+
+          // About to replace this device's copy with Drive's. If this device
+          // has edits Drive never received, merge them if possible, otherwise
+          // preserve a separate unsynced copy.
           let mergedContent = null;
           if (existing) {
             const base = getSyncBase(id);
@@ -2012,13 +2164,15 @@
               }
             }
           }
+
           ensureTheme(data);
           ensureLayout(data);
           ensureFavorite(data);
           ensureTrash(data);
           ensureSidesRepaired(data);
-          // Drive files always carry inline photo bytes (see save()
-          // above) — pull them into this browser's own photo store.
+          // Drive files carry inline photo bytes. Bulk migration now stores
+          // all of a map's photos in one IndexedDB transaction instead of one
+          // transaction per photo.
           await ensurePhotosMigrated(data);
           if (existing) {
             Object.assign(existing, data);
@@ -2036,13 +2190,19 @@
           setSyncBase(id, Math.max(remoteUpdatedAt, data.updatedAt || 0));
           await setSyncSnapshot(id, existing || data);
           changed = true;
-        } catch (e) { console.error("Drive download failed for one map", e); downloadFailed = true; }
+        } catch (e) {
+          console.error("Drive download failed for one map", e);
+          downloadFailed = true;
+        }
       }
+
+      if (workers.length) await Promise.all(workers);
+
       for (const id of previouslyKnownIds) {
         if (seenRemoteIds.has(id)) continue;
         delete this.fileIndex[id];
         const existing = state.maps.find(m => m.id === id);
-        if (!existing) continue; // already gone locally too, nothing to do
+        if (!existing) continue;
         await DB.delete(id);
         await FolderDB.remove(existing);
         changed = true;
@@ -2059,24 +2219,19 @@
           }
         }
       }
+
       sortMaps(state.maps);
       this.lastSyncedAt = Date.now();
-      // A successful DOWNLOAD check proves the connection works — clear
-      // "broken" if that's all that was wrong. ("reauth" is untouched
-      // here; only a real token success clears that — see the token
-      // callback above.)
       if (this.status === "broken") this.status = "ok";
       this.consecutivePollFailures = 0;
-      // Only "latest" if every newer map actually came down. A failed
-      // download means Drive is known to hold something this device
-      // doesn't yet have, so conflictDetected stays true and editing
-      // stays locked until a later poll's download succeeds.
       if (!downloadFailed) {
         this.freshUntil = listedAt + this.FRESH_WINDOW_MS;
         this.conflictDetected = false;
       } else {
         this.conflictDetected = true;
       }
+      if (targets.length) this.setSyncProgress("Drive download check complete", targets.length, targets.length);
+      else this.setSyncProgress("Drive is already up to date", 0, 0);
       return changed;
     }
   };
@@ -2411,7 +2566,7 @@
       label = "☁ Cloud: checking latest…";
     } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
       stateName = "syncing";
-      label = "☁ Cloud: syncing…";
+      label = DriveDB.syncPhase ? ("☁ " + DriveDB.syncPhase) : "☁ Cloud: syncing…";
     } else {
       const m = state.current;
       const known = m && DriveDB.fileIndex[m.id];
@@ -2766,6 +2921,7 @@
       }
     }
     DriveDB.busy = false;
+    DriveDB.setSyncProgress("", 0, 0);
     // Refresh the "Synced Xm ago" label every tick regardless of whether
     // this particular poll changed anything — otherwise it'd only ever
     // update at the moment something actually synced, and would sit
@@ -2863,6 +3019,7 @@
       console.error("Load latest failed", e);
       showToast("Couldn't load from Drive: " + ((e && e.message) || e));
     } finally {
+      DriveDB.setSyncProgress("", 0, 0);
       loadLatestRunning = false;
       loadLatestBtn.disabled = false;
       loadLatestBtn.textContent = originalLabel;
@@ -3029,8 +3186,9 @@
       detail = "Editing is briefly paused so an old phone/PC copy cannot overwrite newer work.";
     } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
       mode = "syncing";
-      heading = "Syncing…";
-      detail = "Saving locally, comparing with Drive, and verifying the cloud revision.";
+      heading = DriveDB.syncPhase || "Syncing…";
+      const elapsed = DriveDB.syncStartedAt ? Math.max(1, Math.round((Date.now() - DriveDB.syncStartedAt) / 1000)) : 0;
+      detail = "Comparing with Google Drive" + (elapsed ? (" · " + elapsed + "s elapsed") : "") + ". Large photo maps take longer because their Drive copy includes the photo bytes.";
     } else if (pendingCount > 0) {
       mode = "syncing";
       heading = "Waiting to upload " + pendingCount + (pendingCount === 1 ? " map" : " maps");
@@ -18270,6 +18428,70 @@
     positionContextMenu(x, y);
   }
 
+  // Mobile browsers do not reliably synthesize `contextmenu` for an element
+  // that is also draggable (our subtask pills are).  Give touch/pen input an
+  // explicit long-press detector instead.  A small movement tolerance keeps
+  // normal vertical scrolling from opening the menu, and the consumed flag
+  // suppresses the synthetic click many browsers emit after the hold —
+  // otherwise a successful long-press would also toggle the subtask done.
+  function installSubtaskLongPress(row, openMenu) {
+    let timer = null;
+    let pointerId = null;
+    let startX = 0, startY = 0;
+    let restoreDraggable = null;
+
+    const cancelPending = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      pointerId = null;
+      // A draggable element can enter the browser's native drag gesture on
+      // Android before it ever emits contextmenu.  We temporarily turn that
+      // behavior off only for the active touch, then put it back here.
+      if (restoreDraggable !== null) {
+        row.draggable = restoreDraggable;
+        restoreDraggable = null;
+      }
+    };
+
+    row.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      if (e.isPrimary === false) return;
+      if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
+      cancelPending();
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      restoreDraggable = row.draggable;
+      row.draggable = false;
+      timer = setTimeout(() => {
+        timer = null;
+        // Keep pointerId until pointerup/pointercancel so draggable is restored
+        // after the finger actually leaves the screen.
+        row.__subtaskLongPressConsumed = true;
+        clearTimeout(row.__subtaskLongPressResetTimer);
+        row.__subtaskLongPressResetTimer = setTimeout(() => {
+          row.__subtaskLongPressConsumed = false;
+        }, 900);
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+        closeContextMenu();
+        openMenu(startX, startY);
+      }, 520);
+    }, { passive: true });
+
+    row.addEventListener("pointermove", (e) => {
+      if (!timer || e.pointerId !== pointerId) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if ((dx * dx + dy * dy) > 144) cancelPending(); // > 12 px = scrolling
+    }, { passive: true });
+    row.addEventListener("pointerup", (e) => {
+      if (e.pointerId === pointerId) cancelPending();
+    }, { passive: true });
+    row.addEventListener("pointercancel", (e) => {
+      if (e.pointerId === pointerId) cancelPending();
+    }, { passive: true });
+    row.addEventListener("dragstart", cancelPending);
+  }
+
   // Builds the expanded subtask checklist panel for one task — a nested
   // <li> (so it sits inline in the same <ul> right under its task row)
   // holding a checkbox list plus a small "add subtask" input.
@@ -18341,6 +18563,13 @@
       // instead (see the dblclick handler right below).
       let subtaskClickTimer = null;
       row.addEventListener("click", (e) => {
+        if (row.__subtaskLongPressConsumed) {
+          e.preventDefault();
+          e.stopPropagation();
+          row.__subtaskLongPressConsumed = false;
+          if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; }
+          return;
+        }
         if (stext.contentEditable === "true") return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
@@ -18385,6 +18614,7 @@
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (row.__subtaskLongPressConsumed) return;
         openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => renderTasksModal(), openSubtaskNotes);
       });
 
@@ -18396,6 +18626,9 @@
         if (!target) return;
         openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null, false, s.id);
       };
+      installSubtaskLongPress(row, (x, y) => {
+        openSubtaskContextMenu(x, y, t, s, () => renderTasksModal(), openSubtaskNotes);
+      });
       const subtaskNotesForS = getTaskNotes(s);
       // A subtask literally named "DRC" behaves exactly like a task named
       // "DRC" (see the redirect in openNoteModal above): it shares the
@@ -18784,7 +19017,7 @@
     tasksProgressBar.style.width = Math.round(prog.pct * 100) + "%";
     tasksProgressBar.classList.toggle("done", prog.pct >= 1);
     tasksProgressLabel.textContent = prog.total
-      ? `${prog.done} of ${prog.total} done` + (prog.failed ? ` \u00b7 ${prog.failed} failed` : "")
+      ? `${prog.done} of ${prog.total} done`
       : "No tasks yet";
     tasksSortStarsBtn.disabled = tasks.length < 2;
     tasksRandomBtn.disabled = unfinishedSubtasksOfHost(host).length === 0;
@@ -19376,6 +19609,13 @@
       // instead (see the dblclick handler right below).
       let subtaskClickTimer = null;
       row.addEventListener("click", (e) => {
+        if (row.__subtaskLongPressConsumed) {
+          e.preventDefault();
+          e.stopPropagation();
+          row.__subtaskLongPressConsumed = false;
+          if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; }
+          return;
+        }
         if (stext.contentEditable === "true") return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
@@ -19421,7 +19661,11 @@
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        if (row.__subtaskLongPressConsumed) return;
         openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => { renderCalDayModal(); renderCalendar(); });
+      });
+      installSubtaskLongPress(row, (x, y) => {
+        openSubtaskContextMenu(x, y, t, s, () => { renderCalDayModal(); renderCalendar(); });
       });
 
       // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"

@@ -2903,6 +2903,23 @@ kbd{
   position: relative;
   cursor: pointer; /* whole pill toggles done on a single click now */
 }
+/* Long-press on a subtask is an app gesture on touch devices.  Disable the
+   browser's own callout/text-selection gesture there, but keep vertical pan
+   available so the task modal still scrolls naturally. */
+@media (any-pointer: coarse){
+  .subtask-row{
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: pan-y;
+  }
+  .subtask-text[contenteditable="true"]{
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: auto;
+  }
+}
+
 .subtask-row.done{
   background: transparent; /* shows the panel's fill = the task row's own (colored) fill */
   border-style: dashed;
