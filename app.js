@@ -15602,13 +15602,13 @@
       noteNavAdd.title = "Start a new note on this node";
     }
     noteTextarea.innerHTML = noteHtmlFromRaw(current.html);
-    // Fill in (and, for older/imported notes, migrate) every inline
-    // photo's src — see hydrateNotePhotoImages. Also upgrade plain URLs
-    // from older notes into clickable anchors. Either migration is saved
-    // by the normal autosave path, so reopening does not repeat the work.
+    // Retire any old Mood-To-Day widget stored in this note, preserving its
+    // selected face as ordinary emoji text. Then run the existing photo/URL
+    // migrations. Any migration is saved through the normal autosave path.
+    const migratedMood = noteMigrateLegacyMoodBlocks();
     const migratedPhotos = hydrateNotePhotoImages();
     const linkedUrls = noteLinkifyUrls(noteTextarea, false);
-    if (migratedPhotos || linkedUrls) scheduleNoteAutosave();
+    if (migratedMood || migratedPhotos || linkedUrls) scheduleNoteAutosave();
     setNoteAutoColorEnabled(!isDRCNote(current));
     refreshDRCCards();
     noteSyncAllCheckedLines();
@@ -15786,6 +15786,7 @@
     noteActiveIndex = 0;
     noteReturn = null;
     $("#note-color-popover").classList.add("hidden");
+    $("#note-emoji-popover").classList.add("hidden");
     zoomModalClose(noteModal);
   }
 
@@ -16788,64 +16789,92 @@
     block.append(title, row);
     return block;
   }
-  // Goes on the caret's blank line if it's on one; otherwise right after
-  // the current line; with no caret in the note, at the end. A blank line
-  // is always left after it (the block itself can't hold a caret) and the
-  // caret is put there so typing can carry on straight away.
-  function noteInsertMoodBlock() {
-    notePushUndo();
-    const sel = window.getSelection();
-    let line = (sel.rangeCount && noteTextarea.contains(sel.anchorNode)) ? noteCurrentLine() : null;
-    if (line && line.nodeType !== 1) line = null; // bare first-line text node: add at the end instead
-    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img") && !el.hasAttribute("data-mood-block");
-    const block = noteBuildMoodBlock();
-    if (line && line.parentNode === noteTextarea) {
-      if (!line.hasAttribute("data-card") && isBlank(line)) line.replaceWith(block);
-      else line.after(block);
-    } else {
-      noteTextarea.appendChild(block);
-    }
-    let tail = block.nextElementSibling;
-    if (!tail || !isBlank(tail)) {
-      tail = document.createElement("div");
-      tail.appendChild(document.createElement("br"));
-      block.after(tail);
-    }
-    noteTextarea.focus();
-    const range = document.createRange();
-    range.selectNodeContents(tail);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    refreshDRCCards();
-    scheduleNoteAutosave();
-    scrollCaretIntoView(tail);
-  }
-  $("#note-tool-mood").addEventListener("mousedown", (e) => {
-    e.preventDefault(); // keep focus (and the caret position) off this button
-    noteInsertMoodBlock();
-  });
-  noteTextarea.addEventListener("click", (e) => {
-    const face = e.target && e.target.closest ? e.target.closest(".note-mood-face") : null;
-    if (!face || !noteTextarea.contains(face)) return;
-    if (noteTextarea.getAttribute("contenteditable") === "false") return; // read-only (not connected to Drive): look, don't change
-    const block = face.closest(".note-mood");
-    if (!block) return;
-    notePushUndo();
-    const wasSelected = face.classList.contains("selected");
-    block.querySelectorAll(".note-mood-face").forEach((f) => {
-      f.classList.remove("selected");
-      f.setAttribute("aria-pressed", "false");
+  // The old note-editor "Mood To Day" widget has been retired. Existing
+  // saved mood blocks are migrated to the single face that was selected,
+  // preserving the user's information without leaving the old interactive
+  // widget behind. An unselected old block carries no choice, so it is removed.
+  function noteMigrateLegacyMoodBlocks() {
+    let changed = false;
+    noteTextarea.querySelectorAll(".note-mood").forEach((block) => {
+      let emoji = "";
+      const selected = block.querySelector(".note-mood-face.selected");
+      if (selected) {
+        emoji = selected.textContent || "";
+      } else {
+        const moodValue = Number(block.getAttribute("data-mood"));
+        if (moodValue >= 1 && moodValue <= NOTE_MOOD_FACES.length) {
+          emoji = NOTE_MOOD_FACES[moodValue - 1][0];
+        }
+      }
+      if (emoji) {
+        const line = document.createElement("div");
+        line.textContent = emoji;
+        block.replaceWith(line);
+      } else {
+        block.remove();
+      }
+      changed = true;
     });
-    if (wasSelected) {
-      block.removeAttribute("data-mood");
-    } else {
-      face.classList.add("selected");
-      face.setAttribute("aria-pressed", "true");
-      block.setAttribute("data-mood", face.dataset.moodValue);
+    return changed;
+  }
+
+  // ---- Add emoji -------------------------------------------------------
+  // The note toolbar's 😊 button now opens a simple five-face picker.
+  // Choosing one inserts that emoji as ordinary editable note text at the
+  // current caret/selection; there is no mood heading, block, selection
+  // state, or special saved markup.
+  const noteEmojiTriggerBtn = $("#note-tool-emoji");
+  const noteEmojiPopover = $("#note-emoji-popover");
+
+  function positionNoteEmojiPopover() {
+    const margin = 8;
+    const btnRect = noteEmojiTriggerBtn.getBoundingClientRect();
+    const popRect = noteEmojiPopover.getBoundingClientRect();
+    let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
+    let top = btnRect.bottom + 6;
+    if (top + popRect.height > window.innerHeight - margin) {
+      top = btnRect.top - popRect.height - 6;
     }
-    scheduleNoteAutosave();
+    noteEmojiPopover.style.left = `${left}px`;
+    noteEmojiPopover.style.top = `${top}px`;
+  }
+  function openNoteEmojiPopover() {
+    noteEmojiPopover.classList.remove("hidden");
+    positionNoteEmojiPopover();
+  }
+  function closeNoteEmojiPopover() {
+    noteEmojiPopover.classList.add("hidden");
+  }
+
+  noteEmojiTriggerBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); // preserve the note caret/selection
+    e.stopPropagation();
+    // Only one floating note-toolbar picker should be open at a time.
+    const colorPopover = $("#note-color-popover");
+    if (colorPopover && !colorPopover.classList.contains("hidden")) colorPopover.classList.add("hidden");
+    if (noteEmojiPopover.classList.contains("hidden")) openNoteEmojiPopover();
+    else closeNoteEmojiPopover();
   });
+  noteEmojiPopover.addEventListener("pointerdown", (e) => e.stopPropagation());
+  noteEmojiPopover.querySelectorAll(".note-emoji-swatch").forEach((btn) => {
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      noteInsertSymbol(btn.dataset.emoji || btn.textContent);
+      closeNoteEmojiPopover();
+    });
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!noteEmojiPopover.classList.contains("hidden") &&
+        !noteEmojiPopover.contains(e.target) && e.target !== noteEmojiTriggerBtn) {
+      closeNoteEmojiPopover();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!noteEmojiPopover.classList.contains("hidden")) positionNoteEmojiPopover();
+  });
+
   $("#note-tool-check").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteToggleLinePrefix(/^[☐☑]\s+/, () => "☐ ");
@@ -16919,6 +16948,7 @@
   noteColorTriggerBtn.addEventListener("mousedown", (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!noteEmojiPopover.classList.contains("hidden")) closeNoteEmojiPopover();
     if (noteColorPopover.classList.contains("hidden")) {
       openNoteColorPopover();
     } else {
