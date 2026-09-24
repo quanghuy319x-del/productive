@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=115">
+<link rel="stylesheet" href="style.css?v=198">
 </head>
 <body>
 <div id="app">
@@ -88,6 +88,7 @@
         <marquee id="quote-banner-marquee" behavior="scroll" direction="left" scrollamount="4">Loading…</marquee>
       </div>
       <span id="save-status" class="save-status">Saved</span>
+      <button id="cloud-sync-pill" class="cloud-sync-pill" type="button" title="Google Drive sync status">☁ Cloud: checking…</button>
       <button id="btn-load-latest" class="btn-ghost" title="Pull the newest version of your maps from Google Drive right now">⟳ Load latest</button>
       <button id="btn-upload-now" class="btn-ghost" title="Upload the map you have open to Google Drive right now — for when you want to be sure it went up">⬆ Upload</button>
       <div class="undo-controls">
@@ -466,6 +467,30 @@
   </div>
 </div>
 
+<div id="sync-status-modal" class="modal hidden">
+  <div class="modal-card sync-status-modal-card">
+    <div class="sync-modal-title-row">
+      <h2>Google Drive sync</h2>
+      <button type="button" id="sync-modal-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div id="sync-modal-hero" class="sync-modal-hero" data-state="syncing">
+      <strong id="sync-modal-state">Checking…</strong>
+      <span id="sync-modal-substate">Making sure this device has the newest copy.</span>
+    </div>
+    <div class="sync-modal-grid">
+      <div class="sync-modal-stat"><span>Current map</span><b id="sync-modal-map">—</b></div>
+      <div class="sync-modal-stat"><span>Pending uploads</span><b id="sync-modal-pending">—</b></div>
+      <div class="sync-modal-stat"><span>Last Drive check</span><b id="sync-modal-last">—</b></div>
+      <div class="sync-modal-stat"><span>Drive revision</span><b id="sync-modal-revision">—</b></div>
+    </div>
+    <p id="sync-modal-tip" class="sync-modal-tip">On your phone, wait for <b>Verified — safe to switch devices</b> before closing the tab or moving to your PC.</p>
+    <div class="sync-modal-actions">
+      <button type="button" id="sync-modal-now" class="btn-primary">⟳ Sync &amp; verify now</button>
+      <button type="button" id="sync-modal-cancel" class="btn-ghost">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="ctx-menu" class="ctx-menu hidden"></div>
 
 <div id="theme-modal" class="modal hidden">
@@ -768,6 +793,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=195"></script>
+<script src="app.js?v=198"></script>
 </body>
 </html>

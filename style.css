@@ -518,6 +518,26 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 .save-status.saving{ color: #e8c15a; }
 .save-status.saved{ color: #6fd08c; }
 
+.cloud-sync-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  min-height:28px;
+  padding:5px 9px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--panel-2);
+  color:var(--text-dim);
+  font-size:11.5px;
+  font-weight:600;
+  white-space:nowrap;
+}
+.cloud-sync-pill[data-state="verified"]{ color:#6fd08c; border-color:rgba(111,208,140,.45); }
+.cloud-sync-pill[data-state="syncing"]{ color:#e8c15a; border-color:rgba(232,193,90,.45); }
+.cloud-sync-pill[data-state="warning"]{ color:#ffb454; border-color:rgba(255,180,84,.5); }
+.cloud-sync-pill[data-state="error"]{ color:var(--danger); border-color:rgba(255,107,107,.5); }
+.cloud-sync-pill:hover{ color:var(--text); border-color:#3a4054; }
+
 /* Small "vNN" cache-busting version badge (see #version-badge in
    index.html and showVersionBadge in app.js) — deliberately quiet/
    out-of-the-way styling since it's a diagnostic, not a toolbar action. */
@@ -5312,4 +5332,79 @@ kbd{
   opacity: 1;
   border-color: #2a9d8f;
   background: rgba(42, 157, 143, 0.16);
+}
+
+/* ---------------- Cloud sync status modal (v198) ---------------- */
+.sync-status-modal-card{
+  width: 520px;
+  max-width: 92vw;
+}
+.sync-modal-title-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:14px;
+}
+.sync-modal-title-row h2{ margin:0; }
+.sync-modal-title-row .note-nav-btn{ margin-left:auto; }
+.sync-modal-hero{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:14px 16px;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--panel-2);
+  margin-bottom:14px;
+}
+.sync-modal-hero strong{ font-size:15px; }
+.sync-modal-hero span{ font-size:12px; color:var(--text-dim); line-height:1.45; }
+.sync-modal-hero[data-state="verified"]{ border-color:rgba(111,208,140,.5); }
+.sync-modal-hero[data-state="verified"] strong{ color:#6fd08c; }
+.sync-modal-hero[data-state="syncing"]{ border-color:rgba(232,193,90,.5); }
+.sync-modal-hero[data-state="syncing"] strong{ color:#e8c15a; }
+.sync-modal-hero[data-state="warning"]{ border-color:rgba(255,180,84,.55); }
+.sync-modal-hero[data-state="warning"] strong{ color:#ffb454; }
+.sync-modal-hero[data-state="error"]{ border-color:rgba(255,107,107,.55); }
+.sync-modal-hero[data-state="error"] strong{ color:var(--danger); }
+.sync-modal-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.sync-modal-stat{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  background:rgba(255,255,255,.015);
+}
+.sync-modal-stat span{ font-size:10.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em; }
+.sync-modal-stat b{ font-size:12.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sync-modal-tip{
+  margin:14px 0 0;
+  padding:10px 12px;
+  border-radius:8px;
+  background:rgba(124,158,255,.08);
+  color:var(--text-dim);
+  font-size:12px;
+  line-height:1.5;
+}
+.sync-modal-tip b{ color:var(--text); }
+.sync-modal-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  margin-top:16px;
+}
+.sync-modal-actions .btn-primary{ width:auto; margin-top:0; }
+@media (max-width: 520px){
+  .sync-status-modal-card{ width:94vw; padding:18px; }
+  .sync-modal-grid{ grid-template-columns:1fr; }
+  .sync-modal-actions{ flex-direction:column; }
+  .sync-modal-actions .btn-primary,
+  .sync-modal-actions .btn-ghost{ width:100%; }
 }

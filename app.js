@@ -1231,7 +1231,7 @@
   // How often the background poll checks Drive for changes made on other
   // devices. DriveDB.FRESH_WINDOW_MS is derived from this, so change it
   // here only.
-  const DRIVE_POLL_INTERVAL_MS = 60000;
+  const DRIVE_POLL_INTERVAL_MS = 10000;
 
   const DriveDB = {
     tokenClient: null,
@@ -1716,9 +1716,65 @@
       if (!putRes.ok) throw new Error("Couldn't update a map on Drive (" + putRes.status + ")");
     },
 
-    async save(map) {
-      if (!this.signedIn || !map) return;
+    // A 200 from the upload request means Google accepted the bytes, but the
+    // old code immediately called the map "Synced" without checking what Drive
+    // now reports for that file. On mobile, a tab can be suspended at awkward
+    // moments and that made the UI look safer than it really was. A save is now
+    // considered complete only after a direct Drive metadata read confirms the
+    // exact updatedAt stamp we just uploaded.
+    async verifyUploadedStamp(fileId, expectedStamp) {
+      for (let i = 0; i < 4; i++) {
+        const fields = encodeURIComponent("id,appProperties,modifiedTime");
+        const res = await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${fields}`);
+        if (res.ok) {
+          const data = await res.json();
+          const actual = Number((data.appProperties && data.appProperties.updatedAt) || 0);
+          if (actual >= expectedStamp) return true;
+        }
+        await new Promise(r => setTimeout(r, 450 + i * 350));
+      }
+      return false;
+    },
+
+    // Tiny metadata read used immediately before EVERY normal upload. The
+    // previous sync model could still lose cross-device edits in one narrow
+    // race: PC uploads, then before the phone's next 10s poll the phone edits
+    // its stale copy and autosave uploads it straight over the PC version.
+    // Verifying the remote stamp here turns autosave into a compare-before-
+    // write operation: if Drive changed since this device last confirmed it,
+    // we refuse to upload the stale tree and let syncFromDrive merge/pull it
+    // first. Manual "Upload" can explicitly bypass this after its own warning.
+    async readRemoteStamp(fileId) {
+      const fields = encodeURIComponent("id,appProperties,modifiedTime");
+      const res = await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=${fields}`);
+      if (!res.ok) throw new Error("Couldn't verify the current Drive revision (" + res.status + ")");
+      const data = await res.json();
+      return {
+        updatedAt: Number((data.appProperties && data.appProperties.updatedAt) || 0),
+        modifiedTime: data.modifiedTime || null
+      };
+    },
+
+    async save(map, opts) {
+      if (!this.signedIn || !map) return false;
+      const skipRemoteGuard = !!(opts && opts.skipRemoteGuard);
       try {
+        const knownBefore = this.fileIndex[map.id];
+        if (knownBefore && !skipRemoteGuard) {
+          const remoteNow = await this.readRemoteStamp(knownBefore.fileId);
+          if (remoteNow.updatedAt > (knownBefore.updatedAt || 0)) {
+            // Another device changed Drive after our last confirmed base.
+            // Never overwrite it from autosave. Mark this device stale and
+            // schedule a full reconcile just after the local save finishes;
+            // syncFromDrive's existing three-way merge/conflict-copy logic
+            // will preserve both sides, then push the merged result.
+            this.conflictDetected = true;
+            this.freshUntil = 0;
+            try { updateDriveUI(); } catch (e) {}
+            setTimeout(() => { try { pollDriveUpdates(true); } catch (e) {} }, 900);
+            return false;
+          }
+        }
         // The Drive copy is what actually crosses devices, so — same as
         // the folder mirror — it needs real photo bytes inline rather
         // than this browser's local-only photo ids.
@@ -1728,18 +1784,27 @@
         // the live one made edits made mid-upload look already synced.
         const uploadedStamp = portable.updatedAt || map.updatedAt;
         const known = this.fileIndex[map.id];
+        let fileId;
         if (known) {
-          await this.updateFile(known.fileId, portable);
-          known.updatedAt = uploadedStamp;
+          fileId = known.fileId;
+          await this.updateFile(fileId, portable);
         } else {
-          const fileId = await this.createFile(portable);
-          this.fileIndex[map.id] = { fileId, updatedAt: uploadedStamp };
+          fileId = await this.createFile(portable);
         }
+
+        // Do not advance fileIndex / sync-base until Drive itself proves it
+        // has this exact revision. If verification fails, the map remains
+        // dirty and the retry loop will push it again instead of silently
+        // treating a local-only edit as synced.
+        const verified = await this.verifyUploadedStamp(fileId, uploadedStamp);
+        if (!verified) throw new Error("Drive did not confirm the uploaded revision yet");
+        this.fileIndex[map.id] = { fileId, updatedAt: uploadedStamp };
         setSyncBase(map.id, uploadedStamp);
         this.lastSyncedAt = Date.now();
         this.consecutivePollFailures = 0;
         if (this.status === "broken") this.status = "ok";
         updateDriveUI();
+        return true;
       } catch (e) {
         // A failed upload used to be a console-only event: the toolbar
         // still said "Saved" (which was true — locally), the sidebar
@@ -1751,6 +1816,7 @@
         const tokenLooksExpired = !this.accessToken || Date.now() >= this.tokenExpiresAt;
         this.status = tokenLooksExpired ? "reauth" : "broken";
         try { updateDriveUI(); } catch (e2) {}
+        return false;
       }
     },
 
@@ -2258,9 +2324,9 @@
   }
 
   function driveSyncStatusText() {
-    if (!DriveDB.lastSyncedAt) return "Synced to Google Drive";
+    if (!DriveDB.lastSyncedAt) return "Google Drive verified";
     const label = relTime(DriveDB.lastSyncedAt);
-    return "Synced " + (label === "now" ? "just now" : label + " ago");
+    return "Drive verified " + (label === "now" ? "just now" : label + " ago");
   }
 
   // The sidebar's "Syncing…" text is easy to miss (small, tucked away,
@@ -2278,12 +2344,12 @@
     // device catches up. Never true just because the routine poll
     // timer hasn't ticked yet.
     const checking = DriveDB.signedIn && DriveDB.dataSynced && isOnline
-      && !driveLockReason() && DriveDB.conflictDetected;
+      && !driveLockReason() && (DriveDB.conflictDetected || foregroundDriveCheckPending);
     banner.classList.toggle("hidden", !(stillSyncing || checking));
     const text = $("#stale-sync-text");
     if (text) {
       text.textContent = checking
-        ? "\u23f3 Checking for a newer version from your other devices \u2014 editing is paused for a moment so an old copy can't overwrite it."
+        ? "\u23f3 Verifying the newest Google Drive version before editing \u2014 this prevents a stale phone/PC copy from overwriting newer work."
         : "\u23f3 Still syncing from Google Drive \u2014 what's on screen may not be the latest version from your other devices yet.";
     }
   }
@@ -2323,6 +2389,49 @@
     if (btn) btn.classList.toggle("hidden", reason === "offline");
   }
 
+  function updateCloudSyncPill() {
+    const pill = document.getElementById("cloud-sync-pill");
+    if (!pill) return;
+    let stateName = "warning";
+    let label = "☁ Cloud: not connected";
+    if (!DriveDB.signedIn) {
+      stateName = "warning";
+      label = "☁ Cloud: off";
+    } else if (!isOnline) {
+      stateName = "error";
+      label = "☁ Cloud: offline";
+    } else if (DriveDB.needsReauth) {
+      stateName = "error";
+      label = "☁ Cloud: reconnect";
+    } else if (DriveDB.driveBroken()) {
+      stateName = "error";
+      label = "☁ Cloud: upload failed";
+    } else if (foregroundDriveCheckPending) {
+      stateName = "syncing";
+      label = "☁ Cloud: checking latest…";
+    } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
+      stateName = "syncing";
+      label = "☁ Cloud: syncing…";
+    } else {
+      const m = state.current;
+      const known = m && DriveDB.fileIndex[m.id];
+      const dirty = !!(m && (!known || (m.updatedAt || 0) > (known.updatedAt || 0)));
+      if (dirty || DriveDB.unsyncedMaps().length) {
+        stateName = "syncing";
+        label = "☁ Cloud: waiting…";
+      } else {
+        stateName = "verified";
+        label = "✓ Cloud: verified";
+      }
+    }
+    pill.dataset.state = stateName;
+    pill.textContent = label;
+    pill.title = stateName === "verified"
+      ? "This map's latest revision was confirmed by Google Drive. Click for sync details."
+      : "Click for Google Drive sync details.";
+    try { updateSyncStatusModal(); } catch (e) {}
+  }
+
   function updateDriveUI(overrideStatus) {
     const status = $("#drive-status");
     const btn = $("#btn-google-signin");
@@ -2356,7 +2465,7 @@
       btn.textContent = "Sign in with Google";
       btn.classList.remove("hidden");
     }
-    if (overrideStatus) { status.textContent = overrideStatus; refreshEditLockUI(); return; }
+    if (overrideStatus) { status.textContent = overrideStatus; updateCloudSyncPill(); refreshEditLockUI(); return; }
     if (!isOnline) {
       // Offline trumps everything else here — even a fully signed-in,
       // fully synced device can't edit right now, so say so plainly
@@ -2367,6 +2476,8 @@
       status.textContent = "Google session expired \u2014 editing paused";
     } else if (DriveDB.driveBroken()) {
       status.textContent = "Changes NOT on Drive \u2014 retrying, editing paused";
+    } else if (foregroundDriveCheckPending) {
+      status.textContent = "Checking Drive before editing…";
     } else if (DriveDB.signedIn && DriveDB.dataSynced && DriveDB.conflictDetected) {
       status.textContent = "Checking for a newer version\u2026 editing paused";
     } else if (DriveDB.signedIn && DriveDB.dataSynced && (DriveDB.pushingLocal || localSaveBusy())) {
@@ -2378,6 +2489,7 @@
     } else {
       status.textContent = "Not synced to Google Drive";
     }
+    updateCloudSyncPill();
     refreshEditLockUI();
   }
 
@@ -2385,10 +2497,10 @@
   // actual connectivity, not just whatever it was when the page loaded.
   window.addEventListener("online", () => {
     isOnline = true;
-    updateDriveUI();
-    // Back online: catch up in both directions right away (including
-    // re-uploading any edit that couldn't reach Drive while offline).
-    pollDriveUpdates(true);
+    // Back online: verify/pull before editing becomes available again,
+    // then catch up local uploads. This uses the same foreground gate as
+    // returning to a phone app after it has been backgrounded.
+    verifyLatestOnForeground();
   });
   window.addEventListener("offline", () => {
     isOnline = false;
@@ -2409,6 +2521,14 @@
   // place to update and the rest of the gate logic stays simple.
   let isOnline = navigator.onLine;
 
+  // Every time a phone/app/tab comes back to the foreground we briefly
+  // lock editing until one Drive metadata pass finishes. Previously the
+  // visibility handler *started* a poll but editing stayed live during the
+  // network round-trip, leaving a small window where a tap could modify a
+  // stale phone copy before the newer PC revision had been noticed.
+  let foregroundDriveCheckPending = false;
+  let foregroundDriveCheckSeq = 0;
+
   // Signed in + first sync done + online + Drive actually reachable, and
   // no confirmed newer copy sitting on Drive from another device. The
   // last one only ever becomes true from an actual Drive check that
@@ -2417,7 +2537,7 @@
   function isEditingAllowed() {
     return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
       && !DriveDB.needsReauth && !DriveDB.driveBroken()
-      && !DriveDB.conflictDetected;
+      && !DriveDB.conflictDetected && !foregroundDriveCheckPending;
   }
 
   // Set only while flushing already-typed work to disk as the lock comes
@@ -2460,7 +2580,8 @@
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
     const offline = !isOnline;
     const disconnected = driveLockReason() === "reauth" || driveLockReason() === "broken";
-    const checkingNewer = DriveDB.signedIn && DriveDB.dataSynced && !offline && !disconnected && DriveDB.conflictDetected;
+    const checkingNewer = DriveDB.signedIn && DriveDB.dataSynced && !offline && !disconnected
+      && (DriveDB.conflictDetected || foregroundDriveCheckPending);
     if (heading) heading.textContent = offline
       ? "You're offline"
       : disconnected
@@ -2560,7 +2681,7 @@
 
   // Signing in only syncs once, at that moment — without this, a change
   // made on another device wouldn't show up here until you next reload
-  // (or manually sign in again). Polls every DRIVE_POLL_INTERVAL_MS (60s)
+  // (or manually sign in again). Polls every DRIVE_POLL_INTERVAL_MS (10s)
   // while the tab is actually visible (skipped in background tabs to save
   // battery/quota), plus once immediately whenever you switch back to
   // this tab.
@@ -2651,13 +2772,38 @@
     // frozen on a stale "2m ago" indefinitely once nothing new comes in.
     updateDriveUI();
   }
+  async function verifyLatestOnForeground() {
+    if (!DriveDB.signedIn || !DriveDB.dataSynced || !isOnline) {
+      foregroundDriveCheckPending = false;
+      updateDriveUI();
+      return;
+    }
+    const seq = ++foregroundDriveCheckSeq;
+    foregroundDriveCheckPending = true;
+    updateDriveUI(); // immediately locks editing + shows "checking latest"
+    try {
+      // A sync/upload that started just before the tab was hidden may still
+      // be finishing. Wait for it instead of letting our foreground check
+      // return early from pollDriveUpdates because DriveDB.busy is true.
+      const started = Date.now();
+      while (DriveDB.busy && Date.now() - started < 15000) {
+        await new Promise(r => setTimeout(r, 120));
+      }
+      if (seq !== foregroundDriveCheckSeq) return;
+      if (!DriveDB.busy && document.visibilityState === "visible") {
+        await pollDriveUpdates(true);
+      }
+    } finally {
+      if (seq === foregroundDriveCheckSeq) {
+        foregroundDriveCheckPending = false;
+        updateDriveUI();
+      }
+    }
+  }
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
-      // Polling was paused while hidden, so the "latest version" stamp has
-      // aged out — show the paused state right away instead of leaving
-      // the old copy editable until the check below finishes.
-      updateDriveUI();
-      pollDriveUpdates(true);
+      verifyLatestOnForeground();
       if (Date.now() - taskTemplateLastSyncAt > 30000) syncTaskTemplatesWithDrive();
     }
   });
@@ -2797,7 +2943,7 @@
         }
       }
 
-      await DriveDB.save(map);
+      await DriveDB.save(map, { skipRemoteGuard: true });
       if (DriveDB.driveBroken()) {
         showToast("\u26a0 Upload to Drive failed \u2014 check your connection and try again");
         return;
@@ -2825,6 +2971,158 @@
     }
   }
   uploadNowBtn.addEventListener("click", uploadCurrentMapToDrive);
+
+  const cloudSyncPill = document.getElementById("cloud-sync-pill");
+  const syncStatusModal = document.getElementById("sync-status-modal");
+  const syncModalClose = document.getElementById("sync-modal-close");
+  const syncModalCancel = document.getElementById("sync-modal-cancel");
+  const syncModalNow = document.getElementById("sync-modal-now");
+  let syncModalRunning = false;
+
+  function syncStampText(stamp) {
+    if (!stamp) return "Not uploaded yet";
+    try {
+      const d = new Date(Number(stamp));
+      if (Number.isNaN(d.getTime())) return String(stamp);
+      return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch (e) { return String(stamp); }
+  }
+
+  function updateSyncStatusModal() {
+    if (!syncStatusModal) return;
+    const hero = document.getElementById("sync-modal-hero");
+    const stateEl = document.getElementById("sync-modal-state");
+    const subEl = document.getElementById("sync-modal-substate");
+    const mapEl = document.getElementById("sync-modal-map");
+    const pendingEl = document.getElementById("sync-modal-pending");
+    const lastEl = document.getElementById("sync-modal-last");
+    const revisionEl = document.getElementById("sync-modal-revision");
+    const tipEl = document.getElementById("sync-modal-tip");
+
+    const map = state.current;
+    const known = map && DriveDB.fileIndex[map.id];
+    const pendingCount = state.maps.filter((m) => {
+      const k = DriveDB.fileIndex[m.id];
+      return !k || (m.updatedAt || 0) > (k.updatedAt || 0);
+    }).length;
+
+    let mode = "warning";
+    let heading = "Cloud sync is off";
+    let detail = "Sign in with Google before editing on more than one device.";
+    if (!DriveDB.signedIn) {
+      mode = "warning";
+    } else if (!isOnline) {
+      mode = "error";
+      heading = "Offline — not safe to switch devices";
+      detail = "Reconnect to the internet so this device can verify its latest changes on Google Drive.";
+    } else if (DriveDB.needsReauth) {
+      mode = "error";
+      heading = "Google reconnect required";
+      detail = "Your Google session expired. Reconnect before continuing to edit.";
+    } else if (DriveDB.driveBroken()) {
+      mode = "error";
+      heading = "Upload failed — changes are local only";
+      detail = "The app is retrying. Do not switch devices until the status becomes Verified.";
+    } else if (foregroundDriveCheckPending) {
+      mode = "syncing";
+      heading = "Checking the newest Drive copy…";
+      detail = "Editing is briefly paused so an old phone/PC copy cannot overwrite newer work.";
+    } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
+      mode = "syncing";
+      heading = "Syncing…";
+      detail = "Saving locally, comparing with Drive, and verifying the cloud revision.";
+    } else if (pendingCount > 0) {
+      mode = "syncing";
+      heading = "Waiting to upload " + pendingCount + (pendingCount === 1 ? " map" : " maps");
+      detail = "Keep this tab open until the pending count reaches zero.";
+    } else {
+      mode = "verified";
+      heading = "✓ Verified — safe to switch devices";
+      detail = "Google Drive has confirmed the latest known revision. Your other device can now load it.";
+    }
+
+    if (hero) hero.dataset.state = mode;
+    if (stateEl) stateEl.textContent = heading;
+    if (subEl) subEl.textContent = detail;
+    if (mapEl) mapEl.textContent = map ? ((map.title || "Untitled map") + " · " + syncStampText(map.updatedAt)) : "No map open";
+    if (pendingEl) pendingEl.textContent = String(pendingCount);
+    if (lastEl) {
+      if (!DriveDB.lastSyncedAt) lastEl.textContent = "Not verified this session";
+      else {
+        const ago = relTime(DriveDB.lastSyncedAt);
+        lastEl.textContent = ago === "now" ? "Just now" : ago + " ago";
+      }
+    }
+    if (revisionEl) revisionEl.textContent = known ? syncStampText(known.updatedAt) : "Not on Drive yet";
+    if (tipEl) tipEl.innerHTML = mode === "verified"
+      ? "On your phone, wait for <b>Verified — safe to switch devices</b> before closing the tab or moving to your PC."
+      : "Keep this device open until the status becomes <b>Verified — safe to switch devices</b>. If it stays here, press <b>Sync &amp; verify now</b>.";
+    if (syncModalNow && !syncModalRunning) {
+      syncModalNow.textContent = DriveDB.signedIn ? "⟳ Sync & verify now" : "Sign in with Google";
+      syncModalNow.disabled = false;
+    }
+  }
+
+  function openSyncStatusModal() {
+    if (!syncStatusModal) return;
+    updateSyncStatusModal();
+    zoomModalOpen(syncStatusModal);
+  }
+  function closeSyncStatusModal() { zoomModalClose(syncStatusModal); }
+
+  if (cloudSyncPill) cloudSyncPill.addEventListener("click", openSyncStatusModal);
+  if (syncModalClose) syncModalClose.addEventListener("click", closeSyncStatusModal);
+  if (syncModalCancel) syncModalCancel.addEventListener("click", closeSyncStatusModal);
+  if (syncStatusModal) syncStatusModal.addEventListener("click", (e) => {
+    if (e.target === syncStatusModal && !syncModalRunning) closeSyncStatusModal();
+  });
+  if (syncModalNow) syncModalNow.addEventListener("click", async () => {
+    if (syncModalRunning) return;
+    syncModalRunning = true;
+    syncModalNow.disabled = true;
+    syncModalNow.textContent = "⟳ Verifying…";
+    try {
+      if (!DriveDB.signedIn || DriveDB.needsReauth) {
+        await DriveDB.signIn(false);
+      } else {
+        await loadLatestFromDrive();
+      }
+      // loadLatestFromDrive already performs pull -> merge -> push. One
+      // extra metadata check on the open map gives the modal a very simple
+      // final invariant: Drive's confirmed stamp must be at least the local
+      // stamp before we tell the user it is safe to switch devices.
+      const map = state.current;
+      const known = map && DriveDB.fileIndex[map.id];
+      if (map && known && isOnline && !DriveDB.driveBroken() && !DriveDB.needsReauth) {
+        try {
+          const remote = await DriveDB.readRemoteStamp(known.fileId);
+          if (remote.updatedAt > (known.updatedAt || 0)) {
+            // Drive changed again during our manual sync (another device
+            // saved in the middle). Reconcile once more instead of showing
+            // a false green "Verified" from the older fileIndex value.
+            DriveDB.conflictDetected = true;
+            DriveDB.freshUntil = 0;
+            DriveDB.busy = true;
+            try {
+              await DriveDB.syncFromDrive();
+              await DriveDB.pushLocalNewer({ force: true, includeNew: true });
+            } finally {
+              DriveDB.busy = false;
+            }
+          } else if (remote.updatedAt < (map.updatedAt || 0)) {
+            await DriveDB.pushLocalNewer({ force: true, includeNew: true });
+          }
+        } catch (e) { console.error("Final sync verification failed", e); }
+      }
+    } catch (e) {
+      console.error("Sync modal action failed", e);
+      showToast("Couldn't verify Drive: " + ((e && e.message) || e));
+    } finally {
+      syncModalRunning = false;
+      updateDriveUI();
+      updateSyncStatusModal();
+    }
+  });
 
   /* ---------------- data model ---------------- */
 
@@ -5132,7 +5430,7 @@
 
   function updateSaveStatusLabel() {
     if (!lastSavedAt || saveStatus.classList.contains("saving")) return;
-    saveStatus.textContent = "Synced " + relTimeShort(lastSavedAt);
+    saveStatus.textContent = "Local saved " + relTimeShort(lastSavedAt);
   }
 
   // Ticks once a second while the tab is visible so the label keeps
@@ -5518,6 +5816,7 @@
 
   function persist() {
     unsavedEdits = true;
+    try { updateCloudSyncPill(); } catch (e) {}
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(kickPersist, 500);
   }
@@ -5855,26 +6154,54 @@
     const m = state.maps.find(x => x.id === id);
     if (!m) return;
     if (!confirm(`Move "${m.title || 'Untitled map'}" to trash?`)) return;
+
+    // Optimistic UI: mark the map trashed and remove it from the visible
+    // sidebar immediately. Previously we waited for IndexedDB/folder/Drive
+    // saves first, so on a slow Drive connection the row (and, for the open
+    // map, its canvas) could sit there for a noticeable moment even though
+    // the delete had already been accepted.
     m.trashedAt = Date.now();
-    await DB.put(m);
-    await FolderDB.save(m);
-    await DriveDB.save(m);
-    if (state.current && state.current.id === id) {
+    const deletingCurrent = !!(state.current && state.current.id === id);
+    let nextOpenPromise = null;
+
+    if (deletingCurrent) {
       state.current = null;
       const next = activeMaps();
-      if (next.length) await openMap(next[0].id);
-      else {
+
+      // Remove the trashed row right now and clear the old canvas so there
+      // is no visual ghost while the next map's photos/data are loading.
+      renderSidebar();
+      clearCanvas();
+
+      if (next.length) {
+        nextOpenPromise = openMap(next[0].id);
+      } else {
         // No map left open — release the trashed map's photos instead of
         // leaving their object URLs (and the Blobs they keep alive)
         // resident in memory with nothing on screen to show for them.
         revokePhotoCache();
         photoCache = new Map();
         photoBlobCache = new Map();
-        clearCanvas();
-        renderSidebar();
       }
     } else {
+      // For a non-open map this is all that's needed to make the sidebar
+      // update instantly; persistence can finish afterwards.
       renderSidebar();
+    }
+
+    // Persist after the visual update. Run the independent saves together so
+    // a slow network sync never blocks the UI. Keep awaiting them here so the
+    // caller still observes completion, but the user already sees the result.
+    const persistPromise = Promise.all([
+      DB.put(m),
+      FolderDB.save(m),
+      DriveDB.save(m)
+    ]);
+
+    if (nextOpenPromise) {
+      await Promise.all([persistPromise, nextOpenPromise]);
+    } else {
+      await persistPromise;
     }
   }
 
