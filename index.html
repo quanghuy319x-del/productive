@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=202">
+<link rel="stylesheet" href="style.css?v=203">
 </head>
 <body>
 <div id="app">
@@ -572,7 +572,7 @@
       <input type="file" id="note-image-input" accept="image/*" multiple hidden>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-card" class="note-tool-btn" title="Add a card — a colored section: type its heading, then the lines that belong under it">🗂</button>
-      <button type="button" id="note-tool-mood" class="note-tool-btn" title="Insert a “Mood To Day” block — tap a face to pick your mood">😊</button>
+      <button type="button" id="note-tool-emoji" class="note-tool-btn" title="Add emoji">😊</button>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-autocolor" class="note-tool-btn note-tool-btn-toggle active" title="Auto alternate line colors: on" aria-pressed="true">🎨</button>
       <span class="note-tool-sep"></span>
@@ -602,6 +602,13 @@
       <span>+</span>
       <input type="color" id="note-color-custom" value="#2b2a25">
     </label>
+  </div>
+  <div id="note-emoji-popover" class="note-color-popover note-emoji-popover hidden" aria-label="Add emoji">
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😀" title="Great">😀</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙂" title="Good">🙂</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😐" title="Okay">😐</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙁" title="Low">🙁</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😞" title="Bad">😞</button>
   </div>
 </div>
 
@@ -793,6 +800,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=202"></script>
+<script src="app.js?v=203"></script>
 </body>
 </html>
