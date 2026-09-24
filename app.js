@@ -2499,7 +2499,7 @@
     // device catches up. Never true just because the routine poll
     // timer hasn't ticked yet.
     const checking = DriveDB.signedIn && DriveDB.dataSynced && isOnline
-      && !driveLockReason() && (DriveDB.conflictDetected || foregroundDriveCheckPending);
+      && !driveLockReason() && DriveDB.conflictDetected;
     banner.classList.toggle("hidden", !(stillSyncing || checking));
     const text = $("#stale-sync-text");
     if (text) {
@@ -2561,9 +2561,6 @@
     } else if (DriveDB.driveBroken()) {
       stateName = "error";
       label = "☁ Cloud: upload failed";
-    } else if (foregroundDriveCheckPending) {
-      stateName = "syncing";
-      label = "☁ Cloud: checking latest…";
     } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
       stateName = "syncing";
       label = DriveDB.syncPhase ? ("☁ " + DriveDB.syncPhase) : "☁ Cloud: syncing…";
@@ -2631,8 +2628,6 @@
       status.textContent = "Google session expired \u2014 editing paused";
     } else if (DriveDB.driveBroken()) {
       status.textContent = "Changes NOT on Drive \u2014 retrying, editing paused";
-    } else if (foregroundDriveCheckPending) {
-      status.textContent = "Checking Drive before editing…";
     } else if (DriveDB.signedIn && DriveDB.dataSynced && DriveDB.conflictDetected) {
       status.textContent = "Checking for a newer version\u2026 editing paused";
     } else if (DriveDB.signedIn && DriveDB.dataSynced && (DriveDB.pushingLocal || localSaveBusy())) {
@@ -2652,9 +2647,8 @@
   // actual connectivity, not just whatever it was when the page loaded.
   window.addEventListener("online", () => {
     isOnline = true;
-    // Back online: verify/pull before editing becomes available again,
-    // then catch up local uploads. This uses the same foreground gate as
-    // returning to a phone app after it has been backgrounded.
+    // Back online: silently verify Drive. Only a real newer remote copy
+    // interrupts editing; routine checks stay out of the way.
     verifyLatestOnForeground();
   });
   window.addEventListener("offline", () => {
@@ -2676,12 +2670,9 @@
   // place to update and the rest of the gate logic stays simple.
   let isOnline = navigator.onLine;
 
-  // Every time a phone/app/tab comes back to the foreground we briefly
-  // lock editing until one Drive metadata pass finishes. Previously the
-  // visibility handler *started* a poll but editing stayed live during the
-  // network round-trip, leaving a small window where a tap could modify a
-  // stale phone copy before the newer PC revision had been noticed.
-  let foregroundDriveCheckPending = false;
+  // Returning to the app now uses a silent metadata check instead of
+  // blocking every tap behind a visible "checking latest" state. A real
+  // newer Drive revision still triggers the conflict lock below.
   let foregroundDriveCheckSeq = 0;
 
   // Signed in + first sync done + online + Drive actually reachable, and
@@ -2692,7 +2683,7 @@
   function isEditingAllowed() {
     return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
       && !DriveDB.needsReauth && !DriveDB.driveBroken()
-      && !DriveDB.conflictDetected && !foregroundDriveCheckPending;
+      && !DriveDB.conflictDetected;
   }
 
   // Set only while flushing already-typed work to disk as the lock comes
@@ -2736,7 +2727,7 @@
     const offline = !isOnline;
     const disconnected = driveLockReason() === "reauth" || driveLockReason() === "broken";
     const checkingNewer = DriveDB.signedIn && DriveDB.dataSynced && !offline && !disconnected
-      && (DriveDB.conflictDetected || foregroundDriveCheckPending);
+      && DriveDB.conflictDetected;
     if (heading) heading.textContent = offline
       ? "You're offline"
       : disconnected
@@ -2929,31 +2920,45 @@
     updateDriveUI();
   }
   async function verifyLatestOnForeground() {
-    if (!DriveDB.signedIn || !DriveDB.dataSynced || !isOnline) {
-      foregroundDriveCheckPending = false;
-      updateDriveUI();
-      return;
-    }
+    if (!DriveDB.signedIn || !DriveDB.dataSynced || !isOnline) return;
+
     const seq = ++foregroundDriveCheckSeq;
-    foregroundDriveCheckPending = true;
-    updateDriveUI(); // immediately locks editing + shows "checking latest"
     try {
-      // A sync/upload that started just before the tab was hidden may still
-      // be finishing. Wait for it instead of letting our foreground check
-      // return early from pollDriveUpdates because DriveDB.busy is true.
+      // Let an already-running sync finish, but do not lock editing or
+      // change the visible status just because the user returned to the tab.
       const started = Date.now();
       while (DriveDB.busy && Date.now() - started < 15000) {
         await new Promise(r => setTimeout(r, 120));
       }
-      if (seq !== foregroundDriveCheckSeq) return;
-      if (!DriveDB.busy && document.visibilityState === "visible") {
+      if (seq !== foregroundDriveCheckSeq || document.visibilityState !== "visible" || DriveDB.busy) return;
+
+      // Metadata-only check first. In the normal case (nothing newer on
+      // Drive) this is completely silent and causes no canvas rebuild.
+      DriveDB.busy = true;
+      try {
+        await DriveDB.verifyRemote();
+      } catch (e) {
+        console.error("Silent foreground Drive check failed", e);
+        DriveDB.consecutivePollFailures++;
+        if (DriveDB.consecutivePollFailures >= DriveDB.MAX_POLL_FAILURES && DriveDB.status !== "reauth") {
+          DriveDB.status = "broken";
+          updateDriveUI();
+        }
+        return;
+      } finally {
+        DriveDB.busy = false;
+      }
+
+      if (seq !== foregroundDriveCheckSeq || document.visibilityState !== "visible") return;
+
+      // Only interrupt the user when Drive actually contains a newer copy.
+      // Then the existing conflict UI/lock is meaningful rather than routine.
+      if (DriveDB.conflictDetected) {
+        updateDriveUI();
         await pollDriveUpdates(true);
       }
     } finally {
-      if (seq === foregroundDriveCheckSeq) {
-        foregroundDriveCheckPending = false;
-        updateDriveUI();
-      }
+      if (seq === foregroundDriveCheckSeq) updateDriveUI();
     }
   }
 
@@ -3180,10 +3185,6 @@
       mode = "error";
       heading = "Upload failed — changes are local only";
       detail = "The app is retrying. Do not switch devices until the status becomes Verified.";
-    } else if (foregroundDriveCheckPending) {
-      mode = "syncing";
-      heading = "Checking the newest Drive copy…";
-      detail = "Editing is briefly paused so an old phone/PC copy cannot overwrite newer work.";
     } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
       mode = "syncing";
       heading = DriveDB.syncPhase || "Syncing…";
