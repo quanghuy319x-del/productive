@@ -2152,6 +2152,30 @@ kbd{
 }
 .note-color-popover.hidden{ display:none; }
 
+/* Five-face emoji picker used by the note toolbar. Unlike the retired
+   Mood-To-Day widget, these are just insertion choices: tapping a face
+   writes ordinary emoji text at the caret. */
+.note-emoji-popover{
+  flex-direction: row;
+  gap: 6px;
+  padding: 6px;
+}
+.note-emoji-swatch{
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  line-height: 1;
+}
+@media (pointer: coarse){
+  .note-emoji-popover{ gap: 8px; padding: 8px; }
+  .note-emoji-popover .note-tool-btn{
+    width: 42px;
+    height: 42px;
+    font-size: 21px;
+    border-radius: 9px;
+  }
+}
+
 .note-symbol-swatch{ font-size: 15px; }
 
 /* Touch targets: note/brainstorm/DRC color pickers all reuse the same
