@@ -14514,6 +14514,7 @@
   // at most one of the three is ever set.
   let noteEditingCellPos = null;
   let noteSaveTimer = null;
+  let noteLinkifyTimer = null;
   let noteIsResizing = false;
   // A node can now hold several notes. While the modal is open,
   // noteWorkingList holds an editable in-memory copy of that node's notes
@@ -14699,6 +14700,153 @@
     if (!raw) return "";
     if (looksLikeHtml(raw)) return raw;
     return raw.split(/\n/).map(line => `<div>${escapeHtml(line) || "<br>"}</div>`).join("");
+  }
+
+  // ---- Clickable links inside notes -----------------------------------
+  // Notes are rich contenteditable HTML, so URL recognition works on text
+  // nodes only: existing formatting, checklist prefixes, cards and photos
+  // stay untouched. We recognize http(s):// links, www.* links and normal
+  // bare domains (example.com/path). Auto-created anchors are saved as part
+  // of the note, so they stay clickable after reopening/exporting/syncing.
+  const NOTE_URL_RE = /(^|[\s([{])((?:https?:\/\/|www\.)[^\s<>"']+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}(?::\d{2,5})?(?:[\/?#][^\s<>"']*)?)/gi;
+
+  function trimNoteUrlPunctuation(raw) {
+    let url = raw || "";
+    let suffix = "";
+    // Sentence punctuation is almost never part of the URL. Closing
+    // brackets are kept only when they have a matching opener in the URL
+    // (e.g. a Wikipedia title containing parentheses).
+    while (/[.,!?;:]$/.test(url)) { suffix = url.slice(-1) + suffix; url = url.slice(0, -1); }
+    const pairs = [[")", "("], ["]", "["], ["}", "{"]];
+    let changed = true;
+    while (changed && url) {
+      changed = false;
+      for (const [close, open] of pairs) {
+        if (!url.endsWith(close)) continue;
+        const opens = url.split(open).length - 1;
+        const closes = url.split(close).length - 1;
+        if (closes > opens) { suffix = close + suffix; url = url.slice(0, -1); changed = true; }
+      }
+    }
+    return { url, suffix };
+  }
+
+  function noteHrefForText(text) {
+    let candidate = (text || "").trim();
+    if (!candidate || /\s/.test(candidate)) return null;
+    if (!/^https?:\/\//i.test(candidate)) candidate = "https://" + candidate;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+      return parsed.href;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // For an <a> pasted from rich text, trust only ordinary web protocols.
+  // Relative hrefs are allowed and resolve against this app's own page;
+  // javascript:, data:, file:, etc. never open from a note click.
+  function noteSafeAnchorHref(raw) {
+    const candidate = (raw || "").trim();
+    if (!candidate) return null;
+    try {
+      const parsed = new URL(candidate, window.location.href);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+      return parsed.href;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function unwrapNoteLink(a) {
+    const parent = a && a.parentNode;
+    if (!parent) return;
+    while (a.firstChild) parent.insertBefore(a.firstChild, a);
+    a.remove();
+    parent.normalize();
+  }
+
+  function refreshAutoNoteLinks(root) {
+    let changed = false;
+    root.querySelectorAll("a.note-auto-link").forEach((a) => {
+      const text = a.textContent || "";
+      const href = noteHrefForText(text);
+      if (!href) { unwrapNoteLink(a); changed = true; return; }
+      if (a.getAttribute("href") !== href) { a.setAttribute("href", href); changed = true; }
+      if (a.getAttribute("target") !== "_blank") { a.setAttribute("target", "_blank"); changed = true; }
+      if (a.getAttribute("rel") !== "noopener noreferrer") { a.setAttribute("rel", "noopener noreferrer"); changed = true; }
+      a.title = "Open link";
+    });
+    return changed;
+  }
+
+  function noteLinkifyUrls(root, preserveCaret) {
+    if (!root) return false;
+    let marker = null;
+    const sel = window.getSelection();
+    // Do not rewrite DOM under an active text selection — that would throw
+    // the selection away. A later input/paste/open will retry linkifying.
+    if (preserveCaret && sel && sel.rangeCount && root.contains(sel.anchorNode) && !sel.isCollapsed) return false;
+    if (preserveCaret && sel && sel.rangeCount && sel.isCollapsed && root.contains(sel.anchorNode)) {
+      marker = document.createComment("note-caret");
+      const caret = sel.getRangeAt(0).cloneRange();
+      caret.insertNode(marker);
+    }
+
+    let changed = refreshAutoNoteLinks(root);
+    const textNodes = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (!parent || parent.closest("a") || parent.closest('[contenteditable="false"]')) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+    textNodes.forEach((node) => {
+      const text = node.nodeValue || "";
+      NOTE_URL_RE.lastIndex = 0;
+      let match;
+      let last = 0;
+      let frag = null;
+      while ((match = NOTE_URL_RE.exec(text))) {
+        const prefix = match[1] || "";
+        const raw = match[2] || "";
+        const start = match.index + prefix.length;
+        const trimmed = trimNoteUrlPunctuation(raw);
+        const href = noteHrefForText(trimmed.url);
+        if (!href || !trimmed.url) continue;
+        if (!frag) frag = document.createDocumentFragment();
+        if (start > last) frag.appendChild(document.createTextNode(text.slice(last, start)));
+        const a = document.createElement("a");
+        a.className = "note-auto-link";
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.title = "Open link";
+        a.textContent = trimmed.url;
+        frag.appendChild(a);
+        if (trimmed.suffix) frag.appendChild(document.createTextNode(trimmed.suffix));
+        last = start + raw.length;
+      }
+      if (frag) {
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        node.replaceWith(frag);
+        changed = true;
+      }
+    });
+
+    if (marker && marker.parentNode) {
+      const range = document.createRange();
+      range.setStartBefore(marker);
+      range.collapse(true);
+      marker.remove();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    return changed;
   }
 
   // A note's stored HTML never carries an inline photo's actual src — an
@@ -14970,11 +15118,12 @@
     }
     noteTextarea.innerHTML = noteHtmlFromRaw(current.html);
     // Fill in (and, for older/imported notes, migrate) every inline
-    // photo's src — see hydrateNotePhotoImages. If anything needed
-    // migrating, the note's HTML just got smaller (bare data: bytes
-    // replaced with a short id reference); autosave that shrink so it
-    // isn't repeated on every open.
-    if (hydrateNotePhotoImages()) scheduleNoteAutosave();
+    // photo's src — see hydrateNotePhotoImages. Also upgrade plain URLs
+    // from older notes into clickable anchors. Either migration is saved
+    // by the normal autosave path, so reopening does not repeat the work.
+    const migratedPhotos = hydrateNotePhotoImages();
+    const linkedUrls = noteLinkifyUrls(noteTextarea, false);
+    if (migratedPhotos || linkedUrls) scheduleNoteAutosave();
     setNoteAutoColorEnabled(!isDRCNote(current));
     refreshDRCCards();
     noteSyncAllCheckedLines();
@@ -15137,6 +15286,11 @@
 
   function closeNoteModal() {
     closeNoteTemplatesPopover();
+    clearTimeout(noteLinkifyTimer);
+    noteLinkifyTimer = null;
+    // Catch a URL typed at the very end of a note even if the 250ms idle
+    // recognizer has not fired yet, then flush that final HTML to storage.
+    noteLinkifyUrls(noteTextarea, false);
     flushNoteAutosave();
     noteEditingId = null;
     noteEditingPhotoId = null;
@@ -15882,6 +16036,12 @@
         return;
       }
     }
+    // Let the browser perform an ordinary text/rich-text paste first, then
+    // convert any plain URLs it inserted. A caret marker keeps the insertion
+    // point exactly where the browser left it, so typing can continue.
+    setTimeout(() => {
+      if (noteLinkifyUrls(noteTextarea, true)) scheduleNoteAutosave();
+    }, 0);
   });
 
   function noteDraggedImageFile(e) {
@@ -16016,8 +16176,23 @@
     noteImageShrinkHost.save();
   });
 
+  // Clicking directly on a recognized URL opens it in a new tab. This is
+  // handled explicitly because links inside a contenteditable normally put
+  // the caret in the anchor instead of navigating. It also covers real
+  // <a> tags pasted from rich text, not only our own auto-created links.
   // Clicking directly on a checklist glyph toggles it, like a real checkbox.
   noteTextarea.addEventListener("click", (e) => {
+    const link = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (link && noteTextarea.contains(link)) {
+      const href = noteSafeAnchorHref(link.getAttribute("href"));
+      if (href) {
+        e.preventDefault();
+        e.stopPropagation();
+        const opened = window.open(href, "_blank", "noopener,noreferrer");
+        if (opened) opened.opener = null;
+      }
+      return;
+    }
     if (e.target && e.target.tagName === "IMG") {
       openNotePhotoViewer(e.target);
       return;
@@ -16373,6 +16548,15 @@
     }
   });
   noteTextarea.addEventListener("input", (e) => {
+    // Keep an already-created auto-link's href in sync if its visible text
+    // is edited. When typing/pasting produces a separator, also recognize
+    // any newly completed URL without disturbing the caret.
+    refreshAutoNoteLinks(noteTextarea);
+    clearTimeout(noteLinkifyTimer);
+    noteLinkifyTimer = setTimeout(() => {
+      noteLinkifyTimer = null;
+      if (noteLinkifyUrls(noteTextarea, true)) scheduleNoteAutosave();
+    }, 250);
     // Chrome's own Enter handling copies a line's attributes onto the line
     // it splits off — so pressing Enter in a card heading would otherwise
     // make the new line a second heading. Only the original stays one.

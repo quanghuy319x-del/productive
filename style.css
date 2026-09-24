@@ -2207,6 +2207,15 @@ kbd{
   color: var(--paper-text-dim);
 }
 .note-textarea div{ min-height: 1.7em; }
+.note-textarea a{
+  color:#2f6fd6;
+  text-decoration:underline;
+  text-underline-offset:2px;
+  cursor:pointer;
+}
+.note-textarea a:hover{
+  text-decoration-thickness:2px;
+}
 .note-textarea .note-line-checked,
 .note-textarea.note-line-checked{ text-decoration: line-through; }
 .note-textarea img{
