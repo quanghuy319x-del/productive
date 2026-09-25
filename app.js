@@ -1268,9 +1268,9 @@
     //                so a stale local copy can't get overwritten or
     //                overwrite something newer).
     // "ok"         — signed in, synced, everything reaching Drive fine.
-    // "reauth"     — Google session died; needs an explicit reconnect
-    //                click (silent refresh can't recover this on its
-    //                own — see silentRefresh()).
+    // "reauth"     — Google session/token expired; needs an explicit
+    //                Reconnect Google click. Background code never opens
+    //                OAuth windows.
     // "broken"     — signed in with a live token, but syncing/uploading
     //                is failing (network, Drive outage, etc.) — usually
     //                recovers on its own once the connection is back.
@@ -1299,17 +1299,11 @@
     // never persisted or compared against anything.
     lastSyncedAt: 0,
 
-    // Failed-attempt counters that feed into `status`. Poll failures
-    // (can't reach Drive at all) push toward "broken"; silent-refresh
-    // failures (token can't renew itself) push toward "reauth" and are
-    // throttled by a cooldown so a dead connection can't hammer Google's
-    // silent sign-in check every second.
+    // Failed Drive polls (network/Drive outage) can push the connection
+    // toward "broken". Authentication expiry is handled separately by
+    // requireReconnect(), which never launches Google on its own.
     consecutivePollFailures: 0,
     MAX_POLL_FAILURES: 3,
-    consecutiveSilentFailures: 0,
-    MAX_SILENT_FAILURES: 3,
-    lastSilentFailureAt: 0,
-    SILENT_RETRY_COOLDOWN_MS: 30000,
 
     // Maps with edits Drive hasn't confirmed receiving yet.
     unsyncedMaps() {
@@ -1399,36 +1393,29 @@
       return !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith("PASTE_");
     },
 
-    // Keeps you signed in for as long as Google will allow without ever
-    // needing another click on "Sign in with Google" — refreshes the
-    // access token silently in the background, well before it actually
-    // expires. Runs on its own timer so a session stays alive even while
-    // the tab sits in the background or idle. A pure client-side app
-    // like this only ever gets short-lived (~1hr) access tokens, never a
-    // long-lived refresh token (that requires a backend), so this just
-    // keeps refreshing on a rolling basis for as long as it keeps
-    // succeeding, and only actually ends the session on an explicit
-    // "Sign out" or a refresh Google itself starts rejecting.
+    // Authentication may only be started by an explicit user click.
+    // Any automatic path that discovers an expired/rejected token lands
+    // here instead of calling Google Identity Services.
+    requireReconnect() {
+      if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
+      this.accessToken = null;
+      this.tokenExpiresAt = 0;
+      clearCachedDriveToken();
+      if (this.status !== "out") this.status = "reauth";
+      stopDriveSyncPolling();
+      updateDriveUI();
+    },
+
+    // Google OAuth is never launched from a timer. Keep using a valid
+    // access token normally; shortly before it expires, switch the UI to
+    // "Reconnect Google" and wait for an explicit click.
     refreshTimer: null,
     scheduleRefresh() {
       if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
-      if (!this.signedIn) return;
-      // Refresh 5 minutes before the current token expires (or almost
-      // immediately if it's already past that point) — never less than a
-      // few seconds out, so a failing refresh can't spin in a tight loop.
-      const delay = Math.max(5000, this.tokenExpiresAt - Date.now() - 5 * 60 * 1000);
-      this.refreshTimer = setTimeout(async () => {
-        try {
-          await this.silentRefresh();
-          this.scheduleRefresh(); // got a fresh token — line up the next one
-        } catch (e) {
-          console.error("Background Drive token refresh failed, will retry", e);
-          if (this.needsReauth) return; // stop the loop — see silentRefresh()
-          // A transient network hiccup or a momentarily-blocked silent
-          // check shouldn't end the session early — keep trying rather
-          // than giving up after one failure.
-          this.refreshTimer = setTimeout(() => this.scheduleRefresh(), 2 * 60 * 1000);
-        }
+      if (!this.signedIn || this.needsReauth || !this.tokenExpiresAt) return;
+      const delay = Math.max(1000, this.tokenExpiresAt - Date.now() - 5000);
+      this.refreshTimer = setTimeout(() => {
+        this.requireReconnect();
       }, delay);
     },
 
@@ -1466,17 +1453,20 @@
           syncTaskTemplatesWithDrive();
           return;
         } catch (e) {
-          console.error("Cached Drive token didn't work, falling back", e);
-          this.accessToken = null;
-          this.status = "out";
-          clearCachedDriveToken();
-          // fall through to the silent-reauth attempt below
+          console.error("Cached Drive token no longer works; reconnect required", e);
+          this.requireReconnect();
+          return;
         }
       }
       let was = false;
       try { was = await DB.getHandle(DRIVE_SIGNED_IN_KEY); } catch (e) {}
       if (!was) return;
-      try { await this.signIn(true); } catch (e) { /* silent attempt only — fail quietly */ }
+      // This browser was connected before, but there is no valid cached
+      // access token now. Never attempt silent OAuth on page load.
+      this.status = "reauth";
+      this.accessToken = null;
+      this.tokenExpiresAt = 0;
+      updateDriveUI();
     },
 
     // NOTE: deliberately no longer reused across calls — see requestToken()
@@ -1486,6 +1476,10 @@
     },
 
     requestToken(silent) {
+      if (silent) {
+        this.requireReconnect();
+        return Promise.reject(new Error("Google session expired — tap Reconnect Google."));
+      }
       // Google Identity Services simply does not work when the page is
       // opened as a local file (origin "null" / file://) — there is no
       // way to authorize that as a JS origin in Google Cloud Console, and
@@ -1572,7 +1566,6 @@
               // sync, so "ok" is always the right landing spot here).
               if (this.status === "reauth" || this.status === "broken") this.status = "ok";
               this.consecutivePollFailures = 0;
-              this.consecutiveSilentFailures = 0;
               settle(resolve, resp.access_token);
             } else {
               settle(reject, resp && resp.error ? new Error(resp.error) : new Error("Sign-in didn't return a token"));
@@ -1590,47 +1583,13 @@
       return promise;
     },
 
-    // Silent token refreshes normally happen invisibly, but when the
-    // cached token has been expired for a while, GIS's "prompt: none"
-    // check can briefly flash a real tab to accounts.google.com on
-    // mobile Chrome instead of a truly silent iframe check. Tolerable as
-    // a one-off; two things stop it becoming a repeating annoyance: a
-    // cooldown between retries, and a hard stop (→ "reauth") after
-    // MAX_SILENT_FAILURES in a row, so updateDriveUI() shows a
-    // "Reconnect" prompt instead — a real tap gives the browser a
-    // genuine user gesture to work with, which the silent path can't get
-    // on some mobile browsers.
-    async silentRefresh() {
-      if (this.needsReauth) {
-        throw new Error("Google session needs to be reconnected — tap \u201cReconnect Google\u201d.");
-      }
-      if (this.lastSilentFailureAt && Date.now() - this.lastSilentFailureAt < this.SILENT_RETRY_COOLDOWN_MS) {
-        throw new Error("Drive session refresh recently failed — will retry shortly");
-      }
-      try {
-        const token = await this.requestToken(true);
-        this.lastSilentFailureAt = 0;
-        this.consecutiveSilentFailures = 0;
-        return token;
-      } catch (e) {
-        // Being superseded isn't a real auth failure — a newer (usually
-        // explicit, user-initiated) request just took over this same
-        // slot. Don't let that count against MAX_SILENT_FAILURES; the
-        // request that superseded it reports its own outcome.
-        if (e && e.message === "Superseded by a newer sign-in request") throw e;
-        this.lastSilentFailureAt = Date.now();
-        this.consecutiveSilentFailures++;
-        if (this.consecutiveSilentFailures >= this.MAX_SILENT_FAILURES) {
-          this.status = "reauth";
-          updateDriveUI();
-        }
-        throw e;
-      }
-    },
-
+    // Automatic Drive work may use an already-valid token, but it may not
+    // obtain a new one. Once the token is at expiry, pause Drive access and
+    // wait for a real Reconnect Google click.
     async getToken() {
-      if (this.accessToken && Date.now() < this.tokenExpiresAt - 60000) return this.accessToken;
-      return this.silentRefresh(); // token expired mid-session — refresh silently
+      if (this.accessToken && Date.now() < this.tokenExpiresAt - 5000) return this.accessToken;
+      this.requireReconnect();
+      throw new Error("Google session expired — tap Reconnect Google.");
     },
 
     // Thin wrapper around fetch that attaches the bearer token and retries
@@ -1657,14 +1616,18 @@
       } finally {
         clearTimeout(timer);
       }
-      if (res.status === 401 && !_retried) {
-        this.accessToken = null;
-        return this.api(url, opts, true);
+      if (res.status === 401) {
+        this.requireReconnect();
+        throw new Error("Google session expired — tap Reconnect Google.");
       }
       return res;
     },
 
     async signIn(silent) {
+      if (silent) {
+        this.requireReconnect();
+        throw new Error("Google reconnect requires a click.");
+      }
       if (!this.configured()) {
         alert("Google Drive sync needs to be set up first — a developer needs to add a Google OAuth Client ID to the app (see the README's \"Google Drive sync setup\" section).");
         return;
