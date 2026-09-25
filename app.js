@@ -1346,13 +1346,26 @@
     syncPhase: "",
     syncProgressDone: 0,
     syncProgressTotal: 0,
+    syncProgressPercent: 0,
     syncStartedAt: 0,
-    setSyncProgress(phase, done, total) {
+    setSyncProgress(phase, done, total, percent) {
       this.syncPhase = phase || "";
       this.syncProgressDone = Number(done || 0);
       this.syncProgressTotal = Number(total || 0);
-      if (phase && !this.syncStartedAt) this.syncStartedAt = Date.now();
-      if (!phase) this.syncStartedAt = 0;
+      if (!phase) {
+        this.syncProgressPercent = 0;
+        this.syncStartedAt = 0;
+      } else {
+        if (!this.syncStartedAt) this.syncStartedAt = Date.now();
+        if (Number.isFinite(Number(percent))) {
+          this.syncProgressPercent = Math.max(0, Math.min(100, Math.round(Number(percent))));
+        } else if (this.syncProgressTotal > 0) {
+          this.syncProgressPercent = Math.max(0, Math.min(100,
+            Math.round((this.syncProgressDone / this.syncProgressTotal) * 100)));
+        } else if (!this.syncProgressPercent) {
+          this.syncProgressPercent = 1;
+        }
+      }
       try { updateDriveUI(); } catch (e) {}
     },
     // True if Drive holds a newer copy of any map this device already has.
@@ -1432,7 +1445,7 @@
         this.accessToken = cached.token;
         this.tokenExpiresAt = cached.expiresAt;
         this.status = "connecting";
-        this.setSyncProgress("Checking Drive…", 0, 0);
+        this.setSyncProgress("Checking Drive…", 0, 0, 2);
         updateDriveUI("Syncing…");
         try {
           await this.syncFromDrive();
@@ -1659,7 +1672,7 @@
       await this.requestToken(!!silent);
       if (this.status === "out") this.status = "connecting";
       try { await DB.setHandle(DRIVE_SIGNED_IN_KEY, true); } catch (e) {}
-      this.setSyncProgress("Checking Drive…", 0, 0);
+      this.setSyncProgress("Checking Drive…", 0, 0, 2);
       updateDriveUI("Syncing…");
       try {
         await this.syncFromDrive();
@@ -1953,13 +1966,16 @@
       if (!stale.length) return false;
       this.lastLocalPushTryAt = Date.now();
       this.pushingLocal = true;
+      const uploadStartPct = this.syncProgressPercent >= 60 ? this.syncProgressPercent : 5;
       try {
         for (let i = 0; i < stale.length; i++) {
           const m = stale[i];
           if (busy()) break; // an edit started mid-pass — its own save takes over
-          this.setSyncProgress(`Uploading map ${i + 1}/${stale.length}…`, i, stale.length);
+          const beforePct = uploadStartPct + Math.round((95 - uploadStartPct) * (i / stale.length));
+          this.setSyncProgress(`Uploading map ${i + 1}/${stale.length}…`, i, stale.length, beforePct);
           await this.save(m);
-          this.syncProgressDone = i + 1;
+          const afterPct = uploadStartPct + Math.round((95 - uploadStartPct) * ((i + 1) / stale.length));
+          this.setSyncProgress(`Uploading map ${i + 1}/${stale.length}…`, i + 1, stale.length, afterPct);
         }
       } finally {
         this.pushingLocal = false;
@@ -1987,7 +2003,7 @@
     async syncFromDrive() {
       let changed = false;
       let downloadFailed = false;
-      this.setSyncProgress("Listing Drive maps…", 0, 0);
+      this.setSyncProgress("Listing Drive maps…", 0, 0, 5);
       const remoteFilesRaw = await this.listRemote();
       const listedAt = Date.now();
 
@@ -2067,7 +2083,14 @@
       const seenRemoteIds = new Set();
       let processedDownloads = 0;
       const showDownloadProgress = () => {
-        if (targets.length) this.setSyncProgress(`Downloading changed maps ${Math.min(processedDownloads + 1, targets.length)}/${targets.length}…`, processedDownloads, targets.length);
+        if (!targets.length) return;
+        const pct = 10 + Math.round(60 * (processedDownloads / targets.length));
+        this.setSyncProgress(
+          `Downloading changed maps ${Math.min(processedDownloads + 1, targets.length)}/${targets.length}…`,
+          processedDownloads,
+          targets.length,
+          pct
+        );
       };
 
       for (const f of remoteFiles) {
@@ -2230,8 +2253,8 @@
       } else {
         this.conflictDetected = true;
       }
-      if (targets.length) this.setSyncProgress("Drive download check complete", targets.length, targets.length);
-      else this.setSyncProgress("Drive is already up to date", 0, 0);
+      if (targets.length) this.setSyncProgress("Drive download check complete", targets.length, targets.length, 70);
+      else this.setSyncProgress("Drive is already up to date", 0, 0, 70);
       return changed;
     }
   };
@@ -2503,9 +2526,10 @@
     banner.classList.toggle("hidden", !(stillSyncing || checking));
     const text = $("#stale-sync-text");
     if (text) {
+      const pct = Math.max(1, DriveDB.syncProgressPercent || 1);
       text.textContent = checking
         ? "\u23f3 Verifying the newest Google Drive version before editing \u2014 this prevents a stale phone/PC copy from overwriting newer work."
-        : "\u23f3 Still syncing from Google Drive \u2014 what's on screen may not be the latest version from your other devices yet.";
+        : "\u23f3 Syncing Google Drive \u2014 " + pct + "%" + (DriveDB.syncPhase ? " \u00b7 " + DriveDB.syncPhase : "");
     }
   }
 
@@ -2563,7 +2587,8 @@
       label = "☁ Cloud: upload failed";
     } else if (!DriveDB.dataSynced || DriveDB.busy || DriveDB.pushingLocal || localSaveBusy()) {
       stateName = "syncing";
-      label = DriveDB.syncPhase ? ("☁ " + DriveDB.syncPhase) : "☁ Cloud: syncing…";
+      const pct = Math.max(1, DriveDB.syncProgressPercent || 1);
+      label = DriveDB.syncPhase ? ("☁ " + DriveDB.syncPhase + " · " + pct + "%") : ("☁ Cloud: syncing… " + pct + "%");
     } else {
       const m = state.current;
       const known = m && DriveDB.fileIndex[m.id];
@@ -2617,7 +2642,13 @@
       btn.textContent = "Sign in with Google";
       btn.classList.remove("hidden");
     }
-    if (overrideStatus) { status.textContent = overrideStatus; updateCloudSyncPill(); refreshEditLockUI(); return; }
+    if (overrideStatus) {
+      const pct = Math.max(1, DriveDB.syncProgressPercent || 1);
+      status.textContent = DriveDB.syncPhase ? (DriveDB.syncPhase + " · " + pct + "%") : overrideStatus;
+      updateCloudSyncPill();
+      refreshEditLockUI();
+      return;
+    }
     if (!isOnline) {
       // Offline trumps everything else here — even a fully signed-in,
       // fully synced device can't edit right now, so say so plainly
@@ -3160,6 +3191,9 @@
     const lastEl = document.getElementById("sync-modal-last");
     const revisionEl = document.getElementById("sync-modal-revision");
     const tipEl = document.getElementById("sync-modal-tip");
+    const progressEl = document.getElementById("sync-modal-progress");
+    const progressFillEl = document.getElementById("sync-modal-progress-fill");
+    const progressTextEl = document.getElementById("sync-modal-progress-text");
 
     const map = state.current;
     const known = map && DriveDB.fileIndex[map.id];
@@ -3200,9 +3234,15 @@
       detail = "Google Drive has confirmed the latest known revision. Your other device can now load it.";
     }
 
+    const progressPct = mode === "verified"
+      ? 100
+      : (mode === "syncing" ? Math.max(1, DriveDB.syncProgressPercent || 1) : 0);
     if (hero) hero.dataset.state = mode;
-    if (stateEl) stateEl.textContent = heading;
+    if (stateEl) stateEl.textContent = mode === "syncing" ? (heading + " · " + progressPct + "%") : heading;
     if (subEl) subEl.textContent = detail;
+    if (progressEl) progressEl.classList.toggle("hidden", mode !== "syncing" && mode !== "verified");
+    if (progressFillEl) progressFillEl.style.width = progressPct + "%";
+    if (progressTextEl) progressTextEl.textContent = progressPct + "%";
     if (mapEl) mapEl.textContent = map ? ((map.title || "Untitled map") + " · " + syncStampText(map.updatedAt)) : "No map open";
     if (pendingEl) pendingEl.textContent = String(pendingCount);
     if (lastEl) {
