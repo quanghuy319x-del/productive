@@ -15964,16 +15964,6 @@
       );
     });
 
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.className = "task-checkbox";
-    cb.checked = allDone;
-    cb.title = allDone ? "Mark all queue subtasks undone" : "Mark all queue subtasks done";
-    cb.addEventListener("change", (e) => {
-      e.stopPropagation();
-      setAllSharedQueueDone(cb.checked);
-    });
-
     const title = document.createElement("span");
     title.className = "task-text";
     title.textContent = "QUEUE TASKS";
@@ -15997,7 +15987,7 @@
       renderTasksModal();
     });
 
-    taskRow.append(cb, title, count, addBtn);
+    taskRow.append(title, count, addBtn);
     tasksListEl.appendChild(taskRow);
 
     const wrap = document.createElement("li");
