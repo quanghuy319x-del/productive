@@ -2324,7 +2324,7 @@ kbd{
   box-shadow:0 0 0 2px rgba(197,157,24,.12);
 }
 #tasks-modal .shared-queue-add-trigger{
-  display:inline-flex;
+  display:none;
 }
 
 .note-textarea{
