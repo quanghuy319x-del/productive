@@ -3058,6 +3058,27 @@ kbd{
   user-select:none;
   -webkit-user-select:none;
 }
+.subtask-menu-btn{
+  display:none;
+  flex:none;
+  width:22px;
+  height:22px;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:var(--text-dim);
+  font:700 17px/1 system-ui, sans-serif;
+  cursor:pointer;
+}
+.subtask-menu-btn:active{ background:rgba(0,0,0,.08); }
+@media (max-width: 640px) and (any-pointer: coarse){
+  #tasks-modal .subtask-touch-drag-handle{ display:none !important; }
+  #tasks-modal .subtask-menu-btn{ display:inline-flex; }
+}
+
 .subtask-touch-ghost{
   position:fixed;
   z-index:10050;
