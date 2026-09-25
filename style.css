@@ -2271,6 +2271,18 @@ kbd{
   font-size:16px;
   font-weight:700;
 }
+@media (any-hover: hover) and (any-pointer: fine){
+  #tasks-modal .shared-queue-add-btn{
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .12s ease;
+  }
+  #tasks-modal .shared-queue-task-row:hover .shared-queue-add-btn,
+  #tasks-modal .shared-queue-task-row:focus-within .shared-queue-add-btn{
+    opacity:1;
+    pointer-events:auto;
+  }
+}
 #tasks-modal .shared-queue-add-btn:hover{
   border-color:#bf9814;
   color:#594600;
