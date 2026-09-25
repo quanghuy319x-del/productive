@@ -15887,6 +15887,31 @@
     const taskRow = document.createElement("li");
     taskRow.className = "task-row shared-queue-task-row has-open-subtasks" + (allDone ? " done" : "");
     taskRow.dataset.sharedQueue = "1";
+    taskRow.dataset.taskId = SHARED_QUEUE_TASK_ID;
+    taskRow.addEventListener("dragover", (e) => {
+      if (!subtaskDragState) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      taskRow.classList.add("subtask-drop-target");
+    });
+    taskRow.addEventListener("dragleave", (e) => {
+      if (e.relatedTarget && taskRow.contains(e.relatedTarget)) return;
+      taskRow.classList.remove("subtask-drop-target");
+    });
+    taskRow.addEventListener("drop", (e) => {
+      if (!subtaskDragState) return;
+      e.preventDefault();
+      e.stopPropagation();
+      taskRow.classList.remove("subtask-drop-target");
+      moveSubtask(
+        subtaskDragState.taskId,
+        subtaskDragState.subtaskId,
+        SHARED_QUEUE_TASK_ID,
+        null,
+        false
+      );
+    });
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -15933,8 +15958,44 @@
     items.forEach((s) => {
       const row = document.createElement("li");
       row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "");
+      row.dataset.taskId = SHARED_QUEUE_TASK_ID;
       row.dataset.subtaskId = s.id;
-      row.draggable = false;
+
+      const queuePhoneMode = window.matchMedia("(max-width: 640px)").matches;
+      row.draggable = !queuePhoneMode;
+      row.addEventListener("dragstart", (e) => startSubtaskDrag(e, row, SHARED_QUEUE_TASK_ID, s.id));
+      row.addEventListener("dragend", () => endSubtaskDrag(row));
+      row.addEventListener("dragover", (e) => {
+        if (!subtaskDragState) return;
+        if (subtaskDragState.taskId === SHARED_QUEUE_TASK_ID && subtaskDragState.subtaskId === s.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        const rect = row.getBoundingClientRect();
+        const before = (e.clientX - rect.left) < rect.width / 2;
+        row.classList.toggle("drag-over-top", before);
+        row.classList.toggle("drag-over-bottom", !before);
+      });
+      row.addEventListener("dragleave", (e) => {
+        if (e.relatedTarget && row.contains(e.relatedTarget)) return;
+        row.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+      row.addEventListener("drop", (e) => {
+        if (!subtaskDragState) return;
+        if (subtaskDragState.taskId === SHARED_QUEUE_TASK_ID && subtaskDragState.subtaskId === s.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = row.getBoundingClientRect();
+        const before = (e.clientX - rect.left) < rect.width / 2;
+        row.classList.remove("drag-over-top", "drag-over-bottom");
+        moveSubtask(
+          subtaskDragState.taskId,
+          subtaskDragState.subtaskId,
+          SHARED_QUEUE_TASK_ID,
+          s.id,
+          before
+        );
+      });
 
       const stext = document.createElement("span");
       stext.className = "subtask-text";
@@ -15983,6 +16044,7 @@
       stext.addEventListener("blur", () => {
         const v = stext.textContent.trim();
         stext.contentEditable = "false";
+        row.draggable = !window.matchMedia("(max-width: 640px)").matches;
         if (v && v !== (s.text || "")) updateDRCQueueSubtask(s.id, (live) => { live.text = v; });
         else stext.textContent = s.text || "";
       });
@@ -18517,6 +18579,7 @@
   // task's list) — either way, it works both within the same task and
   // across two different tasks.
   let subtaskDragState = null;
+  const SHARED_QUEUE_TASK_ID = "__shared_queue__";
 
   // Which tasks currently have their "add a subtask" input expanded —
   // it starts life as a small + button and swaps for the input on
@@ -18673,33 +18736,70 @@
     const host = target && resolveHost(target.nodeId, target.r, target.c);
     if (!host) return;
     if (sourceTaskId === targetTaskId && sourceSubtaskId === targetSubtaskId) return;
+
     const tasks = getNodeTasks(host);
-    const sourceTask = tasks.find(x => x.id === sourceTaskId);
-    const targetTask = tasks.find(x => x.id === targetTaskId);
-    if (!sourceTask || !targetTask) return;
-    const sourceSubs = getTaskSubtasks(sourceTask).slice();
+    const sourceIsQueue = sourceTaskId === SHARED_QUEUE_TASK_ID;
+    const targetIsQueue = targetTaskId === SHARED_QUEUE_TASK_ID;
+    const sourceTask = sourceIsQueue ? null : tasks.find(x => x.id === sourceTaskId);
+    const targetTask = targetIsQueue ? null : tasks.find(x => x.id === targetTaskId);
+    if ((!sourceIsQueue && !sourceTask) || (!targetIsQueue && !targetTask)) return;
+
+    const originalQueue = getDRCQueueItems().slice();
+    const sourceSubs = sourceIsQueue ? originalQueue.slice() : getTaskSubtasks(sourceTask).slice();
     const fromIdx = sourceSubs.findIndex(x => x.id === sourceSubtaskId);
     if (fromIdx === -1) return;
     const [moved] = sourceSubs.splice(fromIdx, 1);
 
     pushUndo();
 
-    const sameTask = sourceTaskId === targetTaskId;
-    const destSubs = sameTask ? sourceSubs : getTaskSubtasks(targetTask).slice();
-    const toIdx = targetSubtaskId ? destSubs.findIndex(x => x.id === targetSubtaskId) : -1;
-    if (toIdx === -1) {
-      destSubs.push(moved);
+    const sameContainer = sourceTaskId === targetTaskId;
+    let destSubs;
+    if (sameContainer) {
+      destSubs = sourceSubs;
+    } else if (targetIsQueue) {
+      // When Queue is also the source, use the already-trimmed list.
+      destSubs = sourceIsQueue ? sourceSubs : originalQueue.slice();
     } else {
-      destSubs.splice(before ? toIdx : toIdx + 1, 0, moved);
+      destSubs = getTaskSubtasks(targetTask).slice();
     }
 
-    sourceTask.subtasks = sourceSubs;
-    targetTask.subtasks = destSubs;
-    if (!sameTask) {
-      // Moving a subtask in or out changes what each task's own subtasks
-      // add up to, which can flip its auto-derived done state.
-      syncTaskDoneFromSubtasks(sourceTask);
-      syncTaskDoneFromSubtasks(targetTask);
+    const toIdx = targetSubtaskId ? destSubs.findIndex(x => x.id === targetSubtaskId) : -1;
+    if (toIdx === -1) destSubs.push(moved);
+    else destSubs.splice(before ? toIdx : toIdx + 1, 0, moved);
+
+    const now = Date.now();
+    const deleted = getDeletedDRCQueueItems();
+    let queueChanged = false;
+
+    if (sourceIsQueue) {
+      queueChanged = true;
+      if (!targetIsQueue) {
+        deleted[moved.id] = Math.max(Number(deleted[moved.id]) || 0, now);
+        saveDRCQueueItems(sourceSubs);
+      }
+    } else {
+      sourceTask.subtasks = sourceSubs;
+    }
+
+    if (targetIsQueue) {
+      queueChanged = true;
+      moved.updatedAt = now;
+      moved.done = !!moved.done;
+      moved.failed = !!moved.failed;
+      if (deleted[moved.id]) delete deleted[moved.id];
+      saveDRCQueueItems(destSubs);
+    } else {
+      targetTask.subtasks = destSubs;
+    }
+
+    if (!sameContainer) {
+      if (sourceTask) syncTaskDoneFromSubtasks(sourceTask);
+      if (targetTask) syncTaskDoneFromSubtasks(targetTask);
+    }
+
+    if (queueChanged) {
+      saveDeletedDRCQueueItems(deleted);
+      scheduleTaskTemplateSync();
     }
     persist();
     renderTasksModal();
