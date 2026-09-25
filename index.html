@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=204">
+<link rel="stylesheet" href="style.css?v=205">
 </head>
 <body>
 <div id="app">
@@ -476,6 +476,12 @@
     <div id="sync-modal-hero" class="sync-modal-hero" data-state="syncing">
       <strong id="sync-modal-state">Checking…</strong>
       <span id="sync-modal-substate">Making sure this device has the newest copy.</span>
+      <div id="sync-modal-progress" class="sync-modal-progress" aria-label="Sync progress">
+        <div class="sync-modal-progress-track">
+          <div id="sync-modal-progress-fill" class="sync-modal-progress-fill"></div>
+        </div>
+        <b id="sync-modal-progress-text" class="sync-modal-progress-text">1%</b>
+      </div>
     </div>
     <div class="sync-modal-grid">
       <div class="sync-modal-stat"><span>Current map</span><b id="sync-modal-map">—</b></div>
@@ -800,6 +806,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=204"></script>
+<script src="app.js?v=205"></script>
 </body>
 </html>
