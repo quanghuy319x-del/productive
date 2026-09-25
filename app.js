@@ -17744,6 +17744,7 @@
   const tasksResizeHandle = $("#tasks-resize-handle");
   const tasksListEl = $("#tasks-list");
   const tasksNewInput = $("#tasks-new-input");
+  const tasksAddSubmitBtn = $("#tasks-add-submit");
   const tasksProgressBar = $("#tasks-progress-bar");
   const tasksProgressLabel = $("#tasks-progress-label");
   const tasksSortStarsBtn = $("#tasks-sort-stars");
@@ -19077,7 +19078,11 @@
       }
       if (targetSub) {
         const rect = targetSub.getBoundingClientRect();
-        const before = (x - rect.left) < rect.width / 2;
+        const phoneVertical = !!(window.matchMedia &&
+          window.matchMedia("(max-width: 700px) and (any-pointer: coarse)").matches);
+        const before = phoneVertical
+          ? y < rect.top + rect.height / 2
+          : (x - rect.left) < rect.width / 2;
         targetSub.classList.toggle("drag-over-top", before);
         targetSub.classList.toggle("drag-over-bottom", !before);
         dropTarget = {
@@ -19245,6 +19250,7 @@
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
           subtaskClickTimer = null;
+          try { if (navigator.vibrate) navigator.vibrate(7); } catch (err) {}
           pushUndo();
           setSubtaskDone(t, s, !s.done);
           persist();
@@ -19498,6 +19504,7 @@
       cb.className = "task-checkbox";
       cb.checked = !!t.done;
       cb.addEventListener("change", () => {
+        try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
         pushUndo();
         // Checking/unchecking a task with subtasks cascades to all of
         // them, mirroring the auto-complete-parent behavior below.
@@ -19700,6 +19707,13 @@
       // not get crushed by seven tiny controls.
       const mobileActions = document.createElement("div");
       mobileActions.className = "task-mobile-actions" + (mobileTaskActionsOpenId === t.id ? " open" : "");
+      failBtn.dataset.mobileLabel = t.failed ? "Clear fail" : "Fail";
+      subtaskBtn.dataset.mobileLabel = "Subtask";
+      dueBtn.dataset.mobileLabel = t.due ? ("Due " + (dueDate.getMonth() + 1) + "/" + dueDate.getDate()) : "Due date";
+      noteBtn.dataset.mobileLabel = taskNotes.length ? "Notes" : "Note";
+      star.dataset.mobileLabel = stars > 0 ? "Unstar" : "Priority";
+      colorBtn.dataset.mobileLabel = "Color";
+      del.dataset.mobileLabel = "Delete";
       mobileActions.append(failBtn, subtaskBtn, dueBtn, noteBtn, star, colorBtn, del);
 
       const mobileMore = document.createElement("button");
@@ -19803,6 +19817,18 @@
   }
 
   tasksNewInput.addEventListener("input", () => autosizeTextarea(tasksNewInput));
+  if (tasksAddSubmitBtn) {
+    tasksAddSubmitBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (tasksNewInput.value.trim()) {
+        addTaskFromModal();
+        try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
+      } else {
+        tasksNewInput.focus();
+      }
+    });
+  }
   // Belt-and-suspenders for the keyboard-overlap fix above: the CSS
   // --keyboard-inset padding shifts the whole modal up, but if the task
   // list itself is long enough that the modal card was already scrolled,
