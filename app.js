@@ -19051,239 +19051,6 @@
     row.addEventListener("dragstart", cancelPending);
   }
 
-  // Native HTML5 drag/drop (row.draggable + dragstart/drop) works well
-  // with a mouse but is inconsistent on touch browsers. Give touch/pen
-  // users a dedicated grip that uses Pointer Events instead. Starting a
-  // gesture on the grip means "drag", while starting on the pill itself
-  // still means tap/scroll/long-press menu — no gesture conflict.
-  function installSubtaskTouchDrag(row, taskId, subtaskId, openMenu) {
-    const HOLD_MS = 800;
-    const MOVE_TOLERANCE_SQ = 144; // 12px
-    let timer = null;
-    let pointerId = null;
-    let startX = 0, startY = 0;
-    let active = false;
-    let ghost = null;
-    let menuTarget = null;
-    let overMenuTarget = false;
-    let restoreDraggable = null;
-    let dropTarget = null; // { taskId, subtaskId, before }
-
-    const clearHints = () => {
-      if (!tasksListEl) return;
-      tasksListEl.querySelectorAll(".subtask-row.drag-over-top, .subtask-row.drag-over-bottom")
-        .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom"));
-      tasksListEl.querySelectorAll(".task-row.subtask-drop-target")
-        .forEach(el => el.classList.remove("subtask-drop-target"));
-    };
-
-    const removeGhost = () => {
-      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
-      ghost = null;
-    };
-
-    const removeMenuTarget = () => {
-      if (menuTarget && menuTarget.parentNode) menuTarget.parentNode.removeChild(menuTarget);
-      menuTarget = null;
-      overMenuTarget = false;
-    };
-
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
-      timer = null;
-      active = false;
-      clearHints();
-      removeGhost();
-      removeMenuTarget();
-      row.classList.remove("task-dragging", "touch-dragging");
-      subtaskDragState = null;
-      if (restoreDraggable !== null) {
-        row.draggable = restoreDraggable;
-        restoreDraggable = null;
-      }
-      pointerId = null;
-      dropTarget = null;
-    };
-
-    const makeGhost = (x, y) => {
-      ghost = document.createElement("div");
-      ghost.className = "subtask-touch-ghost";
-      const label = row.querySelector(".subtask-text");
-      ghost.textContent = label ? label.textContent : "";
-      document.body.appendChild(ghost);
-      ghost.style.left = (x + 12) + "px";
-      ghost.style.top = (y + 12) + "px";
-    };
-
-    const makeMenuTarget = () => {
-      menuTarget = document.createElement("div");
-      menuTarget.className = "subtask-drag-menu-target";
-      menuTarget.textContent = "⋯";
-      menuTarget.setAttribute("aria-hidden", "true");
-      // Put the transient target at the document root rather than inside
-      // body/modal stacking contexts. This keeps it visibly above the full-
-      // screen Tasks modal on mobile browsers with backdrop filters.
-      document.documentElement.appendChild(menuTarget);
-      requestAnimationFrame(() => {
-        if (menuTarget) menuTarget.classList.add("visible");
-      });
-    };
-
-    const moveGhost = (x, y) => {
-      if (!ghost) return;
-      const margin = 6;
-      const maxX = Math.max(margin, window.innerWidth - ghost.offsetWidth - margin);
-      const maxY = Math.max(margin, window.innerHeight - ghost.offsetHeight - margin);
-      ghost.style.left = Math.max(margin, Math.min(x + 12, maxX)) + "px";
-      ghost.style.top = Math.max(margin, Math.min(y + 12, maxY)) + "px";
-    };
-
-    const updateMenuTarget = (x, y) => {
-      if (!menuTarget) return false;
-      const r = menuTarget.getBoundingClientRect();
-      const pad = 14;
-      const hit = x >= r.left - pad && x <= r.right + pad &&
-        y >= r.top - pad && y <= r.bottom + pad;
-      overMenuTarget = hit;
-      menuTarget.classList.toggle("drag-over", hit);
-      return hit;
-    };
-
-    const findDropTarget = (x, y) => {
-      clearHints();
-      dropTarget = null;
-
-      // The top-center Menu target wins over normal reorder targets.
-      if (updateMenuTarget(x, y)) return;
-
-      const stack = document.elementsFromPoint
-        ? document.elementsFromPoint(x, y)
-        : [document.elementFromPoint(x, y)];
-      let targetSub = null;
-      for (const el of stack) {
-        if (!el || !el.closest) continue;
-        const candidate = el.closest(".subtask-row[data-task-id]");
-        if (candidate && candidate !== row && tasksListEl.contains(candidate)) {
-          targetSub = candidate;
-          break;
-        }
-      }
-      if (targetSub) {
-        const rect = targetSub.getBoundingClientRect();
-        const before = (x - rect.left) < rect.width / 2;
-        targetSub.classList.toggle("drag-over-top", before);
-        targetSub.classList.toggle("drag-over-bottom", !before);
-        dropTarget = {
-          taskId: targetSub.dataset.taskId,
-          subtaskId: targetSub.dataset.subtaskId,
-          before
-        };
-        return;
-      }
-
-      let targetTask = null;
-      for (const el of stack) {
-        if (!el || !el.closest) continue;
-        const candidate = el.closest(".task-row[data-task-id]");
-        if (candidate && tasksListEl.contains(candidate)) {
-          targetTask = candidate;
-          break;
-        }
-      }
-      if (targetTask) {
-        targetTask.classList.add("subtask-drop-target");
-        dropTarget = { taskId: targetTask.dataset.taskId, subtaskId: null, before: false };
-      }
-    };
-
-    const autoScroll = (y) => {
-      if (!tasksListEl || overMenuTarget) return;
-      const r = tasksListEl.getBoundingClientRect();
-      const edge = 44;
-      if (y < r.top + edge) tasksListEl.scrollTop -= 12;
-      else if (y > r.bottom - edge) tasksListEl.scrollTop += 12;
-    };
-
-    row.addEventListener("pointerdown", (e) => {
-      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
-      if (e.isPrimary === false) return;
-      if (!window.matchMedia("(max-width: 640px)").matches) return;
-      if (e.target.closest && e.target.closest(".subtask-note-icon, .subtask-add-btn, [contenteditable=\"true\"]")) return;
-      if (!requireSignIn()) return;
-
-      cleanup();
-      pointerId = e.pointerId;
-      startX = e.clientX;
-      startY = e.clientY;
-      restoreDraggable = row.draggable;
-      row.draggable = false;
-
-      timer = setTimeout(() => {
-        timer = null;
-        active = true;
-        row.__subtaskLongPressConsumed = true;
-        subtaskDragState = { taskId, subtaskId };
-        row.classList.add("task-dragging", "touch-dragging");
-        try { row.setPointerCapture(pointerId); } catch (err) {}
-        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
-        makeGhost(startX, startY);
-        makeMenuTarget();
-        findDropTarget(startX, startY);
-      }, HOLD_MS);
-    }, { passive: true });
-
-    row.addEventListener("pointermove", (e) => {
-      if (pointerId == null || e.pointerId !== pointerId) return;
-      if (!active) {
-        const dx = e.clientX - startX, dy = e.clientY - startY;
-        if ((dx * dx + dy * dy) > MOVE_TOLERANCE_SQ) cleanup();
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      moveGhost(e.clientX, e.clientY);
-      findDropTarget(e.clientX, e.clientY);
-      autoScroll(e.clientY);
-    }, { passive: false });
-
-    const finish = (e, commit) => {
-      if (pointerId == null || e.pointerId !== pointerId) return;
-      if (active) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-      const wasActive = active;
-      const menuDrop = wasActive && overMenuTarget;
-      const target = dropTarget ? { ...dropTarget } : null;
-      let menuX = window.innerWidth / 2;
-      let menuY = 88;
-      if (menuTarget) {
-        const r = menuTarget.getBoundingClientRect();
-        menuX = r.left + r.width / 2;
-        menuY = r.bottom + 10;
-      }
-      try { row.releasePointerCapture(pointerId); } catch (err) {}
-      cleanup();
-
-      if (wasActive) {
-        clearTimeout(row.__subtaskLongPressResetTimer);
-        row.__subtaskLongPressResetTimer = setTimeout(() => {
-          row.__subtaskLongPressConsumed = false;
-        }, 900);
-      }
-      if (!commit || !wasActive) return;
-      if (menuDrop) {
-        if (typeof openMenu === "function") openMenu(menuX, menuY);
-        return;
-      }
-      if (target && target.taskId) {
-        moveSubtask(taskId, subtaskId, target.taskId, target.subtaskId, target.before);
-      }
-    };
-
-    row.addEventListener("pointerup", (e) => finish(e, true), { passive: false });
-    row.addEventListener("pointercancel", (e) => finish(e, false), { passive: false });
-  }
 
   // Builds the expanded subtask checklist panel for one task — a nested
   // <li> (so it sits inline in the same <ul> right under its task row)
@@ -19331,9 +19098,10 @@
         moveSubtask(subtaskDragState.taskId, subtaskDragState.subtaskId, t.id, s.id, before);
       });
 
-      // The whole pill is the drag handle — grab it anywhere to reorder
-      // (turned off while its text is being edited, so text can be selected).
-      row.draggable = true;
+      // Desktop: whole-pill drag to reorder. Phone: dragging is disabled;
+      // a long hold opens the subtask menu instead.
+      const subtaskPhoneMode = window.matchMedia("(max-width: 640px)").matches;
+      row.draggable = !subtaskPhoneMode;
       row.addEventListener("dragstart", (e) => startSubtaskDrag(e, row, t.id, s.id));
       row.addEventListener("dragend", () => endSubtaskDrag(row));
 
@@ -19402,14 +19170,14 @@
         }
         stext.title = s.text;
         stext.contentEditable = "false";
-        row.draggable = true;
+        row.draggable = !window.matchMedia("(max-width: 640px)").matches;
       });
 
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        // Phone long-press is reserved for dragging; use the ⋯ button for
-        // the menu there. Desktop keeps right-click context menus.
+        // Desktop keeps right-click; phone uses the explicit long-press
+        // handler below so the browser's native context menu stays suppressed.
         if (window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
         if (row.__subtaskLongPressConsumed) return;
         openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => renderTasksModal(), openSubtaskNotes);
@@ -19423,6 +19191,9 @@
         if (!target) return;
         openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null, false, s.id);
       };
+      installSubtaskLongPress(row, (x, y) => {
+        openSubtaskContextMenu(x, y, t, s, () => renderTasksModal(), openSubtaskNotes);
+      });
       const subtaskNotesForS = getTaskNotes(s);
       // A subtask literally named "DRC" behaves exactly like a task named
       // "DRC" (see the redirect in openNoteModal above): it shares the
@@ -19447,15 +19218,7 @@
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
       }
 
-      // Desktop keeps native whole-pill drag. On phones, holding the pill
-      // itself for ~0.8s arms the pointer-based drag. While dragging, a
-      // large temporary Menu target appears at the top-center; dropping
-      // there opens this subtask's menu.
-      installSubtaskTouchDrag(row, t.id, s.id, (x, y) => {
-        openSubtaskContextMenu(x, y, t, s, () => renderTasksModal(), openSubtaskNotes);
-      });
-
-      // No inline menu/drag button on phone — the pill stays visually clean.
+      // No inline menu/drag button on phone — hold the pill to open its menu.
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
       list.appendChild(row);
