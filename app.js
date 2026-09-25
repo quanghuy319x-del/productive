@@ -16178,7 +16178,7 @@
     closeNoteTemplatesPopover();
     clearTimeout(noteLinkifyTimer);
     noteLinkifyTimer = null;
-    // Catch a URL typed at the very end of a note even if the 250ms idle
+    // Catch a URL typed at the very end of a note even if the idle
     // recognizer has not fired yet, then flush that final HTML to storage.
     noteLinkifyUrls(noteTextarea, false);
     flushNoteAutosave();
@@ -16195,13 +16195,41 @@
     zoomModalClose(noteModal);
   }
 
-  // Debounced autosave: fires a short beat after the user stops typing,
-  // so notes save themselves without needing an explicit Save click.
+  // Phone-friendly note typing pipeline. None of the expensive full-note
+  // work runs synchronously on an ordinary keystroke anymore:
+  //   - editor maintenance waits until typing has been idle for a moment;
+  //   - persistence waits a little longer;
+  //   - close/lock/navigation paths still call commit/capture directly, so
+  //     delaying the background work never risks losing the last characters.
+  const NOTE_EDITOR_IDLE_MS = 650;
+  const NOTE_AUTOSAVE_IDLE_MS = 900;
+
+  function scheduleNoteIdleMaintenance() {
+    clearTimeout(noteLinkifyTimer);
+    noteLinkifyTimer = setTimeout(() => {
+      noteLinkifyTimer = null;
+      if (!noteEditingId || noteModal.classList.contains("hidden")) return;
+
+      // These all walk a meaningful part (or all) of the editor DOM, so doing
+      // them once after a typing burst is dramatically cheaper on mobile than
+      // doing them once per character.
+      refreshAutoNoteLinks(noteTextarea);
+      noteLinkifyUrls(noteTextarea, true);
+      noteAutoColorParagraphs();
+      refreshDRCCards();
+      updateNoteLineCount();
+    }, NOTE_EDITOR_IDLE_MS);
+  }
+
+  // Debounced autosave: commit only after the typing burst has settled.
+  // commitNotesToNode() captures the full HTML at that point, rather than
+  // scheduleNoteAutosave() serializing the entire note on every keypress.
   function scheduleNoteAutosave() {
-    captureActiveNote();
-    updateNoteLineCount();
     clearTimeout(noteSaveTimer);
-    noteSaveTimer = setTimeout(commitNotesToNode, 500);
+    noteSaveTimer = setTimeout(() => {
+      noteSaveTimer = null;
+      commitNotesToNode();
+    }, NOTE_AUTOSAVE_IDLE_MS);
   }
 
   function flushNoteAutosave() {
@@ -17415,8 +17443,8 @@
     if (!noteIsResizing && e.target === noteModal && noteBackdropMousedown) closeNoteModal();
   });
   noteTitleInput.addEventListener("input", () => {
+    scheduleNoteIdleMaintenance();
     scheduleNoteAutosave();
-    refreshDRCCardsSoon();
   });
   noteTitleInput.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Enter/Delete/arrows trigger the canvas shortcuts while typing a title
@@ -17471,18 +17499,9 @@
     }
   });
   noteTextarea.addEventListener("input", (e) => {
-    // Keep an already-created auto-link's href in sync if its visible text
-    // is edited. When typing/pasting produces a separator, also recognize
-    // any newly completed URL without disturbing the caret.
-    refreshAutoNoteLinks(noteTextarea);
-    clearTimeout(noteLinkifyTimer);
-    noteLinkifyTimer = setTimeout(() => {
-      noteLinkifyTimer = null;
-      if (noteLinkifyUrls(noteTextarea, true)) scheduleNoteAutosave();
-    }, 250);
-    // Chrome's own Enter handling copies a line's attributes onto the line
-    // it splits off — so pressing Enter in a card heading would otherwise
-    // make the new line a second heading. Only the original stays one.
+    // Keep synchronous work tiny. Chrome's own Enter handling can clone a
+    // card-heading attribute onto the new line, so only that one local fix
+    // stays immediate; all full-note scans are deferred below.
     if (e && e.inputType === "insertParagraph") {
       const ln = noteCurrentLine();
       const prev = ln && ln.previousElementSibling;
@@ -17492,7 +17511,8 @@
         ln.removeAttribute("data-card-color");
       }
     }
-    noteAutoColorParagraphs(); scheduleNoteAutosave(); refreshDRCCardsSoon();
+    scheduleNoteIdleMaintenance();
+    scheduleNoteAutosave();
   });
   // DRC notes show a color ring at the right edge of each section card;
   // clicking it recolors that card. The color is stored on the heading
