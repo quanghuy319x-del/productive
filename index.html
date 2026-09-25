@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=259">
+<link rel="manifest" href="manifest.webmanifest?v=260">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=259" count as
+     by their exact URL, so "style.css" and "style.css?v=260" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=259">
+<link rel="stylesheet" href="style.css?v=260">
 </head>
 <body>
 <div id="app">
@@ -580,7 +580,8 @@
       <button type="button" id="note-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
       <button type="button" id="note-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="note-tool-divider" class="note-tool-btn" title="Insert -----">-----</button>
-      <button type="button" id="note-tool-shift-enter" class="note-tool-btn" title="Shift+Enter">Shift+Enter</button>
+      <button type="button" id="note-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
+      <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot">T.</button>
       <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color while 🎨 is on">1.</button>
       <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
@@ -776,7 +777,8 @@
       <button type="button" id="brainstorm-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
       <button type="button" id="brainstorm-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="brainstorm-tool-divider" class="note-tool-btn" title="Insert -----">-----</button>
-      <button type="button" id="brainstorm-tool-shift-enter" class="note-tool-btn" title="Shift+Enter">Shift+Enter</button>
+      <button type="button" id="brainstorm-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
+      <button type="button" id="brainstorm-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot">T.</button>
       <button type="button" id="brainstorm-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
       <button type="button" id="brainstorm-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
@@ -828,13 +830,13 @@
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=259").catch((err) => {
+    navigator.serviceWorker.register("./sw.js?v=260").catch((err) => {
       console.warn("Service worker registration failed:", err);
     });
   });
 }
 </script>
-<script src="app.js?v=259"></script>
+<script src="app.js?v=260"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -882,6 +884,34 @@ if ("serviceWorker" in navigator) {
   }
   document.getElementById("note-tool-shift-enter")?.addEventListener("click", () => shiftEnter(document.getElementById("note-textarea")));
   document.getElementById("brainstorm-tool-shift-enter")?.addEventListener("click", () => shiftEnter(document.getElementById("brainstorm-textarea")));
+  function setupTitleMode(buttonId, editorId) {
+    const button = document.getElementById(buttonId);
+    const editor = document.getElementById(editorId);
+    if (!button || !editor) return;
+    let enabled = false;
+    button.addEventListener("click", () => {
+      enabled = !enabled;
+      button.classList.toggle("is-active", enabled);
+      button.setAttribute("aria-pressed", String(enabled));
+    });
+    editor.addEventListener("beforeinput", (e) => {
+      if (!enabled || e.inputType !== "insertText" || !e.data) return;
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+      const range = sel.getRangeAt(0);
+      let node = range.startContainer;
+      let el = node.nodeType === 1 ? node : node.parentElement;
+      const block = el?.closest("div,p,li") || editor;
+      const before = (block === editor ? editor.innerText : block.innerText).slice(0, range.startOffset);
+      if (before.includes(".")) return;
+      e.preventDefault();
+      const text = e.data.toUpperCase();
+      document.execCommand("insertHTML", false, "<strong>" + text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") + "</strong>");
+      editor.dispatchEvent(new InputEvent("input", {bubbles:true,inputType:"insertText",data:text}));
+    });
+  }
+  setupTitleMode("note-tool-title-mode", "note-textarea");
+  setupTitleMode("brainstorm-tool-title-mode", "brainstorm-textarea");
 })();
 </script>
 </body>
