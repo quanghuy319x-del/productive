@@ -19120,7 +19120,13 @@
       menuTarget.className = "subtask-drag-menu-target";
       menuTarget.textContent = "⋯";
       menuTarget.setAttribute("aria-hidden", "true");
-      document.body.appendChild(menuTarget);
+      // Put the transient target at the document root rather than inside
+      // body/modal stacking contexts. This keeps it visibly above the full-
+      // screen Tasks modal on mobile browsers with backdrop filters.
+      document.documentElement.appendChild(menuTarget);
+      requestAnimationFrame(() => {
+        if (menuTarget) menuTarget.classList.add("visible");
+      });
     };
 
     const moveGhost = (x, y) => {
