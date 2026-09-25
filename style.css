@@ -5758,3 +5758,17 @@ kbd{
     font-size:14px;
   }
 }
+
+
+/* v253: task rows expose only one visible action button: + Add subtask.
+   Keep it visible on mouse + touch, even when subtasks already exist. */
+.task-row .task-subtask-btn,
+.task-row .task-subtask-btn.has-subtasks,
+#tasks-modal .task-row .task-subtask-btn,
+#tasks-modal .task-row .task-subtask-btn.has-subtasks,
+#cal-day-modal .task-row .task-subtask-btn,
+#cal-day-modal .task-row .task-subtask-btn.has-subtasks{
+  display:inline-flex !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+}
