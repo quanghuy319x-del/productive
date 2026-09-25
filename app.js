@@ -18856,6 +18856,7 @@
     row.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
       if (e.isPrimary === false) return;
+      if (e.target.closest && e.target.closest(".subtask-touch-drag-handle")) return;
       if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
       cancelPending();
       pointerId = e.pointerId;
@@ -18892,6 +18893,172 @@
     row.addEventListener("dragstart", cancelPending);
   }
 
+  // Native HTML5 drag/drop (row.draggable + dragstart/drop) works well
+  // with a mouse but is inconsistent on touch browsers. Give touch/pen
+  // users a dedicated grip that uses Pointer Events instead. Starting a
+  // gesture on the grip means "drag", while starting on the pill itself
+  // still means tap/scroll/long-press menu — no gesture conflict.
+  function installSubtaskTouchDrag(row, taskId, subtaskId) {
+    const grip = document.createElement("span");
+    grip.className = "subtask-touch-drag-handle";
+    grip.textContent = "⠿";
+    grip.title = "Drag subtask";
+    grip.setAttribute("role", "button");
+    grip.setAttribute("aria-label", "Drag subtask");
+
+    let pointerId = null;
+    let ghost = null;
+    let restoreDraggable = null;
+    let dropTarget = null; // { taskId, subtaskId, before }
+
+    const clearHints = () => {
+      if (!tasksListEl) return;
+      tasksListEl.querySelectorAll(".subtask-row.drag-over-top, .subtask-row.drag-over-bottom")
+        .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom"));
+      tasksListEl.querySelectorAll(".task-row.subtask-drop-target")
+        .forEach(el => el.classList.remove("subtask-drop-target"));
+    };
+
+    const removeGhost = () => {
+      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      ghost = null;
+    };
+
+    const cleanup = () => {
+      clearHints();
+      removeGhost();
+      row.classList.remove("task-dragging", "touch-dragging");
+      subtaskDragState = null;
+      if (restoreDraggable !== null) {
+        row.draggable = restoreDraggable;
+        restoreDraggable = null;
+      }
+      pointerId = null;
+      dropTarget = null;
+    };
+
+    const makeGhost = (x, y) => {
+      ghost = document.createElement("div");
+      ghost.className = "subtask-touch-ghost";
+      const label = row.querySelector(".subtask-text");
+      ghost.textContent = label ? label.textContent : "";
+      document.body.appendChild(ghost);
+      ghost.style.left = (x + 12) + "px";
+      ghost.style.top = (y + 12) + "px";
+    };
+
+    const moveGhost = (x, y) => {
+      if (!ghost) return;
+      const margin = 6;
+      const maxX = Math.max(margin, window.innerWidth - ghost.offsetWidth - margin);
+      const maxY = Math.max(margin, window.innerHeight - ghost.offsetHeight - margin);
+      ghost.style.left = Math.max(margin, Math.min(x + 12, maxX)) + "px";
+      ghost.style.top = Math.max(margin, Math.min(y + 12, maxY)) + "px";
+    };
+
+    const findDropTarget = (x, y) => {
+      clearHints();
+      dropTarget = null;
+
+      // elementsFromPoint lets us ignore the source pill if the finger is
+      // still partly over it and pick the real pill/task underneath.
+      const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+      let targetSub = null;
+      for (const el of stack) {
+        if (!el || !el.closest) continue;
+        const candidate = el.closest(".subtask-row[data-task-id]");
+        if (candidate && candidate !== row && tasksListEl.contains(candidate)) {
+          targetSub = candidate;
+          break;
+        }
+      }
+      if (targetSub) {
+        const rect = targetSub.getBoundingClientRect();
+        const before = (x - rect.left) < rect.width / 2;
+        targetSub.classList.toggle("drag-over-top", before);
+        targetSub.classList.toggle("drag-over-bottom", !before);
+        dropTarget = {
+          taskId: targetSub.dataset.taskId,
+          subtaskId: targetSub.dataset.subtaskId,
+          before
+        };
+        return;
+      }
+
+      let targetTask = null;
+      for (const el of stack) {
+        if (!el || !el.closest) continue;
+        const candidate = el.closest(".task-row[data-task-id]");
+        if (candidate && tasksListEl.contains(candidate)) {
+          targetTask = candidate;
+          break;
+        }
+      }
+      if (targetTask) {
+        targetTask.classList.add("subtask-drop-target");
+        dropTarget = { taskId: targetTask.dataset.taskId, subtaskId: null, before: false };
+      }
+    };
+
+    const autoScroll = (y) => {
+      if (!tasksListEl) return;
+      const r = tasksListEl.getBoundingClientRect();
+      const edge = 44;
+      if (y < r.top + edge) tasksListEl.scrollTop -= 12;
+      else if (y > r.bottom - edge) tasksListEl.scrollTop += 12;
+    };
+
+    grip.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      if (e.isPrimary === false) return;
+      if (!requireSignIn()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeContextMenu();
+
+      pointerId = e.pointerId;
+      dropTarget = null;
+      restoreDraggable = row.draggable;
+      row.draggable = false; // keep native drag from competing with pointer drag
+      row.classList.add("task-dragging", "touch-dragging");
+      subtaskDragState = { taskId, subtaskId };
+      try { grip.setPointerCapture(pointerId); } catch (err) {}
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
+      makeGhost(e.clientX, e.clientY);
+      findDropTarget(e.clientX, e.clientY);
+    }, { passive: false });
+
+    grip.addEventListener("pointermove", (e) => {
+      if (pointerId == null || e.pointerId !== pointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveGhost(e.clientX, e.clientY);
+      autoScroll(e.clientY);
+      findDropTarget(e.clientX, e.clientY);
+    }, { passive: false });
+
+    const finish = (e, commit) => {
+      if (pointerId == null || e.pointerId !== pointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const target = dropTarget ? { ...dropTarget } : null;
+      try { grip.releasePointerCapture(pointerId); } catch (err) {}
+      cleanup();
+      if (commit && target && target.taskId) {
+        moveSubtask(taskId, subtaskId, target.taskId, target.subtaskId, target.before);
+      }
+    };
+
+    grip.addEventListener("pointerup", (e) => finish(e, true), { passive: false });
+    grip.addEventListener("pointercancel", (e) => finish(e, false), { passive: false });
+    // A synthetic click can follow touch pointerup; never let it bubble to
+    // the pill's "toggle done" click handler.
+    grip.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+    grip.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); });
+
+    return grip;
+  }
+
   // Builds the expanded subtask checklist panel for one task — a nested
   // <li> (so it sits inline in the same <ul> right under its task row)
   // holding a checkbox list plus a small "add subtask" input.
@@ -18909,6 +19076,7 @@
     getTaskSubtasks(t).forEach((s) => {
       const row = document.createElement("li");
       row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "") + (!s.done && !s.failed && s.id === randomPickedSubtaskId ? " picked" : "");
+      row.dataset.taskId = t.id;
       row.dataset.subtaskId = s.id;
 
       row.addEventListener("dragover", (e) => {
@@ -19053,8 +19221,13 @@
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
       }
 
+      // Native whole-pill drag stays for mouse. Touch browsers get a
+      // dedicated grip because native draggable rows are not reliable there.
+      const touchDragGrip = installSubtaskTouchDrag(row, t.id, s.id);
+
       // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
       // lives only in the pill's right-click menu (openSubtaskContextMenu).
+      row.appendChild(touchDragGrip);
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
       list.appendChild(row);
@@ -19167,6 +19340,7 @@
       const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
       const showingSubtasks = subExpanded && subProg.total > 0;
       li.className = "task-row" + (t.done ? " done" : "") + (t.failed ? " failed" : "") + (getTaskStars(t) > 0 ? " starred" : "") + (showingSubtasks ? " has-open-subtasks" : "");
+      li.dataset.taskId = t.id;
       const rowColor = getTaskColor(t);
       li.style.background = taskColorTint(rowColor) || "";
 
