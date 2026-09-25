@@ -1,14 +1,18 @@
-const CACHE_NAME = "branchline-pwa-v261";
+const CACHE_NAME = "branchline-pwa-v262";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=256",
-  "./app.js?v=256",
+  "./style.css?v=262",
+  "./app.js?v=262",
   "./favicon.svg",
-  "./manifest.webmanifest?v=256",
+  "./manifest.webmanifest?v=262",
   "./pwa-icon-192.png",
   "./pwa-icon-512.png"
 ];
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -21,11 +25,12 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      ))
-      .then(() => self.clients.claim())
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      ),
+      self.clients.claim()
+    ])
   );
 });
 
@@ -34,16 +39,23 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (event.request.mode === "navigate") {
+  const isDocument =
+    event.request.mode === "navigate" ||
+    url.pathname.endsWith("/") ||
+    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/sw.js");
+
+  if (isDocument) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "no-store" })
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          if (response && response.ok && !url.pathname.endsWith("/sw.js")) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", copy));
+          }
           return response;
         })
         .catch(async () =>
-          (await caches.match(event.request)) ||
           (await caches.match("./index.html")) ||
           (await caches.match("./"))
         )
@@ -52,7 +64,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-cache" })
       .then((response) => {
         if (response && response.ok) {
           const copy = response.clone();
