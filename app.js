@@ -4538,12 +4538,12 @@
     const del = Object.keys(s.deleted || {}).map(id => id + ":" + s.deleted[id]).sort().join(",");
     return items + "|" + del;
   }
-  // Shared DRC "QUEUE TASKS" list. Unlike a normal node task list this is
-  // global to the app: every DRC note (in every map) reads the same items.
-  // It rides in the same small Drive settings file as task/note templates,
-  // so checking a queue item on phone is reflected in DRC notes on PC too.
-  // Each subtask carries its own updatedAt and deletions use tombstones,
-  // allowing concurrent edits to different queue items to merge safely.
+  // Shared "QUEUE TASKS" task for the Tasks modal. Unlike the normal
+  // node-owned tasks below it, this one is global: every Tasks list reads
+  // the same queue items. It rides in the same small Drive settings file
+  // as task/note templates, so phone/PC share one queue. The legacy
+  // DRC-named storage keys are intentionally kept so anything added in
+  // v206/v207 is preserved instead of being migrated or lost.
   const DRC_QUEUE_KEY = "branchlineDRCQueue_v1";
   const DRC_QUEUE_DELETED_KEY = "branchlineDRCQueueDeleted_v1";
   function getDRCQueueItems() {
@@ -4576,7 +4576,7 @@
     saveDRCQueueItems(items);
     if (deleted) saveDeletedDRCQueueItems(deleted);
     scheduleTaskTemplateSync();
-    try { renderDRCQueueTask(); } catch (e) {}
+    try { renderTasksModal(); } catch (e) {}
   }
   function addDRCQueueSubtask(text) {
     const clean = (text || "").trim();
@@ -4673,7 +4673,7 @@
         saveDRCQueueItems(mergedDRCQueue.items);
         saveDeletedDRCQueueItems(mergedDRCQueue.deleted);
         changedLocal = true;
-        try { renderDRCQueueTask(); } catch (e) {}
+        try { renderTasksModal(); } catch (e) {}
       }
       const somethingToStore = merged.items.length || Object.keys(merged.deleted).length
         || mergedNotes.items.length || Object.keys(mergedNotes.deleted).length
@@ -15108,7 +15108,6 @@
   const noteModal = $("#note-modal");
   const noteTextarea = $("#note-textarea");
   const noteTitleInput = $("#note-title-input");
-  const drcQueuePanel = $("#drc-queue-panel");
   const noteCard = $(".note-modal-card");
   const noteResizeHandle = $("#note-resize-handle");
   const noteLineCountEl = $("#note-line-count");
@@ -15745,10 +15744,6 @@
     if (migratedMood || migratedPhotos || linkedUrls) scheduleNoteAutosave();
     setNoteAutoColorEnabled(!isDRCNote(current));
     refreshDRCCards();
-    renderDRCQueueTask();
-    if (isDRCNote(current) && Date.now() - taskTemplateLastSyncAt > 5000) {
-      syncTaskTemplatesWithDrive().then((changed) => { if (changed) renderDRCQueueTask(); });
-    }
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
@@ -15832,13 +15827,13 @@
     noteNavFolder.classList.toggle("has-folder", !!folder);
   }
 
-  // Shared QUEUE TASKS card shown at the top of every DRC note. It is not
-  // part of noteTextarea, so it never gets duplicated into each DRC note's
-  // saved HTML. The backing list is global (localStorage + Drive settings),
-  // which is why every DRC displays the same queue.
-  let drcQueueAddOpen = false;
+  // Shared QUEUE TASKS task. It is rendered as the first task in every
+  // Tasks modal, but its subtasks are stored globally rather than on that
+  // node. This makes it a true inbox/queue that is the same on phone, PC,
+  // and every task list. Completed queue subtasks are always sorted last.
+  let sharedQueueAddOpen = false;
 
-  function openDRCQueueSubtaskMenu(x, y, s) {
+  function openSharedQueueSubtaskMenu(x, y, s) {
     resetContextMenu();
     const addItem = (label, cls, fn) => {
       const it = document.createElement("div");
@@ -15850,7 +15845,7 @@
       it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     };
-    addItem(s.failed ? "↩ Clear failed" : "Mark failed", "", () => {
+    addItem(s.failed ? "\u21a9 Clear failed" : "Mark failed", "", () => {
       updateDRCQueueSubtask(s.id, (live) => {
         live.failed = !live.failed;
         if (live.failed) live.done = false;
@@ -15864,49 +15859,70 @@
     positionContextMenu(x, y);
   }
 
-  function renderDRCQueueTask() {
-    if (!drcQueuePanel) return;
-    const current = noteWorkingList[noteActiveIndex];
-    const isDRC = !!current && isDRCNote({ title: noteTitleInput.value || current.title });
-    drcQueuePanel.classList.toggle("hidden", !isDRC);
-    if (!isDRC) {
-      drcQueuePanel.innerHTML = "";
-      drcQueueAddOpen = false;
-      return;
-    }
+  function setAllSharedQueueDone(done) {
+    if (!requireSignIn()) return;
+    const items = getDRCQueueItems();
+    const now = Date.now();
+    let changed = false;
+    items.forEach((s, i) => {
+      if (!!s.done === !!done && (!done || !s.failed)) return;
+      s.done = !!done;
+      if (done) s.failed = false;
+      s.updatedAt = now + i;
+      changed = true;
+    });
+    if (changed) saveDRCQueueMutation(items);
+  }
 
-    drcQueuePanel.innerHTML = "";
+  function renderSharedQueueTask() {
+    if (!tasksListEl) return;
     const items = drcQueueDisplayItems();
     const doneCount = items.filter(x => x.done).length;
+    const allDone = items.length > 0 && doneCount === items.length;
 
-    const taskRow = document.createElement("div");
-    taskRow.className = "task-row drc-queue-task-row has-open-subtasks";
+    const taskRow = document.createElement("li");
+    taskRow.className = "task-row shared-queue-task-row has-open-subtasks" + (allDone ? " done" : "");
+    taskRow.dataset.sharedQueue = "1";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "task-checkbox";
+    cb.checked = allDone;
+    cb.title = allDone ? "Mark all queue subtasks undone" : "Mark all queue subtasks done";
+    cb.addEventListener("change", (e) => {
+      e.stopPropagation();
+      setAllSharedQueueDone(cb.checked);
+    });
 
     const title = document.createElement("span");
     title.className = "task-text";
     title.textContent = "QUEUE TASKS";
+    title.contentEditable = "false";
+    title.title = "Shared queue — synced across every task list and device";
 
     const count = document.createElement("span");
-    count.className = "drc-queue-count";
-    count.textContent = items.length ? `${doneCount}/${items.length}` : "";
+    count.className = "shared-queue-count";
+    count.textContent = items.length ? `${doneCount}/${items.length}` : "0";
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
-    addBtn.className = "drc-queue-add-btn";
+    addBtn.className = "task-subtask-btn shared-queue-add-btn";
     addBtn.textContent = "+";
     addBtn.title = "Add a queue subtask";
+    addBtn.addEventListener("mousedown", (e) => e.stopPropagation());
     addBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (!requireSignIn()) return;
-      drcQueueAddOpen = true;
-      renderDRCQueueTask();
+      sharedQueueAddOpen = true;
+      renderTasksModal();
     });
 
-    taskRow.append(title, count, addBtn);
-    drcQueuePanel.appendChild(taskRow);
+    taskRow.append(cb, title, count, addBtn);
+    tasksListEl.appendChild(taskRow);
 
-    const subPanel = document.createElement("div");
-    subPanel.className = "subtask-panel drc-queue-subtask-panel";
+    const wrap = document.createElement("li");
+    wrap.className = "subtask-panel shared-queue-subtask-panel";
+
     const list = document.createElement("ul");
     list.className = "subtask-list";
 
@@ -15916,13 +15932,12 @@
       row.dataset.subtaskId = s.id;
       row.draggable = false;
 
-      const text = document.createElement("span");
-      text.className = "subtask-text";
-      text.contentEditable = "false";
-      text.spellcheck = false;
-      text.textContent = s.text || "";
-      text.title = s.text || "";
-      if (!s.done && !s.failed) text.style.color = "#333333";
+      const stext = document.createElement("span");
+      stext.className = "subtask-text";
+      stext.contentEditable = "false";
+      stext.spellcheck = false;
+      stext.textContent = s.text || "";
+      stext.title = s.text || "";
 
       let clickTimer = null;
       row.addEventListener("click", (e) => {
@@ -15933,7 +15948,7 @@
           if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
           return;
         }
-        if (text.contentEditable === "true") return;
+        if (stext.contentEditable === "true") return;
         if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
         clickTimer = setTimeout(() => {
           clickTimer = null;
@@ -15944,51 +15959,69 @@
         }, 220);
       });
 
-      text.addEventListener("dblclick", (e) => {
+      stext.addEventListener("dblclick", (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (!requireSignIn()) return;
-        text.contentEditable = "true";
-        text.focus();
+        stext.contentEditable = "true";
+        stext.focus();
         const sel = window.getSelection();
         const range = document.createRange();
-        range.selectNodeContents(text);
+        range.selectNodeContents(stext);
         sel.removeAllRanges();
         sel.addRange(range);
       });
-      text.addEventListener("keydown", (e) => {
+      stext.addEventListener("keydown", (e) => {
         e.stopPropagation();
-        if (e.key === "Enter") { e.preventDefault(); text.blur(); }
-        else if (e.key === "Escape") { e.preventDefault(); text.textContent = s.text || ""; text.blur(); }
+        if (e.key === "Enter") { e.preventDefault(); stext.blur(); }
+        else if (e.key === "Escape") { e.preventDefault(); stext.textContent = s.text || ""; stext.blur(); }
       });
-      text.addEventListener("blur", () => {
-        const v = text.textContent.trim();
-        text.contentEditable = "false";
+      stext.addEventListener("blur", () => {
+        const v = stext.textContent.trim();
+        stext.contentEditable = "false";
         if (v && v !== (s.text || "")) updateDRCQueueSubtask(s.id, (live) => { live.text = v; });
-        else text.textContent = s.text || "";
+        else stext.textContent = s.text || "";
       });
 
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (row.__subtaskLongPressConsumed) return;
-        openDRCQueueSubtaskMenu(e.clientX, e.clientY, s);
+        openSharedQueueSubtaskMenu(e.clientX, e.clientY, s);
       });
-      installSubtaskLongPress(row, (x, y) => openDRCQueueSubtaskMenu(x, y, s));
+      installSubtaskLongPress(row, (x, y) => openSharedQueueSubtaskMenu(x, y, s));
 
-      row.appendChild(text);
+      row.appendChild(stext);
       list.appendChild(row);
     });
 
-    subPanel.appendChild(list);
+    if (!sharedQueueAddOpen) {
+      const addTriggerLi = document.createElement("li");
+      addTriggerLi.className = "subtask-add-trigger shared-queue-add-trigger";
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.className = "subtask-add-btn";
+      trigger.textContent = "+";
+      trigger.title = "Add a queue subtask";
+      trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!requireSignIn()) return;
+        sharedQueueAddOpen = true;
+        renderTasksModal();
+      });
+      addTriggerLi.appendChild(trigger);
+      list.appendChild(addTriggerLi);
+    }
 
-    if (drcQueueAddOpen) {
+    wrap.appendChild(list);
+
+    if (sharedQueueAddOpen) {
       const addRow = document.createElement("div");
       addRow.className = "subtask-add-row";
       const input = document.createElement("textarea");
       input.rows = 1;
-      input.className = "subtask-new-input autosize-input";
-      input.placeholder = "Add a queue task and press Enter…";
+      input.className = "subtask-new-input autosize-input shared-queue-new-input";
+      input.placeholder = "Add a queue subtask and press Enter…";
       input.spellcheck = false;
       input.addEventListener("input", () => autosizeTextarea(input));
       input.addEventListener("click", (e) => e.stopPropagation());
@@ -15999,33 +16032,33 @@
           const v = input.value.trim();
           if (!v) return;
           if (addDRCQueueSubtask(v)) {
-            drcQueueAddOpen = true;
+            sharedQueueAddOpen = true;
             requestAnimationFrame(() => {
-              const el = drcQueuePanel.querySelector(".subtask-new-input");
+              const el = tasksListEl.querySelector(".shared-queue-new-input");
               if (el) el.focus();
             });
           }
         } else if (e.key === "Escape") {
           e.preventDefault();
-          drcQueueAddOpen = false;
-          renderDRCQueueTask();
+          sharedQueueAddOpen = false;
+          renderTasksModal();
         }
       });
       input.addEventListener("blur", () => {
         if (!input.value.trim()) {
-          drcQueueAddOpen = false;
-          renderDRCQueueTask();
+          sharedQueueAddOpen = false;
+          renderTasksModal();
         }
       });
       addRow.appendChild(input);
-      subPanel.appendChild(addRow);
+      wrap.appendChild(addRow);
       requestAnimationFrame(() => {
-        const el = drcQueuePanel.querySelector(".subtask-new-input");
+        const el = tasksListEl.querySelector(".shared-queue-new-input");
         if (el) el.focus();
       });
     }
 
-    drcQueuePanel.appendChild(subPanel);
+    tasksListEl.appendChild(wrap);
   }
 
   // Shows the open note as cards when its title is "DRC", or when it has
@@ -17346,7 +17379,6 @@
   noteTitleInput.addEventListener("input", () => {
     scheduleNoteAutosave();
     refreshDRCCardsSoon();
-    renderDRCQueueTask();
   });
   noteTitleInput.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Enter/Delete/arrows trigger the canvas shortcuts while typing a title
@@ -19119,6 +19151,12 @@
     renderFocusTimerWidget();
     const tasks = getNodeTasks(host);
     tasksListEl.innerHTML = "";
+    renderSharedQueueTask();
+    if (Date.now() - taskTemplateLastSyncAt > 5000 && !taskTemplateSyncRunning) {
+      syncTaskTemplatesWithDrive().then((changed) => {
+        if (changed && tasksEditingTarget) renderTasksModal();
+      });
+    }
     tasks.forEach((t) => {
       const li = document.createElement("li");
       const subProg = taskSubtaskProgress(t);
