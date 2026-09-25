@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=209">
+<link rel="stylesheet" href="style.css?v=210">
 </head>
 <body>
 <div id="app">
@@ -632,10 +632,12 @@
         <div id="tasks-progress-bar" class="tasks-progress-bar"></div>
       </div>
       <span id="tasks-progress-label" class="tasks-progress-label">No tasks yet</span>
-      <button type="button" id="tasks-font-color-toggle" class="tasks-sort-stars-btn" title="Switch task text between its dynamic per-task color and plain black.">🎨 Font</button>
-      <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by star, then color. Click again to sort by color instead.">★ Sort</button>
-      <button type="button" id="tasks-templates-btn" class="tasks-sort-stars-btn" title="Save this whole task list as a template, or insert a saved one">📋 Templates</button>
-      <button type="button" id="tasks-random-btn" class="tasks-sort-stars-btn" title="Pick a random unfinished subtask from the whole task list">🎲 Random</button>
+      <div class="tasks-toolbar-scroll" aria-label="Task list tools">
+        <button type="button" id="tasks-font-color-toggle" class="tasks-sort-stars-btn" title="Switch task text between its dynamic per-task color and plain black.">🎨 Font</button>
+        <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by star, then color. Click again to sort by color instead.">★ Sort</button>
+        <button type="button" id="tasks-templates-btn" class="tasks-sort-stars-btn" title="Save this whole task list as a template, or insert a saved one">📋 Templates</button>
+        <button type="button" id="tasks-random-btn" class="tasks-sort-stars-btn" title="Pick a random unfinished subtask from the whole task list">🎲 Random</button>
+      </div>
     </div>
     <ul id="tasks-list" class="tasks-list"></ul>
     <div class="tasks-add-row">
@@ -806,6 +808,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=209"></script>
+<script src="app.js?v=210"></script>
 </body>
 </html>
