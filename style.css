@@ -2251,32 +2251,7 @@ kbd{
   display:none;
 }
 #tasks-modal .shared-queue-add-btn{
-  opacity:1;
-  width:24px;
-  height:24px;
-  border:1px solid #9b78ed;
-  border-radius:50%;
-  background:#efe8ff;
-  color:#553096;
-  font-size:16px;
-  font-weight:700;
-}
-@media (any-hover: hover) and (any-pointer: fine){
-  #tasks-modal .shared-queue-add-btn{
-    opacity:0;
-    pointer-events:none;
-    transition:opacity .12s ease;
-  }
-  #tasks-modal .shared-queue-task-row:hover .shared-queue-add-btn,
-  #tasks-modal .shared-queue-task-row:focus-within .shared-queue-add-btn{
-    opacity:1;
-    pointer-events:auto;
-  }
-}
-#tasks-modal .shared-queue-add-btn:hover{
-  border-color:#7446d1;
-  color:#3f1e82;
-  background:#ffffff;
+  display:none;
 }
 #tasks-modal .shared-queue-subtask-panel{
   margin:0 0 6px;
@@ -2324,7 +2299,7 @@ kbd{
   box-shadow:0 0 0 2px rgba(139,92,246,.14);
 }
 #tasks-modal .shared-queue-add-trigger{
-  display:none;
+  display:inline-flex;
 }
 
 .note-textarea{
