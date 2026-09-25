@@ -17988,6 +17988,19 @@
     taskColorPopover.classList.remove("hidden");
     positionTaskColorPopover(btn);
   }
+  function openTaskColorPopoverAt(x, y, t, rerender) {
+    taskColorPopoverCtx = { t, rerender };
+    taskColorPopover.querySelectorAll(".task-color-swatch").forEach((sw) => {
+      sw.classList.toggle("active", getTaskColor(t) === (sw.dataset.color || null));
+    });
+    taskColorPopover.classList.remove("hidden");
+    const margin = 8;
+    const popRect = taskColorPopover.getBoundingClientRect();
+    let left = Math.max(margin, Math.min(x, window.innerWidth - popRect.width - margin));
+    let top = Math.max(margin, Math.min(y, window.innerHeight - popRect.height - margin));
+    taskColorPopover.style.left = left + "px";
+    taskColorPopover.style.top = top + "px";
+  }
   function closeTaskColorPopover() {
     taskColorPopover.classList.add("hidden");
     taskColorPopoverCtx = null;
@@ -19199,7 +19212,7 @@
   // Right-click / long-press menu for a task row. Phone task text stays
   // read-only until Rename is explicitly chosen here, preventing an
   // accidental tap from summoning the on-screen keyboard.
-  function openTaskContextMenu(x, y, host, t, rerender) {
+  function openTaskContextMenu(x, y, host, t, rerender, opts = {}) {
     resetContextMenu();
     const addItem = (label, cls, fn) => {
       const it = document.createElement("div");
@@ -19216,6 +19229,31 @@
       ctxMenu.appendChild(it);
     };
 
+    const chooseDueDate = () => {
+      const input = document.createElement("input");
+      input.type = "date";
+      input.value = t.due || "";
+      input.style.position = "fixed";
+      input.style.left = "-10000px";
+      input.style.top = "0";
+      document.body.appendChild(input);
+      const cleanup = () => { if (input.parentNode) input.parentNode.removeChild(input); };
+      input.addEventListener("change", () => {
+        pushUndo();
+        t.due = input.value || null;
+        persist();
+        rerender();
+        cleanup();
+      }, { once:true });
+      input.addEventListener("blur", () => setTimeout(cleanup, 0), { once:true });
+      try {
+        if (input.showPicker) input.showPicker();
+        else input.click();
+      } catch (err) {
+        input.click();
+      }
+    };
+
     addItem("Rename", "", () => {
       if (!requireSignIn()) return;
       const next = prompt("Rename task", t.text || "");
@@ -19227,6 +19265,12 @@
       persist();
       rerender();
     });
+
+    if (opts.openNotes) {
+      const n = getTaskNotes(t).length;
+      addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", opts.openNotes);
+    }
+
     addItem(t.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
       if (!requireSignIn()) return;
       pushUndo();
@@ -19241,6 +19285,28 @@
       persist();
       rerender();
     });
+    addItem(getTaskStars(t) > 0 ? "☆ Remove star" : "★ Star task", "", () => {
+      if (!requireSignIn()) return;
+      if (!getTaskStars(t) && blockedByStarCap(host, t)) return;
+      pushUndo();
+      t.stars = getTaskStars(t) > 0 ? 0 : 1;
+      t.starred = t.stars > 0;
+      persist();
+      rerender();
+    });
+    addItem("🎨 Color…", "", () => openTaskColorPopoverAt(x, y, t, rerender));
+    addItem(t.due ? `📅 Due: ${t.due}…` : "📅 Set due date…", "", chooseDueDate);
+    if (t.due) {
+      addItem("Clear due date", "", () => {
+        if (!requireSignIn()) return;
+        pushUndo();
+        t.due = null;
+        persist();
+        rerender();
+      });
+    }
+    if (opts.jumpToNode) addItem("Jump to node", "", opts.jumpToNode);
+
     addItem("Delete task", "danger", () => {
       if (!requireSignIn()) return;
       if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
@@ -19798,10 +19864,14 @@
         e.stopPropagation();
         // Phone uses the explicit long-press helper below.
         if (window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
-        openTaskContextMenu(e.clientX, e.clientY, host, t, () => renderTasksModal());
+        openTaskContextMenu(e.clientX, e.clientY, host, t, () => renderTasksModal(), {
+          openNotes: () => openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null)
+        });
       });
       installTaskContextLongPress(li, (x, y) => {
-        openTaskContextMenu(x, y, host, t, () => renderTasksModal());
+        openTaskContextMenu(x, y, host, t, () => renderTasksModal(), {
+          openNotes: () => openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null)
+        });
       });
 
       // Double-clicking anywhere on the row (other than its own controls,
@@ -19907,19 +19977,12 @@
         renderTasksModal();
       });
 
+      // Keep the row intentionally minimal: reorder handle, task name,
+      // and the one explicit + Add subtask action. Every other task action
+      // lives in the right-click / long-press menu.
       li.appendChild(handle);
-      li.appendChild(cb);
-      li.appendChild(failBtn);
       li.appendChild(text);
-      // Add-subtask "+" sits right at the end of the task name (before the
-      // due date / note icons) — still hidden until the row is hovered,
-      // see .task-subtask-btn in style.css.
       li.appendChild(subtaskBtn);
-      li.appendChild(dueBtn);
-      li.appendChild(noteBtn);
-      li.appendChild(star);
-      li.appendChild(colorBtn);
-      li.appendChild(del);
       tasksListEl.appendChild(li);
 
       if (subExpanded) tasksListEl.appendChild(renderSubtaskPanel(node, t));
@@ -20417,12 +20480,26 @@
       openTaskContextMenu(e.clientX, e.clientY, host, t, () => {
         renderCalDayModal();
         renderCalendar();
+      }, {
+        openNotes: () => openNoteModal(node.id, undefined, null, t.id, r != null ? { r, c } : null),
+        jumpToNode: () => {
+          closeCalDayModal();
+          closeCalendarModal();
+          focusNodeInCanvas(node.id);
+        }
       });
     });
     installTaskContextLongPress(li, (x, y) => {
       openTaskContextMenu(x, y, host, t, () => {
         renderCalDayModal();
         renderCalendar();
+      }, {
+        openNotes: () => openNoteModal(node.id, undefined, null, t.id, r != null ? { r, c } : null),
+        jumpToNode: () => {
+          closeCalDayModal();
+          closeCalendarModal();
+          focusNodeInCanvas(node.id);
+        }
       });
     });
 
@@ -20437,15 +20514,11 @@
       renderCalDayModal();
     });
 
+    // Calendar uses the same minimal task row: handle, text, + subtask.
+    // Status/star/color/delete/jump live in the task context menu.
     li.appendChild(handle);
-    li.appendChild(cb);
-    li.appendChild(failBtn);
     li.appendChild(text);
     li.appendChild(subtaskBtn);
-    li.appendChild(star);
-    li.appendChild(colorBtn);
-    li.appendChild(del);
-    li.appendChild(nodeBtn);
     return li;
   }
 
@@ -24309,3 +24382,7 @@
   boot();
 
 })();
+
+
+/* v252 task-row cleanup is driven by JS: only the Add subtask button is appended.
+   This marker intentionally has no CSS rules. */
