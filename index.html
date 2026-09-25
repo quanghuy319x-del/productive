@@ -16,11 +16,11 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=5" count as
+     by their exact URL, so "style.css" and "style.css?v=212" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=211">
+<link rel="stylesheet" href="style.css?v=209">
 </head>
 <body>
 <div id="app">
@@ -632,17 +632,14 @@
         <div id="tasks-progress-bar" class="tasks-progress-bar"></div>
       </div>
       <span id="tasks-progress-label" class="tasks-progress-label">No tasks yet</span>
-      <div class="tasks-toolbar-scroll" aria-label="Task list tools">
-        <button type="button" id="tasks-font-color-toggle" class="tasks-sort-stars-btn" title="Switch task text between its dynamic per-task color and plain black.">🎨 Font</button>
-        <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by star, then color. Click again to sort by color instead.">★ Sort</button>
-        <button type="button" id="tasks-templates-btn" class="tasks-sort-stars-btn" title="Save this whole task list as a template, or insert a saved one">📋 Templates</button>
-        <button type="button" id="tasks-random-btn" class="tasks-sort-stars-btn" title="Pick a random unfinished subtask from the whole task list">🎲 Random</button>
-      </div>
+      <button type="button" id="tasks-font-color-toggle" class="tasks-sort-stars-btn" title="Switch task text between its dynamic per-task color and plain black.">🎨 Font</button>
+      <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by star, then color. Click again to sort by color instead.">★ Sort</button>
+      <button type="button" id="tasks-templates-btn" class="tasks-sort-stars-btn" title="Save this whole task list as a template, or insert a saved one">📋 Templates</button>
+      <button type="button" id="tasks-random-btn" class="tasks-sort-stars-btn" title="Pick a random unfinished subtask from the whole task list">🎲 Random</button>
     </div>
     <ul id="tasks-list" class="tasks-list"></ul>
     <div class="tasks-add-row">
-      <textarea id="tasks-new-input" class="tasks-new-input autosize-input" rows="1" placeholder="Add a task…" spellcheck="false"></textarea>
-      <button type="button" id="tasks-add-submit" class="tasks-add-submit" title="Add task" aria-label="Add task">＋</button>
+      <textarea id="tasks-new-input" class="tasks-new-input autosize-input" rows="1" placeholder="Add a task and press Enter…" spellcheck="false"></textarea>
     </div>
     <div id="tasks-resize-handle" class="tasks-resize-handle" title="Drag to resize"></div>
   </div>
@@ -809,6 +806,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=211"></script>
+<script src="app.js?v=212"></script>
 </body>
 </html>
