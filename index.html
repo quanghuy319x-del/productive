@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=267">
+<link rel="manifest" href="manifest.webmanifest?v=268">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=267" count as
+     by their exact URL, so "style.css" and "style.css?v=268" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=267">
+<link rel="stylesheet" href="style.css?v=268">
 </head>
 <body>
 <div id="app">
@@ -768,7 +768,7 @@
       <button type="button" id="brainstorm-clear-btn" class="note-nav-btn note-nav-btn-danger" title="Clear this brainstorm">↺ Clear</button>
       <button type="button" id="brainstorm-back" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
-    <div id="brainstorm-textarea" class="note-textarea brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line… (every 2 lines = 1 pt)"></div>
+    <div id="brainstorm-textarea" class="note-textarea brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line…"></div>
     <div class="note-toolbar">
       <button type="button" id="brainstorm-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
       <button type="button" id="brainstorm-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
@@ -801,7 +801,7 @@
       </div>
     </div>
     <div id="brainstorm-resize-handle" class="note-resize-handle" title="Drag to resize"></div>
-    <span id="brainstorm-progress-label" class="note-line-count brainstorm-progress-label">0 lines · 0 pts</span>
+    <span id="brainstorm-progress-label" class="note-line-count brainstorm-progress-label">0 lines</span>
   </div>
   <div id="brainstorm-color-popover" class="note-color-popover hidden">
     <button type="button" class="note-tool-btn brainstorm-color-swatch" data-color="#2b2a25" title="Default text">A</button>
@@ -829,7 +829,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "267";
+  const APP_VERSION = "268";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -857,12 +857,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "267"') && !document.documentElement.dataset.v267Reloaded) {
+      if (fresh.includes('const APP_VERSION = "267"') && !document.documentElement.dataset.v268Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v267Reloaded = "1";
+          document.documentElement.dataset.v268Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -876,160 +876,106 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=267"></script>
+<script src="app.js?v=268"></script>
 <script>
+/* v268 editor tools: native text-node title mode, no per-character spans */
 (() => {
-  function insertTab(editor) {
-    if (!editor) return;
-    editor.focus();
-    const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return;
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) return;
-    range.deleteContents();
-    const tab = document.createTextNode("\t");
-    range.insertNode(tab);
-    range.setStartAfter(tab);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "\t" }));
+  const editors = [document.getElementById("note-textarea"), document.getElementById("brainstorm-textarea")];
+
+  function savedRange(editor) {
+    const s=window.getSelection(); if(!s||!s.rangeCount) return null;
+    const r=s.getRangeAt(0); return editor.contains(r.commonAncestorContainer)?r:null;
   }
-  function insertText(editor, text) {
-    if (!editor) return;
-    editor.focus();
-    const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return;
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) return;
-    range.deleteContents();
-    const node = document.createTextNode(text);
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+  function emit(editor,type="insertText",data=null){
+    editor.dispatchEvent(new InputEvent("input",{bubbles:true,inputType:type,data}));
   }
-  document.getElementById("note-tool-tab")?.addEventListener("click", () => insertTab(document.getElementById("note-textarea")));
-  document.getElementById("brainstorm-tool-tab")?.addEventListener("click", () => insertTab(document.getElementById("brainstorm-textarea")));
-  document.getElementById("note-tool-divider")?.addEventListener("click", () => insertText(document.getElementById("note-textarea"), " ----- "));
-  document.getElementById("brainstorm-tool-divider")?.addEventListener("click", () => insertText(document.getElementById("brainstorm-textarea"), " ----- "));
-  function shiftEnter(editor) {
-    if (!editor) return;
-    editor.focus();
-    editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", shiftKey: true, bubbles: true, cancelable: true }));
+  function insertText(editor,text){
+    if(!editor)return; editor.focus(); const r=savedRange(editor); if(!r)return;
+    r.deleteContents(); const n=document.createTextNode(text); r.insertNode(n);
+    r.setStartAfter(n);r.collapse(true);const s=window.getSelection();s.removeAllRanges();s.addRange(r);emit(editor,"insertText",text);
+  }
+  function insertTab(editor){ insertText(editor,"\t"); }
+  function shiftEnter(editor){
+    if(!editor)return;editor.focus();
     document.execCommand("insertLineBreak");
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertLineBreak" }));
+    emit(editor,"insertLineBreak",null);
   }
-  document.getElementById("note-tool-shift-enter")?.addEventListener("click", () => shiftEnter(document.getElementById("note-textarea")));
-  document.getElementById("brainstorm-tool-shift-enter")?.addEventListener("click", () => shiftEnter(document.getElementById("brainstorm-textarea")));
-  function setupTitleMode(buttonId, editorId) {
-    const button = document.getElementById(buttonId);
-    const editor = document.getElementById(editorId);
-    if (!button || !editor) return;
-    let enabled = false;
+  [["note","note-textarea"],["brainstorm","brainstorm-textarea"]].forEach(([p,eid])=>{
+    const e=document.getElementById(eid);
+    document.getElementById(p+"-tool-tab")?.addEventListener("click",()=>insertTab(e));
+    document.getElementById(p+"-tool-divider")?.addEventListener("click",()=>insertText(e," ----- "));
+    document.getElementById(p+"-tool-shift-enter")?.addEventListener("click",()=>shiftEnter(e));
+  });
 
-    button.addEventListener("click", () => {
-      enabled = !enabled;
-      button.classList.toggle("is-active", enabled);
-      button.setAttribute("aria-pressed", String(enabled));
-      editor.focus();
-    });
+  function setupTitleMode(buttonId,editorId){
+    const btn=document.getElementById(buttonId), editor=document.getElementById(editorId);
+    if(!btn||!editor)return;
+    let on=false;
+    btn.addEventListener("click",()=>{on=!on;btn.classList.toggle("is-active",on);btn.setAttribute("aria-pressed",String(on));editor.focus();});
+    editor.addEventListener("input",(e)=>{
+      if(!on || e.inputType==="historyUndo" || e.inputType==="historyRedo") return;
+      const s=window.getSelection(); if(!s||!s.rangeCount||!editor.contains(s.anchorNode))return;
+      const r=s.getRangeAt(0);
+      const pre=r.cloneRange();pre.selectNodeContents(editor);pre.setEnd(r.startContainer,r.startOffset);
+      const before=(pre.toString().split("\n").pop()||"");
+      const dot=before.indexOf(".");
+      const title=(dot>=0?before.slice(0,dot):before);
+      if(!title)return;
+      const upper=title.toUpperCase();
+      if(title===upper)return;
 
-    function lineBeforeCaret(range) {
-      const pre = range.cloneRange();
-      pre.selectNodeContents(editor);
-      pre.setEnd(range.startContainer, range.startOffset);
-      return (pre.toString().split("\n").pop() || "").replace(/\u200B/g, "");
-    }
-
-    editor.addEventListener("beforeinput", (e) => {
-      if (!enabled || e.inputType !== "insertText" || !e.data) return;
-      const sel = window.getSelection();
-      if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
-      const range = sel.getRangeAt(0);
-      if (lineBeforeCaret(range).includes(".")) return;
-
-      e.preventDefault();
-      range.deleteContents();
-
-      if (e.data === ".") {
-        // Keep the caret INSIDE a persistent normal span. This is important on
-        // Android: a caret merely placed after a bold span can inherit bold.
-        const normal = document.createElement("span");
-        normal.className = "title-mode-normal";
-        const text = document.createTextNode(".\u200B");
-        normal.appendChild(text);
-        range.insertNode(normal);
-        range.setStart(text, 1); // after dot, before zero-width caret anchor
-        range.collapse(true);
-      } else {
-        // Title chars are explicit formatting only; never toggle execCommand bold.
-        const heading = document.createElement("span");
-        heading.className = "title-mode-heading";
-        heading.textContent = e.data.toUpperCase();
-        range.insertNode(heading);
-        const caret = document.createTextNode("\u200B");
-        heading.parentNode.insertBefore(caret, heading.nextSibling);
-        range.setStart(caret, 1);
-        range.collapse(true);
+      // Replace only the title text with plain text, preserving the surrounding
+      // line's color. No strong/span nodes, so Android cannot leak bold state.
+      let remaining=title.length, walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);
+      const nodes=[]; let n;
+      while((n=walker.nextNode())) nodes.push(n);
+      // Work backward from caret to collect this line's title text.
+      let startNode=null,startOffset=0;
+      for(let i=nodes.length-1;i>=0&&remaining>0;i--){
+        const t=nodes[i];
+        const take=Math.min(remaining,t.data.length);
+        remaining-=take; startNode=t; startOffset=t.data.length-take;
       }
-      sel.removeAllRanges();
-      sel.addRange(range);
-      editor.dispatchEvent(new InputEvent("input", {
-        bubbles:true,inputType:"insertText",
-        data:e.data === "." ? "." : e.data.toUpperCase()
-      }));
-      // Force toolbar state refresh without changing B/AA commands.
-      document.dispatchEvent(new Event("selectionchange"));
+      if(!startNode)return;
+      const rr=document.createRange();rr.setStart(startNode,startOffset);rr.setEnd(r.startContainer,r.startOffset);
+      const txt=rr.toString();
+      if(!txt)return;
+      rr.deleteContents();
+      const plain=document.createTextNode(txt.toUpperCase());
+      rr.insertNode(plain);
+      const nr=document.createRange();nr.setStartAfter(plain);nr.collapse(true);s.removeAllRanges();s.addRange(nr);
+      // Bold only title characters using CSS-backed wrapper after input,
+      // without touching execCommand/B state.
+      const wrap=document.createElement("span");wrap.className="title-mode-heading";
+      plain.parentNode.insertBefore(wrap,plain);wrap.appendChild(plain);
     });
   }
-  setupTitleMode("note-tool-title-mode", "note-textarea");
-  setupTitleMode("brainstorm-tool-title-mode", "brainstorm-textarea");
+  setupTitleMode("note-tool-title-mode","note-textarea");
+  setupTitleMode("brainstorm-tool-title-mode","brainstorm-textarea");
 })();
 </script>
 <script>
-/* v263: brainstorm badges display line counts, never points */
+/* v268: all brainstorm UI uses real line counts; no points labels */
 (() => {
-  const countLines = (text) => {
-    text = (text || "").replace(/\u00a0/g, " ").replace(/\n+$/, "");
-    return text ? text.split(/\n/).length : 0;
-  };
-  const editor = document.getElementById("brainstorm-textarea");
-  const progress = document.getElementById("brainstorm-progress-label");
-
-  function fixBadges(root = document) {
-    root.querySelectorAll?.("*").forEach((el) => {
-      if (el === progress || el.children.length) return;
-      const txt = el.textContent || "";
-      const m = txt.match(/\b(\d+)\s*pts?\b/i);
-      if (!m) return;
-      const meta = ((el.className || "") + " " + (el.id || "") + " " + (el.title || "")).toLowerCase();
-      // Node badges are compact elements; avoid unrelated prose/help text.
-      if (txt.length <= 30 && (meta.includes("brain") || txt.includes("🧠") || el.closest?.(".node"))) {
-        el.textContent = txt.replace(/\b(\d+)\s*pts?\b/i, (_, n) => (Number(n) * 2) + " lines");
+  const editor=document.getElementById("brainstorm-textarea");
+  const progress=document.getElementById("brainstorm-progress-label");
+  const lines=t=>{t=(t||"").replace(/\u00a0/g," ").replace(/\n+$/,"");return t?t.split(/\n/).length:0;};
+  let busy=false;
+  function scrub(){
+    if(busy)return;busy=true;
+    if(progress) progress.textContent=lines(editor?.innerText)+" lines";
+    document.querySelectorAll(".node *,.node").forEach(el=>{
+      if(el.children.length)return;
+      const t=el.textContent||"";
+      if(/\b\d+\s*pts?\b/i.test(t) && t.length<50){
+        el.textContent=t.replace(/\b(\d+)\s*pts?\b/ig,(_,n)=>(Number(n)*2)+" lines");
       }
     });
+    busy=false;
   }
-
-  function updateOpenCount() {
-    if (!editor) return;
-    const lines = countLines(editor.innerText);
-    if (progress) {
-      const txt = progress.textContent || "";
-      progress.textContent = txt.match(/\d+\s*lines?/i)
-        ? txt.replace(/\d+\s*lines?/i, lines + " lines")
-        : lines + " lines";
-      progress.textContent = progress.textContent.replace(/\s*·\s*\d+\s*pts?\b/i, "");
-    }
-    fixBadges();
-  }
-
-  editor?.addEventListener("input", updateOpenCount);
-  new MutationObserver(() => fixBadges()).observe(document.body, {childList:true,subtree:true,characterData:true});
-  fixBadges();
-  updateOpenCount();
+  editor?.addEventListener("input",()=>queueMicrotask(scrub));
+  new MutationObserver(()=>queueMicrotask(scrub)).observe(document.body,{subtree:true,childList:true,characterData:true});
+  scrub();
 })();
 </script>
 </body>
