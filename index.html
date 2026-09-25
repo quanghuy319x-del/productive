@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=262">
+<link rel="manifest" href="manifest.webmanifest?v=263">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=262" count as
+     by their exact URL, so "style.css" and "style.css?v=263" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=262">
+<link rel="stylesheet" href="style.css?v=263">
 </head>
 <body>
 <div id="app">
@@ -837,7 +837,7 @@ if ("serviceWorker" in navigator) {
   });
   async function updateServiceWorker() {
     try {
-      const reg = await navigator.serviceWorker.register("./sw.js?v=262", { updateViaCache: "none" });
+      const reg = await navigator.serviceWorker.register("./sw.js?v=263", { updateViaCache: "none" });
       await reg.update();
       if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
     } catch (err) {
@@ -851,7 +851,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", updateServiceWorker);
 }
 </script>
-<script src="app.js?v=262"></script>
+<script src="app.js?v=263"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -904,24 +904,57 @@ if ("serviceWorker" in navigator) {
     const editor = document.getElementById(editorId);
     if (!button || !editor) return;
     let enabled = false;
+
     button.addEventListener("click", () => {
       enabled = !enabled;
       button.classList.toggle("is-active", enabled);
       button.setAttribute("aria-pressed", String(enabled));
+      editor.focus();
     });
+
     editor.addEventListener("beforeinput", (e) => {
       if (!enabled || e.inputType !== "insertText" || !e.data) return;
       const sel = window.getSelection();
       if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+
+      // A dot ends title formatting immediately. Insert it outside any bold node.
+      if (e.data === ".") {
+        e.preventDefault();
+        const range = sel.getRangeAt(0);
+        const dot = document.createTextNode(".");
+        let strong = range.startContainer.nodeType === 3
+          ? range.startContainer.parentElement?.closest("strong,b")
+          : range.startContainer.closest?.("strong,b");
+        if (strong && editor.contains(strong)) {
+          const after = document.createTextNode(".");
+          strong.parentNode.insertBefore(after, strong.nextSibling);
+          range.setStartAfter(after);
+        } else {
+          range.deleteContents();
+          range.insertNode(dot);
+          range.setStartAfter(dot);
+        }
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        editor.dispatchEvent(new InputEvent("input", {bubbles:true,inputType:"insertText",data:"."}));
+        return;
+      }
+
+      // Only title-format while the current visual line has no dot yet.
       const range = sel.getRangeAt(0);
-      let node = range.startContainer;
-      let el = node.nodeType === 1 ? node : node.parentElement;
-      const block = el?.closest("div,p,li") || editor;
-      const before = (block === editor ? editor.innerText : block.innerText).slice(0, range.startOffset);
-      if (before.includes(".")) return;
+      const pre = range.cloneRange();
+      pre.selectNodeContents(editor);
+      pre.setEnd(range.startContainer, range.startOffset);
+      const currentLine = pre.toString().split("\n").pop() || "";
+      if (currentLine.includes(".")) return;
+
       e.preventDefault();
       const text = e.data.toUpperCase();
-      document.execCommand("insertHTML", false, "<strong>" + text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") + "</strong>");
+      // execCommand keeps consecutive title characters in the same bold run.
+      document.execCommand("bold", false);
+      document.execCommand("insertText", false, text);
+      if (document.queryCommandState("bold")) document.execCommand("bold", false);
       editor.dispatchEvent(new InputEvent("input", {bubbles:true,inputType:"insertText",data:text}));
     });
   }
@@ -930,40 +963,46 @@ if ("serviceWorker" in navigator) {
 })();
 </script>
 <script>
-/* v261: show brainstorm node badges as line counts instead of points */
+/* v263: brainstorm badges display line counts, never points */
 (() => {
-  let activeBrainstormBadge = null;
-  const lineCount = () => {
-    const ed = document.getElementById("brainstorm-textarea");
-    if (!ed) return 0;
-    const text = (ed.innerText || "").replace(/\u00a0/g, " ").replace(/\n+$/, "");
+  const countLines = (text) => {
+    text = (text || "").replace(/\u00a0/g, " ").replace(/\n+$/, "");
     return text ? text.split(/\n/).length : 0;
   };
-  const setLines = (el, n) => {
-    if (!el) return;
-    const txt = el.textContent || "";
-    if (/\b\d+\s*pts?\b/i.test(txt)) el.textContent = txt.replace(/\b\d+\s*pts?\b/i, n + " lines");
-  };
-  document.addEventListener("pointerdown", (e) => {
-    const el = e.target?.closest?.("span,button,div");
-    if (el && /\b\d+\s*pts?\b/i.test(el.textContent || "") && /brain|🧠/i.test((el.className || "") + " " + (el.title || "") + " " + (el.textContent || ""))) {
-      activeBrainstormBadge = el;
-      setTimeout(() => setLines(activeBrainstormBadge, lineCount()), 0);
-    }
-  }, true);
-  const ed = document.getElementById("brainstorm-textarea");
-  ed?.addEventListener("input", () => setLines(activeBrainstormBadge, lineCount()));
-  const convertVisible = () => {
-    document.querySelectorAll("span,button").forEach(el => {
+  const editor = document.getElementById("brainstorm-textarea");
+  const progress = document.getElementById("brainstorm-progress-label");
+
+  function fixBadges(root = document) {
+    root.querySelectorAll?.("*").forEach((el) => {
+      if (el === progress || el.children.length) return;
       const txt = el.textContent || "";
-      if (/\b\d+\s*pts?\b/i.test(txt) && /brain|🧠/i.test((el.className || "") + " " + (el.title || "") + " " + txt)) {
-        const m = txt.match(/(\d+)\s*pts?/i);
-        if (m && el !== document.getElementById("brainstorm-progress-label")) setLines(el, Number(m[1]) * 2);
+      const m = txt.match(/\b(\d+)\s*pts?\b/i);
+      if (!m) return;
+      const meta = ((el.className || "") + " " + (el.id || "") + " " + (el.title || "")).toLowerCase();
+      // Node badges are compact elements; avoid unrelated prose/help text.
+      if (txt.length <= 30 && (meta.includes("brain") || txt.includes("🧠") || el.closest?.(".node"))) {
+        el.textContent = txt.replace(/\b(\d+)\s*pts?\b/i, (_, n) => (Number(n) * 2) + " lines");
       }
     });
-  };
-  new MutationObserver(convertVisible).observe(document.body, {childList:true,subtree:true});
-  convertVisible();
+  }
+
+  function updateOpenCount() {
+    if (!editor) return;
+    const lines = countLines(editor.innerText);
+    if (progress) {
+      const txt = progress.textContent || "";
+      progress.textContent = txt.match(/\d+\s*lines?/i)
+        ? txt.replace(/\d+\s*lines?/i, lines + " lines")
+        : lines + " lines";
+      progress.textContent = progress.textContent.replace(/\s*·\s*\d+\s*pts?\b/i, "");
+    }
+    fixBadges();
+  }
+
+  editor?.addEventListener("input", updateOpenCount);
+  new MutationObserver(() => fixBadges()).observe(document.body, {childList:true,subtree:true,characterData:true});
+  fixBadges();
+  updateOpenCount();
 })();
 </script>
 </body>
