@@ -2237,13 +2237,13 @@ kbd{
   min-height:34px;
   padding:4px 9px;
   gap:9px;
-  background:#d9edf7;
-  border:1px solid #b8d4e4;
+  background:#fff1a8;
+  border:1px solid #e2c95a;
   border-bottom:none;
   border-radius:7px 7px 0 0;
 }
 #tasks-modal .shared-queue-task-row .task-text{
-  color:#23495f !important;
+  color:#665100 !important;
   font-weight:800;
   letter-spacing:.02em;
 }
@@ -2252,9 +2252,9 @@ kbd{
   min-width:28px;
   padding:2px 7px;
   border-radius:999px;
-  background:#f8fdff;
-  border:1px solid #b8d4e4;
-  color:#52788d;
+  background:#fff9d8;
+  border:1px solid #e2c95a;
+  color:#765f00;
   text-align:center;
   font-size:11px;
   font-weight:700;
@@ -2264,34 +2264,34 @@ kbd{
   opacity:1;
   width:24px;
   height:24px;
-  border:1px solid #8eb8cf;
+  border:1px solid #d4b73d;
   border-radius:50%;
-  background:#f9fdff;
-  color:#39718f;
+  background:#fff8cf;
+  color:#755d00;
   font-size:16px;
   font-weight:700;
 }
 #tasks-modal .shared-queue-add-btn:hover{
-  border-color:#5e98b7;
-  color:#1f5f80;
-  background:#ffffff;
+  border-color:#bf9814;
+  color:#594600;
+  background:#fffdf2;
 }
 #tasks-modal .shared-queue-subtask-panel{
   margin:0 0 6px;
   padding:7px 8px 6px;
-  background:#f4fafc;
-  border:1px solid #b8d4e4;
+  background:#fff9dc;
+  border:1px solid #e2c95a;
   border-top:none;
   border-radius:0 0 7px 7px;
 }
 #tasks-modal .shared-queue-subtask-panel .subtask-row{
-  background:#ffffff;
-  border-color:#c7dce8;
-  box-shadow:0 1px 1px rgba(50,90,110,.05);
+  background:#fffef8;
+  border-color:#eadb98;
+  box-shadow:0 1px 1px rgba(110,88,15,.05);
 }
 #tasks-modal .shared-queue-subtask-panel .subtask-row:hover{
-  border-color:#8fb9cf;
-  background:#fbfeff;
+  border-color:#d4b73d;
+  background:#fffbea;
 }
 #tasks-modal .shared-queue-subtask-panel .subtask-row.done{
   background:#eef8f1;
@@ -2308,18 +2308,18 @@ kbd{
   color:#b36e6e;
 }
 #tasks-modal .shared-queue-subtask-panel .subtask-text{
-  color:#34566a;
+  color:#5d500f;
   max-width:180px;
 }
 #tasks-modal .shared-queue-subtask-panel .subtask-new-input{
-  background:#ffffff;
-  color:#29485a;
-  border-color:#b8d4e4;
+  background:#fffef8;
+  color:#514300;
+  border-color:#e2c95a;
 }
-#tasks-modal .shared-queue-subtask-panel .subtask-new-input::placeholder{ color:#89a2b1; }
+#tasks-modal .shared-queue-subtask-panel .subtask-new-input::placeholder{ color:#9a8950; }
 #tasks-modal .shared-queue-subtask-panel .subtask-new-input:focus{
-  border-color:#6ea4c0;
-  box-shadow:0 0 0 2px rgba(110,164,192,.12);
+  border-color:#c59d18;
+  box-shadow:0 0 0 2px rgba(197,157,24,.12);
 }
 #tasks-modal .shared-queue-add-trigger{
   display:inline-flex;
