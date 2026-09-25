@@ -3284,8 +3284,18 @@ kbd{
 #tasks-modal .subtask-row.drag-over-bottom::after{ background: #5a5a5a; }
 #tasks-modal .task-row.subtask-drop-target{ box-shadow: inset 0 0 0 2px #5a5a5a; }
 
-/* Phone: keep the task list denser without changing desktop typography. */
+/* Phone: keep the task list denser without changing desktop typography,
+   and trim the desktop-sized whitespace above the actual task content. */
 @media (max-width: 640px){
+  #tasks-modal .tasks-modal-card{
+    padding-top:10px;
+  }
+  #tasks-modal .modal-back-row{
+    margin-bottom:7px;
+  }
+  #tasks-modal .tasks-progress-row{
+    margin-bottom:8px;
+  }
   #tasks-modal .task-text{ font-size:13px; }
   #tasks-modal .subtask-text{ font-size:11px; }
 }
