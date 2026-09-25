@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=244">
+<link rel="manifest" href="manifest.webmanifest?v=245">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=244" count as
+     by their exact URL, so "style.css" and "style.css?v=245" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=244">
+<link rel="stylesheet" href="style.css?v=245">
 </head>
 <body>
 <div id="app">
@@ -822,12 +822,12 @@
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=244").catch((err) => {
+    navigator.serviceWorker.register("./sw.js?v=245").catch((err) => {
       console.warn("Service worker registration failed:", err);
     });
   });
 }
 </script>
-<script src="app.js?v=244"></script>
+<script src="app.js?v=245"></script>
 </body>
 </html>

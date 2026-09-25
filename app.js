@@ -15812,6 +15812,12 @@
       it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     };
+    addItem(s.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
+      updateDRCQueueSubtask(s.id, (live) => {
+        live.done = !live.done;
+        if (live.done) live.failed = false;
+      });
+    });
     addItem(s.failed ? "\u21a9 Clear failed" : "Mark failed", "", () => {
       updateDRCQueueSubtask(s.id, (live) => {
         live.failed = !live.failed;
@@ -15977,6 +15983,9 @@
           return;
         }
         if (stext.contentEditable === "true") return;
+        // Phone: status changes live only in the long-press/right-click menu.
+        // This avoids accidental done/undone toggles while scrolling or tapping.
+        if (queuePhoneMode) return;
         if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
         clickTimer = setTimeout(() => {
           clickTimer = null;
@@ -19027,6 +19036,12 @@
       const n = getTaskNotes(s).length;
       addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", openNotes);
     }
+    addItem(s.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
+      pushUndo();
+      setSubtaskDone(t, s, !s.done);
+      persist();
+      rerender();
+    });
     addItem(s.failed ? "\u21a9 Clear failed" : "Mark failed", "", () => {
       pushUndo();
       setSubtaskFailed(t, s, !s.failed);
@@ -19220,6 +19235,8 @@
           return;
         }
         if (stext.contentEditable === "true") return;
+        // Phone: require the long-press/right-click menu for done/undone.
+        if (subtaskPhoneMode) return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
           subtaskClickTimer = null;
@@ -20278,6 +20295,8 @@
           return;
         }
         if (stext.contentEditable === "true") return;
+        // Phone: require the long-press/right-click menu for done/undone.
+        if (window.matchMedia("(max-width: 640px)").matches) return;
         if (subtaskClickTimer) { clearTimeout(subtaskClickTimer); subtaskClickTimer = null; return; }
         subtaskClickTimer = setTimeout(() => {
           subtaskClickTimer = null;
