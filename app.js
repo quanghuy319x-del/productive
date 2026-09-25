@@ -18310,6 +18310,154 @@
     tasksListEl.querySelectorAll(".task-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
   }
 
+  // Phone task dragging: require a deliberate hold before the drag arms.
+  // This replaces the browser's native touch-drag timing on narrow screens,
+  // which can otherwise start while the user only meant to tap/scroll.
+  function installTaskTouchDrag(handle, li, taskId) {
+    const HOLD_MS = 800;
+    const MOVE_TOLERANCE_SQ = 144; // 12px
+    let timer = null;
+    let pointerId = null;
+    let startX = 0, startY = 0;
+    let active = false;
+    let ghost = null;
+    let dropTarget = null; // { taskId, before }
+
+    const clearHints = () => {
+      if (!tasksListEl) return;
+      tasksListEl.querySelectorAll(".task-row.drag-over-top, .task-row.drag-over-bottom")
+        .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom"));
+    };
+
+    const removeGhost = () => {
+      if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      ghost = null;
+    };
+
+    const reset = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      active = false;
+      clearHints();
+      removeGhost();
+      li.classList.remove("task-dragging", "touch-dragging");
+      taskDragState = null;
+      dropTarget = null;
+      pointerId = null;
+    };
+
+    const makeGhost = (x, y) => {
+      ghost = document.createElement("div");
+      ghost.className = "subtask-touch-ghost";
+      const label = li.querySelector(".task-text");
+      ghost.textContent = label ? label.textContent : "";
+      document.body.appendChild(ghost);
+      ghost.style.left = (x + 12) + "px";
+      ghost.style.top = (y + 12) + "px";
+    };
+
+    const moveGhost = (x, y) => {
+      if (!ghost) return;
+      const margin = 6;
+      const maxX = Math.max(margin, window.innerWidth - ghost.offsetWidth - margin);
+      const maxY = Math.max(margin, window.innerHeight - ghost.offsetHeight - margin);
+      ghost.style.left = Math.max(margin, Math.min(x + 12, maxX)) + "px";
+      ghost.style.top = Math.max(margin, Math.min(y + 12, maxY)) + "px";
+    };
+
+    const findTarget = (x, y) => {
+      clearHints();
+      dropTarget = null;
+      const stack = document.elementsFromPoint
+        ? document.elementsFromPoint(x, y)
+        : [document.elementFromPoint(x, y)];
+      for (const el of stack) {
+        if (!el || !el.closest) continue;
+        const row = el.closest(".task-row[data-task-id]");
+        if (!row || row === li || !tasksListEl.contains(row)) continue;
+        const rect = row.getBoundingClientRect();
+        const before = (y - rect.top) < rect.height / 2;
+        row.classList.toggle("drag-over-top", before);
+        row.classList.toggle("drag-over-bottom", !before);
+        dropTarget = { taskId: row.dataset.taskId, before };
+        break;
+      }
+    };
+
+    const autoScroll = (y) => {
+      if (!tasksListEl) return;
+      const r = tasksListEl.getBoundingClientRect();
+      const edge = 44;
+      if (y < r.top + edge) tasksListEl.scrollTop -= 12;
+      else if (y > r.bottom - edge) tasksListEl.scrollTop += 12;
+    };
+
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      if (e.isPrimary === false) return;
+      if (!window.matchMedia("(max-width: 640px)").matches) return;
+      if (!requireSignIn()) return;
+      e.stopPropagation();
+      reset();
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      timer = setTimeout(() => {
+        timer = null;
+        active = true;
+        taskDragState = { taskId };
+        li.classList.add("task-dragging", "touch-dragging");
+        try { handle.setPointerCapture(pointerId); } catch (err) {}
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+        makeGhost(startX, startY);
+        findTarget(startX, startY);
+      }, HOLD_MS);
+    }, { passive: true });
+
+    handle.addEventListener("pointermove", (e) => {
+      if (pointerId == null || e.pointerId !== pointerId) return;
+      if (!active) {
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        if ((dx * dx + dy * dy) > MOVE_TOLERANCE_SQ) reset();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      moveGhost(e.clientX, e.clientY);
+      autoScroll(e.clientY);
+      findTarget(e.clientX, e.clientY);
+    }, { passive: false });
+
+    const finish = (e, commit) => {
+      if (pointerId == null || e.pointerId !== pointerId) return;
+      if (active) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const target = dropTarget ? { ...dropTarget } : null;
+      try { handle.releasePointerCapture(pointerId); } catch (err) {}
+      reset();
+      if (commit && target && target.taskId) {
+        reorderTask(taskId, target.taskId, target.before);
+      }
+    };
+
+    handle.addEventListener("pointerup", (e) => finish(e, true), { passive: false });
+    handle.addEventListener("pointercancel", (e) => finish(e, false), { passive: false });
+    handle.addEventListener("click", (e) => {
+      if (window.matchMedia("(max-width: 640px)").matches) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+    handle.addEventListener("contextmenu", (e) => {
+      if (window.matchMedia("(max-width: 640px)").matches) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
+
   // Single "★ Sort" button that alternates between two one-click reorders
   // each time it's pressed: star (then color) first, then color-only next
   // time, then back to star, etc. Each press is a real edit (goes through
@@ -18909,14 +19057,19 @@
   // gesture on the grip means "drag", while starting on the pill itself
   // still means tap/scroll/long-press menu — no gesture conflict.
   function installSubtaskTouchDrag(row, taskId, subtaskId) {
+    const HOLD_MS = 800;
+    const MOVE_TOLERANCE_SQ = 144; // 12px
     const grip = document.createElement("span");
     grip.className = "subtask-touch-drag-handle";
     grip.textContent = "⠿";
-    grip.title = "Drag subtask";
+    grip.title = "Hold to drag subtask";
     grip.setAttribute("role", "button");
-    grip.setAttribute("aria-label", "Drag subtask");
+    grip.setAttribute("aria-label", "Hold to drag subtask");
 
+    let timer = null;
     let pointerId = null;
+    let startX = 0, startY = 0;
+    let active = false;
     let ghost = null;
     let restoreDraggable = null;
     let dropTarget = null; // { taskId, subtaskId, before }
@@ -18935,6 +19088,9 @@
     };
 
     const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      active = false;
       clearHints();
       removeGhost();
       row.classList.remove("task-dragging", "touch-dragging");
@@ -18970,9 +19126,9 @@
       clearHints();
       dropTarget = null;
 
-      // elementsFromPoint lets us ignore the source pill if the finger is
-      // still partly over it and pick the real pill/task underneath.
-      const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+      const stack = document.elementsFromPoint
+        ? document.elementsFromPoint(x, y)
+        : [document.elementFromPoint(x, y)];
       let targetSub = null;
       for (const el of stack) {
         if (!el || !el.closest) continue;
@@ -19022,24 +19178,34 @@
       if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
       if (e.isPrimary === false) return;
       if (!requireSignIn()) return;
-      e.preventDefault();
       e.stopPropagation();
-      closeContextMenu();
+      cleanup();
 
       pointerId = e.pointerId;
-      dropTarget = null;
+      startX = e.clientX;
+      startY = e.clientY;
       restoreDraggable = row.draggable;
-      row.draggable = false; // keep native drag from competing with pointer drag
-      row.classList.add("task-dragging", "touch-dragging");
-      subtaskDragState = { taskId, subtaskId };
-      try { grip.setPointerCapture(pointerId); } catch (err) {}
-      try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
-      makeGhost(e.clientX, e.clientY);
-      findDropTarget(e.clientX, e.clientY);
-    }, { passive: false });
+      row.draggable = false;
+
+      timer = setTimeout(() => {
+        timer = null;
+        active = true;
+        subtaskDragState = { taskId, subtaskId };
+        row.classList.add("task-dragging", "touch-dragging");
+        try { grip.setPointerCapture(pointerId); } catch (err) {}
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+        makeGhost(startX, startY);
+        findDropTarget(startX, startY);
+      }, HOLD_MS);
+    }, { passive: true });
 
     grip.addEventListener("pointermove", (e) => {
       if (pointerId == null || e.pointerId !== pointerId) return;
+      if (!active) {
+        const dx = e.clientX - startX, dy = e.clientY - startY;
+        if ((dx * dx + dy * dy) > MOVE_TOLERANCE_SQ) cleanup();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       moveGhost(e.clientX, e.clientY);
@@ -19049,8 +19215,10 @@
 
     const finish = (e, commit) => {
       if (pointerId == null || e.pointerId !== pointerId) return;
-      e.preventDefault();
-      e.stopPropagation();
+      if (active) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       const target = dropTarget ? { ...dropTarget } : null;
       try { grip.releasePointerCapture(pointerId); } catch (err) {}
       cleanup();
@@ -19061,8 +19229,6 @@
 
     grip.addEventListener("pointerup", (e) => finish(e, true), { passive: false });
     grip.addEventListener("pointercancel", (e) => finish(e, false), { passive: false });
-    // A synthetic click can follow touch pointerup; never let it bubble to
-    // the pill's "toggle done" click handler.
     grip.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
     grip.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); });
 
@@ -19393,11 +19559,14 @@
       const handle = document.createElement("span");
       handle.className = "task-drag-handle";
       handle.textContent = "⠿";
-      handle.title = "Drag to reorder";
-      handle.draggable = true;
+      handle.title = window.matchMedia("(max-width: 640px)").matches
+        ? "Hold to drag"
+        : "Drag to reorder";
+      handle.draggable = !window.matchMedia("(max-width: 640px)").matches;
       handle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       handle.addEventListener("dragstart", (e) => startTaskDrag(e, li, t.id));
       handle.addEventListener("dragend", () => endTaskDrag(li));
+      installTaskTouchDrag(handle, li, t.id);
 
       const cb = document.createElement("input");
       cb.type = "checkbox";
