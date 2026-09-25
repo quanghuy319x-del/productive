@@ -5772,3 +5772,22 @@ kbd{
   opacity:1 !important;
   pointer-events:auto !important;
 }
+
+
+/* v256: on touch devices, holding a task must open our task menu rather
+   than Android/Chromium selecting the task title and showing blue handles. */
+@media (max-width: 640px) and (any-pointer: coarse){
+  #tasks-modal .task-row,
+  #tasks-modal .task-row .task-text,
+  #cal-day-modal .task-row,
+  #cal-day-modal .task-row .task-text{
+    -webkit-user-select:none !important;
+    user-select:none !important;
+    -webkit-touch-callout:none !important;
+  }
+  #tasks-modal .task-row .task-text,
+  #cal-day-modal .task-row .task-text{
+    cursor:default;
+    caret-color:transparent;
+  }
+}

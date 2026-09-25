@@ -19355,7 +19355,9 @@
   }
 
   function installTaskContextLongPress(row, openMenu) {
-    const HOLD_MS = 520;
+    // Open slightly before Android/Chromium's native long-press text
+    // selection normally kicks in. Scrolling still cancels via movement.
+    const HOLD_MS = 420;
     const MOVE_TOLERANCE_SQ = 144;
     let timer = null;
     let pointerId = null;
