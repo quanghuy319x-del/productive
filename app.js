@@ -15697,7 +15697,11 @@
     zoomModalOpen(noteModal);
     const current = noteWorkingList[noteActiveIndex];
     const isBlank = !(current.title && current.title.trim()) && !(current.html && current.html.trim());
-    requestAnimationFrame(() => { (isBlank ? noteTitleInput : noteTextarea).focus(); });
+    // Phone: open Note/DRC without focusing an editor field so the
+    // on-screen keyboard stays closed until the user taps where to type.
+    if (!window.matchMedia("(max-width: 640px)").matches) {
+      requestAnimationFrame(() => { (isBlank ? noteTitleInput : noteTextarea).focus(); });
+    }
   }
 
   // Simple "Lines: N" readout in the editor's corner — counts actual
@@ -21048,7 +21052,11 @@
     // though height is deliberately left alone, matching notes.
     brainstormCard.style.width = "";
     zoomModalOpen(brainstormModal);
-    requestAnimationFrame(() => brainstormTextarea.focus());
+    // Phone: keep Brainstorm passive on first open; tapping the editor
+    // explicitly is what should bring up the on-screen keyboard.
+    if (!window.matchMedia("(max-width: 640px)").matches) {
+      requestAnimationFrame(() => brainstormTextarea.focus());
+    }
   }
 
   function closeBrainstormModal() {
