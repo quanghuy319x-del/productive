@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=256">
+<link rel="manifest" href="manifest.webmanifest?v=257">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=256" count as
+     by their exact URL, so "style.css" and "style.css?v=257" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=256">
+<link rel="stylesheet" href="style.css?v=257">
 </head>
 <body>
 <div id="app">
@@ -578,6 +578,7 @@
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
       <button type="button" id="note-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
+      <button type="button" id="note-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color while 🎨 is on">1.</button>
       <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
@@ -771,6 +772,7 @@
       <span class="note-tool-sep"></span>
       <button type="button" id="brainstorm-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
       <button type="button" id="brainstorm-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
+      <button type="button" id="brainstorm-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="brainstorm-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
       <button type="button" id="brainstorm-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
@@ -822,12 +824,34 @@
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=256").catch((err) => {
+    navigator.serviceWorker.register("./sw.js?v=257").catch((err) => {
       console.warn("Service worker registration failed:", err);
     });
   });
 }
 </script>
-<script src="app.js?v=256"></script>
+<script src="app.js?v=257"></script>
+<script>
+(() => {
+  function insertTab(editor) {
+    if (!editor) return;
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    range.deleteContents();
+    const tab = document.createTextNode("\t");
+    range.insertNode(tab);
+    range.setStartAfter(tab);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "\t" }));
+  }
+  document.getElementById("note-tool-tab")?.addEventListener("click", () => insertTab(document.getElementById("note-textarea")));
+  document.getElementById("brainstorm-tool-tab")?.addEventListener("click", () => insertTab(document.getElementById("brainstorm-textarea")));
+})();
+</script>
 </body>
 </html>
