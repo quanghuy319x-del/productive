@@ -5795,3 +5795,22 @@ kbd{
 /* v260 compact editor tools */
 .note-tool-btn.tool-shift-enter{min-width:44px;width:44px;max-width:44px;padding-left:0;padding-right:0;overflow:hidden;white-space:nowrap}
 .note-tool-btn.is-active{font-weight:800;box-shadow:inset 0 0 0 2px currentColor}
+
+/* v265 title mode: isolated from B/AA formatting */
+.title-mode-heading{font-weight:700;text-transform:uppercase}
+.title-mode-normal{font-weight:400;text-transform:none}
+
+/* v265 action tools: no persistent/pressed visual state */
+#note-tool-tab,#note-tool-divider,#note-tool-shift-enter,
+#brainstorm-tool-tab,#brainstorm-tool-divider,#brainstorm-tool-shift-enter{
+  box-shadow:none!important;
+  transform:none!important;
+}
+#note-tool-tab:active,#note-tool-divider:active,#note-tool-shift-enter:active,
+#brainstorm-tool-tab:active,#brainstorm-tool-divider:active,#brainstorm-tool-shift-enter:active,
+#note-tool-tab:focus,#note-tool-divider:focus,#note-tool-shift-enter:focus,
+#brainstorm-tool-tab:focus,#brainstorm-tool-divider:focus,#brainstorm-tool-shift-enter:focus{
+  box-shadow:none!important;
+  transform:none!important;
+  outline:none!important;
+}
