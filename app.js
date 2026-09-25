@@ -4983,7 +4983,7 @@
     forms: '<svg viewBox="0 0 24 24"><path d="M6 2h8l5 5v14a1 1 0 01-1 1H6a1 1 0 01-1-1V3a1 1 0 011-1z" fill="#673AB7"/><path d="M14 2l5 5h-5z" fill="#C6B3E6"/><rect x="7" y="11" width="6" height="1.3" fill="#fff"/><rect x="14.5" y="10.6" width="2" height="2" rx=".3" fill="#fff"/><rect x="7" y="14" width="6" height="1.3" fill="#fff"/><rect x="14.5" y="13.6" width="2" height="2" rx=".3" fill="#fff"/></svg>',
     photos: '<svg viewBox="0 0 24 24"><path d="M12 12 L12 0 A6 6 0 0 1 12 12 Z" fill="#E94235"/><path d="M12 12 L24 12 A6 6 0 0 1 12 12 Z" fill="#4A82F2"/><path d="M12 12 L12 24 A6 6 0 0 1 12 12 Z" fill="#31A354"/><path d="M12 12 L0 12 A6 6 0 0 1 12 12 Z" fill="#FBBB05"/></svg>',
     drive: '<svg viewBox="0 0 24 24"><path d="M8.5 3h7l7.3 12.6h-7z" fill="#FFC107"/><path d="M1.7 15.6l3.8-6.6 7.3 12.6H9.3z" fill="#4CAF50"/><path d="M15.3 21.6H8.8l3.7-6.6h7.3z" fill="#2196F3"/></svg>',
-    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9.5 14.5l5-5"/><path d="M8 16.5l-1.8 1.8a3.5 3.5 0 01-5-5L3 11.5"/><path d="M16 7.5l1.8-1.8a3.5 3.5 0 015 5L21 12.5"/></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17"/><path d="M12 3c2.35 2.45 3.55 5.45 3.55 9S14.35 18.55 12 21"/><path d="M12 3C9.65 5.45 8.45 8.45 8.45 12S9.65 18.55 12 21"/></svg>',
   };
   const LINK_ICON_RULES = [
     { test: (h, p) => h === "docs.google.com" && p.startsWith("/spreadsheets"), key: "sheets" },
@@ -22632,7 +22632,7 @@
     return items.sort((a, b) => a.nodeLabel.localeCompare(b.nodeLabel));
   }
 
-  const FAVORITE_TYPE_ICON = { note: "📝", photo: "🖼", link: "🔗" };
+  const FAVORITE_TYPE_ICON = { note: "📝", photo: "🖼", link: "🌐" };
 
   // Puts the red YouTube logo (the same LINK_ICON_SVGS.youtube used on a
   // node's link markers and the sidebar Videos button) into `el`, at a
