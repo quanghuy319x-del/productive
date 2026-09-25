@@ -3277,8 +3277,18 @@ kbd{
 /* Phone: keep the task list denser without changing desktop typography,
    and trim the desktop-sized whitespace above the actual task content. */
 @media (max-width: 640px){
+  /* Phone: pin Tasks close to the top of the usable browser area instead
+     of vertically centering a fixed-height card. This gives the list more
+     vertical room while preserving a small breathing gap at top/bottom. */
+  #tasks-modal{
+    align-items:flex-start;
+    padding-top:6px;
+  }
   #tasks-modal .tasks-modal-card{
     padding-top:10px;
+    height:calc(100% - 12px);
+    max-height:calc(100% - 12px);
+    min-height:0;
   }
   #tasks-modal .task-drag-handle{
     touch-action:none;
