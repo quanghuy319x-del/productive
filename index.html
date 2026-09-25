@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=265">
+<link rel="manifest" href="manifest.webmanifest?v=266">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=265" count as
+     by their exact URL, so "style.css" and "style.css?v=266" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=265">
+<link rel="stylesheet" href="style.css?v=266">
 </head>
 <body>
 <div id="app">
@@ -837,7 +837,7 @@ if ("serviceWorker" in navigator) {
   });
   async function updateServiceWorker() {
     try {
-      const reg = await navigator.serviceWorker.register("./sw.js?v=265", { updateViaCache: "none" });
+      const reg = await navigator.serviceWorker.register("./sw.js?v=266", { updateViaCache: "none" });
       await reg.update();
       if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
     } catch (err) {
@@ -851,7 +851,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", updateServiceWorker);
 }
 </script>
-<script src="app.js?v=265"></script>
+<script src="app.js?v=266"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -912,11 +912,11 @@ if ("serviceWorker" in navigator) {
       editor.focus();
     });
 
-    function currentLineText(range) {
+    function lineBeforeCaret(range) {
       const pre = range.cloneRange();
       pre.selectNodeContents(editor);
       pre.setEnd(range.startContainer, range.startOffset);
-      return (pre.toString().split("\n").pop() || "");
+      return (pre.toString().split("\n").pop() || "").replace(/\u200B/g, "");
     }
 
     editor.addEventListener("beforeinput", (e) => {
@@ -924,36 +924,40 @@ if ("serviceWorker" in navigator) {
       const sel = window.getSelection();
       if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
       const range = sel.getRangeAt(0);
-      if (currentLineText(range).includes(".")) return;
+      if (lineBeforeCaret(range).includes(".")) return;
 
       e.preventDefault();
       range.deleteContents();
 
-      let node;
       if (e.data === ".") {
-        node = document.createElement("span");
-        node.className = "title-mode-normal";
-        node.textContent = ".";
+        // Keep the caret INSIDE a persistent normal span. This is important on
+        // Android: a caret merely placed after a bold span can inherit bold.
+        const normal = document.createElement("span");
+        normal.className = "title-mode-normal";
+        const text = document.createTextNode(".\u200B");
+        normal.appendChild(text);
+        range.insertNode(normal);
+        range.setStart(text, 1); // after dot, before zero-width caret anchor
+        range.collapse(true);
       } else {
-        node = document.createElement("span");
-        node.className = "title-mode-heading";
-        node.textContent = e.data.toUpperCase();
+        // Title chars are explicit formatting only; never toggle execCommand bold.
+        const heading = document.createElement("span");
+        heading.className = "title-mode-heading";
+        heading.textContent = e.data.toUpperCase();
+        range.insertNode(heading);
+        const caret = document.createTextNode("\u200B");
+        heading.parentNode.insertBefore(caret, heading.nextSibling);
+        range.setStart(caret, 1);
+        range.collapse(true);
       }
-      range.insertNode(node);
-
-      // Critical: put a zero-width normal text node AFTER the inserted node.
-      // Android contenteditable otherwise keeps the caret inside/inheriting bold.
-      const caret = document.createTextNode("\u200B");
-      node.parentNode.insertBefore(caret, node.nextSibling);
-      range.setStart(caret, 1);
-      range.collapse(true);
       sel.removeAllRanges();
       sel.addRange(range);
-
       editor.dispatchEvent(new InputEvent("input", {
-        bubbles:true, inputType:"insertText",
+        bubbles:true,inputType:"insertText",
         data:e.data === "." ? "." : e.data.toUpperCase()
       }));
+      // Force toolbar state refresh without changing B/AA commands.
+      document.dispatchEvent(new Event("selectionchange"));
     });
   }
   setupTitleMode("note-tool-title-mode", "note-textarea");
