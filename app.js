@@ -19056,7 +19056,7 @@
   // users a dedicated grip that uses Pointer Events instead. Starting a
   // gesture on the grip means "drag", while starting on the pill itself
   // still means tap/scroll/long-press menu — no gesture conflict.
-  function installSubtaskTouchDrag(row, taskId, subtaskId) {
+  function installSubtaskTouchDrag(row, taskId, subtaskId, openMenu) {
     const HOLD_MS = 800;
     const MOVE_TOLERANCE_SQ = 144; // 12px
     let timer = null;
@@ -19064,6 +19064,8 @@
     let startX = 0, startY = 0;
     let active = false;
     let ghost = null;
+    let menuTarget = null;
+    let overMenuTarget = false;
     let restoreDraggable = null;
     let dropTarget = null; // { taskId, subtaskId, before }
 
@@ -19080,12 +19082,19 @@
       ghost = null;
     };
 
+    const removeMenuTarget = () => {
+      if (menuTarget && menuTarget.parentNode) menuTarget.parentNode.removeChild(menuTarget);
+      menuTarget = null;
+      overMenuTarget = false;
+    };
+
     const cleanup = () => {
       if (timer) clearTimeout(timer);
       timer = null;
       active = false;
       clearHints();
       removeGhost();
+      removeMenuTarget();
       row.classList.remove("task-dragging", "touch-dragging");
       subtaskDragState = null;
       if (restoreDraggable !== null) {
@@ -19106,6 +19115,14 @@
       ghost.style.top = (y + 12) + "px";
     };
 
+    const makeMenuTarget = () => {
+      menuTarget = document.createElement("div");
+      menuTarget.className = "subtask-drag-menu-target";
+      menuTarget.textContent = "⋯";
+      menuTarget.setAttribute("aria-hidden", "true");
+      document.body.appendChild(menuTarget);
+    };
+
     const moveGhost = (x, y) => {
       if (!ghost) return;
       const margin = 6;
@@ -19115,9 +19132,23 @@
       ghost.style.top = Math.max(margin, Math.min(y + 12, maxY)) + "px";
     };
 
+    const updateMenuTarget = (x, y) => {
+      if (!menuTarget) return false;
+      const r = menuTarget.getBoundingClientRect();
+      const pad = 14;
+      const hit = x >= r.left - pad && x <= r.right + pad &&
+        y >= r.top - pad && y <= r.bottom + pad;
+      overMenuTarget = hit;
+      menuTarget.classList.toggle("drag-over", hit);
+      return hit;
+    };
+
     const findDropTarget = (x, y) => {
       clearHints();
       dropTarget = null;
+
+      // The top-center Menu target wins over normal reorder targets.
+      if (updateMenuTarget(x, y)) return;
 
       const stack = document.elementsFromPoint
         ? document.elementsFromPoint(x, y)
@@ -19160,7 +19191,7 @@
     };
 
     const autoScroll = (y) => {
-      if (!tasksListEl) return;
+      if (!tasksListEl || overMenuTarget) return;
       const r = tasksListEl.getBoundingClientRect();
       const edge = 44;
       if (y < r.top + edge) tasksListEl.scrollTop -= 12;
@@ -19171,7 +19202,7 @@
       if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
       if (e.isPrimary === false) return;
       if (!window.matchMedia("(max-width: 640px)").matches) return;
-      if (e.target.closest && e.target.closest(".subtask-menu-btn, .subtask-note-icon, .subtask-add-btn, [contenteditable=\"true\"]")) return;
+      if (e.target.closest && e.target.closest(".subtask-note-icon, .subtask-add-btn, [contenteditable=\"true\"]")) return;
       if (!requireSignIn()) return;
 
       cleanup();
@@ -19190,6 +19221,7 @@
         try { row.setPointerCapture(pointerId); } catch (err) {}
         try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
         makeGhost(startX, startY);
+        makeMenuTarget();
         findDropTarget(startX, startY);
       }, HOLD_MS);
     }, { passive: true });
@@ -19204,8 +19236,8 @@
       e.preventDefault();
       e.stopPropagation();
       moveGhost(e.clientX, e.clientY);
-      autoScroll(e.clientY);
       findDropTarget(e.clientX, e.clientY);
+      autoScroll(e.clientY);
     }, { passive: false });
 
     const finish = (e, commit) => {
@@ -19215,7 +19247,15 @@
         e.stopPropagation();
       }
       const wasActive = active;
+      const menuDrop = wasActive && overMenuTarget;
       const target = dropTarget ? { ...dropTarget } : null;
+      let menuX = window.innerWidth / 2;
+      let menuY = 88;
+      if (menuTarget) {
+        const r = menuTarget.getBoundingClientRect();
+        menuX = r.left + r.width / 2;
+        menuY = r.bottom + 10;
+      }
       try { row.releasePointerCapture(pointerId); } catch (err) {}
       cleanup();
 
@@ -19225,7 +19265,12 @@
           row.__subtaskLongPressConsumed = false;
         }, 900);
       }
-      if (commit && wasActive && target && target.taskId) {
+      if (!commit || !wasActive) return;
+      if (menuDrop) {
+        if (typeof openMenu === "function") openMenu(menuX, menuY);
+        return;
+      }
+      if (target && target.taskId) {
         moveSubtask(taskId, subtaskId, target.taskId, target.subtaskId, target.before);
       }
     };
@@ -19397,31 +19442,16 @@
       }
 
       // Desktop keeps native whole-pill drag. On phones, holding the pill
-      // itself for ~0.8s arms the pointer-based drag instead of showing a
-      // separate drag handle.
-      installSubtaskTouchDrag(row, t.id, s.id);
-
-      // Phone menu: a compact ⋯ button replaces the old long-press menu,
-      // because long-press is now reserved for dragging.
-      const subMenuBtn = document.createElement("button");
-      subMenuBtn.type = "button";
-      subMenuBtn.className = "subtask-menu-btn";
-      subMenuBtn.textContent = "⋯";
-      subMenuBtn.title = "Subtask menu";
-      subMenuBtn.setAttribute("aria-label", "Subtask menu");
-      subMenuBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-      subMenuBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const r = subMenuBtn.getBoundingClientRect();
-        openSubtaskContextMenu(r.right, r.bottom + 4, t, s, () => renderTasksModal(), openSubtaskNotes);
+      // itself for ~0.8s arms the pointer-based drag. While dragging, a
+      // large temporary Menu target appears at the top-center; dropping
+      // there opens this subtask's menu.
+      installSubtaskTouchDrag(row, t.id, s.id, (x, y) => {
+        openSubtaskContextMenu(x, y, t, s, () => renderTasksModal(), openSubtaskNotes);
       });
 
-      // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
-      // lives in the subtask menu/right-click menu.
+      // No inline menu/drag button on phone — the pill stays visually clean.
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
-      row.appendChild(subMenuBtn);
       list.appendChild(row);
     });
 
