@@ -2545,6 +2545,17 @@ kbd{
 /* Pressed/"on" state for the task font-color toggle (black mode active) */
 .tasks-sort-stars-btn.active{ background: var(--accent, #4a72b5); color: #fff; border-color: transparent; }
 .tasks-sort-stars-btn.active:hover{ color: #fff; }
+/* Tasks header compact menu: on desktop the <details> wrapper is visually
+   transparent, so the four existing action buttons stay in their old row. */
+.tasks-compact-menu{
+  display:contents;
+}
+.tasks-compact-menu-toggle{
+  display:none;
+}
+.tasks-compact-menu-actions{
+  display:contents;
+}
 /* Drag grip for resizing the tasks modal card — same three-diagonal-
    stripe look as .note-resize-handle, recolored for this card's white/
    gray theme instead of the note editor's paper theme. */
@@ -3298,7 +3309,69 @@ kbd{
     margin-bottom:7px;
   }
   #tasks-modal .tasks-progress-row{
+    position:relative;
     margin-bottom:8px;
+    gap:7px;
+  }
+
+  /* Compact phone header: replace Font / Sort / Templates / Random with
+     one small menu button. The menu overlays the list instead of consuming
+     another row of vertical space. */
+  #tasks-modal .tasks-compact-menu{
+    display:block;
+    flex:none;
+    position:relative;
+  }
+  #tasks-modal .tasks-compact-menu-toggle{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-width:40px;
+    height:34px;
+    padding:0 10px;
+    border:1px solid #c9c9c9;
+    border-radius:8px;
+    background:#ffffff;
+    color:#444444;
+    font-size:18px;
+    font-weight:800;
+    line-height:1;
+    cursor:pointer;
+    list-style:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #tasks-modal .tasks-compact-menu-toggle::-webkit-details-marker{
+    display:none;
+  }
+  #tasks-modal .tasks-compact-menu[open] .tasks-compact-menu-toggle{
+    background:#f0f0f0;
+    border-color:#8f8f8f;
+  }
+  #tasks-modal .tasks-compact-menu-actions{
+    display:none;
+    position:absolute;
+    z-index:30;
+    top:40px;
+    right:0;
+    width:168px;
+    padding:6px;
+    grid-template-columns:1fr 1fr;
+    gap:6px;
+    background:#ffffff;
+    border:1px solid #c9c9c9;
+    border-radius:10px;
+    box-shadow:0 7px 22px rgba(0,0,0,.18);
+  }
+  #tasks-modal .tasks-compact-menu[open] .tasks-compact-menu-actions{
+    display:grid;
+  }
+  #tasks-modal .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    width:100%;
+    min-width:0;
+    padding:7px 6px;
+    font-size:11px;
+    text-align:center;
   }
   #tasks-modal .task-text{ font-size:13px; }
   #tasks-modal .subtask-text{ font-size:11px; }
