@@ -2306,10 +2306,6 @@ kbd{
   opacity:1;
   text-decoration:none;
 }
-#tasks-modal .shared-queue-subtask-panel .subtask-row.failed{
-  background:#fff1f1;
-  border-color:#e2bcbc;
-}
 #tasks-modal .shared-queue-subtask-panel .subtask-row.failed .subtask-text{
   color:#b36e6e;
 }
@@ -2793,11 +2789,6 @@ kbd{
 .task-fail-btn:hover{ color:#c0392b; }
 .task-fail-btn.failed{ color:#ffffff; background:#c0392b; font-size:12px; }
 .task-row.failed .task-text{ color:#c0392b; }
-.subtask-row.failed{
-  background: transparent; /* shows the panel's fill = the task row's own (colored) fill */
-  border-style: dashed;
-  border-color: rgba(192,57,43,0.35);
-}
 .subtask-row.failed .subtask-text{ color:#c98079; }
 /* With a mouse the ✗ stays out of the way until you hover the row (like
    the star/due/note buttons); a failed one always shows. On touch screens
@@ -3297,7 +3288,6 @@ kbd{
   opacity:1;
   text-decoration:none;
 }
-#tasks-modal .subtask-row.failed{ background:transparent; border-color:#e6bcb7; }
 #tasks-modal .subtask-row.failed .subtask-text{ color:#cc8a83; }
 /* Subtask chosen by the 🎲 Random button */
 #tasks-modal .subtask-row.picked{
@@ -5340,7 +5330,6 @@ kbd{
 #cal-day-modal .subtask-row{ background:#f4f2ec; border-color:#e4e0d4; }
 #cal-day-modal .subtask-row.done{ background:transparent; border-color:#b5d9c3; }
 #cal-day-modal .subtask-row.done .subtask-text{ color: #a29d8c; text-decoration: line-through; opacity:1; }
-#cal-day-modal .subtask-row.failed{ background:transparent; border-color:#e6bcb7; }
 #cal-day-modal .subtask-row.failed .subtask-text{ color:#cc8a83; }
 #cal-day-modal .subtask-text{ color:#333333; }
 #cal-day-modal .subtask-text:focus{ background:#ffffff; }
