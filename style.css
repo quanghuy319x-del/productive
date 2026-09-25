@@ -5791,3 +5791,7 @@ kbd{
     caret-color:transparent;
   }
 }
+
+/* v260 compact editor tools */
+.note-tool-btn.tool-shift-enter{min-width:44px;width:44px;max-width:44px;padding-left:0;padding-right:0;overflow:hidden;white-space:nowrap}
+.note-tool-btn.is-active{font-weight:800;box-shadow:inset 0 0 0 2px currentColor}
