@@ -5835,3 +5835,46 @@ kbd{
   box-shadow:none!important;transform:none!important;filter:none!important;outline:none!important;
 }
 .title-mode-heading{font-weight:700!important;text-transform:uppercase!important;color:inherit!important}
+
+/* v271 Queue Tasks subtasks: compact sync-pill style */
+#tasks-modal .shared-queue-subtask-panel{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px;
+  padding:9px;
+}
+#tasks-modal .shared-queue-subtask-panel .subtask-row{
+  width:auto!important;
+  max-width:100%;
+  min-height:34px;
+  margin:0!important;
+  padding:6px 13px!important;
+  gap:7px!important;
+  border:1.5px solid #a77f20!important;
+  border-radius:999px!important;
+  background:rgba(43,38,27,.94)!important;
+  box-shadow:none!important;
+}
+#tasks-modal .shared-queue-subtask-panel .subtask-text{
+  width:auto!important;
+  max-width:240px!important;
+  color:#e5b93f!important;
+  font-weight:700!important;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#tasks-modal .shared-queue-subtask-panel .subtask-row.done{
+  opacity:.62;
+}
+#tasks-modal .shared-queue-subtask-panel .subtask-row.failed{
+  border-color:#a77f20!important;
+  background:rgba(43,38,27,.94)!important;
+}
+@media (max-width:640px){
+  #tasks-modal .shared-queue-subtask-panel .subtask-row{
+    min-height:38px;
+    padding:7px 14px!important;
+  }
+}
