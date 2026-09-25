@@ -5735,3 +5735,26 @@ kbd{
   .sync-modal-actions .btn-primary,
   .sync-modal-actions .btn-ghost{ width:100%; }
 }
+
+
+/* Phone: larger touch targets for Note / DRC / Brainstorm editor tools. */
+@media (max-width: 640px){
+  .note-toolbar{
+    gap:6px;
+    margin-top:10px;
+  }
+  .note-tool-btn{
+    width:34px;
+    height:34px;
+    min-width:34px;
+    min-height:34px;
+    border-radius:7px;
+    font-size:14px;
+  }
+  .note-tool-sep{
+    margin:0 3px;
+  }
+  .note-color-trigger-glyph{
+    font-size:14px;
+  }
+}
