@@ -19357,6 +19357,9 @@
       row.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Phone long-press is reserved for dragging; use the ⋯ button for
+        // the menu there. Desktop keeps right-click context menus.
+        if (window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
         if (row.__subtaskLongPressConsumed) return;
         openSubtaskContextMenu(e.clientX, e.clientY, t, s, () => renderTasksModal(), openSubtaskNotes);
       });
