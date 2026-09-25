@@ -15097,6 +15097,10 @@
   let noteSaveTimer = null;
   let noteLinkifyTimer = null;
   let noteIsResizing = false;
+  // Android/phone contenteditable is particularly sensitive to full-DOM
+  // serialization and command-state queries while the IME is composing.
+  // Keep those operations off the keystroke hot path on narrow touch UIs.
+  const notePhonePerfMode = () => window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches;
   // A node can now hold several notes. While the modal is open,
   // noteWorkingList holds an editable in-memory copy of that node's notes
   // ({id, title, html} each) and noteActiveIndex is which one is in the
@@ -17464,7 +17468,17 @@
   noteTextarea.addEventListener("beforeinput", () => {
     const now = Date.now();
     if (now - noteLastPushAt > NOTE_TYPING_BURST_MS || !noteUndoStack.length) {
-      pushBoundedSnapshot(noteUndoStack, noteTextarea.innerHTML, NOTE_UNDO_LIMIT);
+      if (notePhonePerfMode()) {
+        // Do not read noteTextarea.innerHTML here on phone. That forces a
+        // serialization of the whole rich note at the exact moment the IME
+        // is trying to insert a character. The working copy is the most
+        // recently committed HTML and is good enough as the burst's undo
+        // checkpoint; toolbar mutations still use the precise notePushUndo().
+        const current = noteWorkingList[noteActiveIndex];
+        pushBoundedSnapshot(noteUndoStack, current ? (current.html || "") : "", NOTE_UNDO_LIMIT);
+      } else {
+        pushBoundedSnapshot(noteUndoStack, noteTextarea.innerHTML, NOTE_UNDO_LIMIT);
+      }
     }
     noteRedoStack = [];
     noteLastPushAt = now;
@@ -17494,9 +17508,12 @@
     }
   });
   document.addEventListener("selectionchange", () => {
-    if (!noteModal.classList.contains("hidden") && document.activeElement === noteTextarea) {
+    if (!noteModal.classList.contains("hidden") && document.activeElement === noteTextarea && !notePhonePerfMode()) {
       updateNoteToolActiveStates();
     }
+  });
+  noteTextarea.addEventListener("pointerup", () => {
+    if (notePhonePerfMode()) updateNoteToolActiveStates();
   });
   noteTextarea.addEventListener("input", (e) => {
     // Keep synchronous work tiny. Chrome's own Enter handling can clone a
