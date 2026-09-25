@@ -2325,6 +2325,19 @@ kbd{
   display:inline-flex;
 }
 
+/* Desktop: keep "Add a queue subtask" out of sight until the pointer is
+   actually over the Queue Tasks panel. Touch devices keep it visible,
+   because they have no reliable hover state. */
+@media (any-hover: hover) and (any-pointer: fine){
+  #tasks-modal .shared-queue-add-trigger{
+    display:none;
+  }
+  #tasks-modal .shared-queue-subtask-panel:hover .shared-queue-add-trigger,
+  #tasks-modal .shared-queue-subtask-panel:focus-within .shared-queue-add-trigger{
+    display:inline-flex;
+  }
+}
+
 .note-textarea{
   width:100%;
   flex: 1 1 auto;
