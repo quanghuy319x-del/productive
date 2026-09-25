@@ -2315,6 +2315,7 @@ kbd{
 }
 #tasks-modal .shared-queue-subtask-panel .subtask-text{
   color:#222222;
+  font-size:10.5px;
   font-weight:600;
   max-width:180px;
 }
@@ -3210,16 +3211,40 @@ kbd{
 }
 #tasks-modal .tasks-sort-stars-btn:hover{ background: #f0f0f0; }
 #tasks-modal .tasks-sort-stars-btn:disabled{ opacity: 0.4; }
-#tasks-modal .task-row{ background: #f7f7f7; border-radius: 6px; }
+#tasks-modal .task-row{
+  min-height:32px;
+  padding:4px 8px;
+  background:#f1f1f1;
+  border:1px solid #c9c9c9;
+  border-radius:7px;
+  box-shadow:none;
+}
+#tasks-modal .task-row:hover{
+  background:#f7f7f7;
+  border-color:#9f9f9f;
+}
+#tasks-modal .task-row.done{
+  background:#dedede;
+  border-color:#cfcfcf;
+}
 #tasks-modal .task-drag-handle{ color: #bbbbbb; }
 #tasks-modal .task-drag-handle:hover{ color: #5a5a5a; }
 #tasks-modal .task-checkbox{ accent-color: #5a5a5a; }
 #tasks-modal .task-star{ color: #bbbbbb; }
 #tasks-modal .task-star:hover,
 #tasks-modal .task-star.starred{ color: #f5c14b; }
-#tasks-modal .task-text{ color: #333333; }
+#tasks-modal .task-text{
+  color:#222222;
+  font-size:12px;
+  font-weight:600;
+  text-transform:none;
+  letter-spacing:0;
+}
 #tasks-modal .task-text:focus{ background: #f2f2f2; }
-#tasks-modal .task-row.done .task-text{ color: #c2c2c2; }
+#tasks-modal .task-row.done .task-text{
+  color:#9a9a9a;
+  text-decoration:none;
+}
 #tasks-modal .task-fail-btn{ color:#bbbbbb; }
 #tasks-modal .task-fail-btn:hover{ color:#c0392b; }
 #tasks-modal .task-fail-btn.failed{ color:#ffffff; background:#c0392b; }
@@ -3250,9 +3275,28 @@ kbd{
 }
 #tasks-modal .tasks-new-input:focus,
 #tasks-modal .subtask-new-input:focus{ border-color: #5a5a5a; }
-#tasks-modal .subtask-row{ background: #f0f0f0; border-color: #d5d5d5; }
-#tasks-modal .subtask-row.done{ background:transparent; border-color:#b5d9c3; }
-#tasks-modal .subtask-row.done .subtask-text{ color: #c2c2c2; opacity:1; text-decoration: line-through; }
+#tasks-modal .subtask-row{
+  min-height:28px;
+  padding:4px 8px;
+  background:#f1f1f1;
+  border:1px solid #c9c9c9;
+  border-radius:7px;
+  box-shadow:none;
+}
+#tasks-modal .subtask-row:hover{
+  background:#f7f7f7;
+  border-color:#9f9f9f;
+}
+#tasks-modal .subtask-row.done{
+  background:#dedede;
+  border:1px solid #cfcfcf;
+  border-style:solid;
+}
+#tasks-modal .subtask-row.done .subtask-text{
+  color:#9a9a9a;
+  opacity:1;
+  text-decoration:none;
+}
 #tasks-modal .subtask-row.failed{ background:transparent; border-color:#e6bcb7; }
 #tasks-modal .subtask-row.failed .subtask-text{ color:#cc8a83; }
 /* Subtask chosen by the 🎲 Random button */
@@ -3267,7 +3311,11 @@ kbd{
   0%, 100%{ transform: scale(1); }
   50%{ transform: scale(1.06); }
 }
-#tasks-modal .subtask-text{ color: #333333; }
+#tasks-modal .subtask-text{
+  color:#222222;
+  font-size:10.5px;
+  font-weight:600;
+}
 #tasks-modal .subtask-text:focus{ background: #ffffff; }
 #tasks-modal .subtask-add-btn{
   background: #ffffff;
@@ -3297,8 +3345,8 @@ kbd{
   #tasks-modal .tasks-progress-row{
     margin-bottom:8px;
   }
-  #tasks-modal .task-text{ font-size:13px; }
-  #tasks-modal .subtask-text{ font-size:11px; }
+  #tasks-modal .task-text{ font-size:11.5px; }
+  #tasks-modal .subtask-text{ font-size:10px; }
 }
 
 
