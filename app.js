@@ -15835,6 +15835,24 @@
       });
     });
     addItem("Copy text", "", () => copySubtaskText(s.text || ""));
+
+    // A line break lives on the subtask that follows the selected one
+    // (brBefore), so the break is genuinely BETWEEN two pills rather
+    // than a newline inside either pill text.
+    const queueDisplay = drcQueueDisplayItems();
+    const queueIndex = queueDisplay.findIndex(x => x.id === s.id);
+    const queueNext = queueIndex >= 0 && queueIndex < queueDisplay.length - 1
+      ? queueDisplay[queueIndex + 1]
+      : null;
+    if (queueNext) {
+      addItem(queueNext.brBefore ? "Remove line break" : "Add line break", "", () => {
+        updateDRCQueueSubtask(queueNext.id, (live) => {
+          if (live.brBefore) delete live.brBefore;
+          else live.brBefore = 1;
+        });
+      });
+    }
+
     addItem("Delete subtask", "danger", () => {
       if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
       deleteDRCQueueSubtask(s.id);
@@ -15935,6 +15953,15 @@
     list.className = "subtask-list";
 
     items.forEach((s) => {
+      // Queue subtasks use the same between-pill line-break format as
+      // ordinary subtasks. A spacer before this pill forces a new row.
+      const breakCount = Math.max(0, Math.min(5, s.brBefore | 0));
+      for (let k = 0; k < breakCount; k++) {
+        const br = document.createElement("li");
+        br.className = "subtask-break" + (k > 0 ? " subtask-break-extra" : "");
+        list.appendChild(br);
+      }
+
       const row = document.createElement("li");
       row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "");
       row.dataset.taskId = SHARED_QUEUE_TASK_ID;
@@ -19092,6 +19119,25 @@
       rerender();
     });
     addItem("Copy text", "", () => copySubtaskText(s.text));
+
+    // Add/remove a visual break AFTER this pill by storing brBefore on
+    // the following subtask. Both Tasks and Calendar already render it.
+    const menuSubs = getTaskSubtasks(t);
+    const menuIndex = menuSubs.findIndex(x => x.id === s.id);
+    const menuNext = menuIndex >= 0 && menuIndex < menuSubs.length - 1
+      ? menuSubs[menuIndex + 1]
+      : null;
+    if (menuNext) {
+      addItem(menuNext.brBefore ? "Remove line break" : "Add line break", "", () => {
+        if (!requireSignIn()) return;
+        pushUndo();
+        if (menuNext.brBefore) delete menuNext.brBefore;
+        else menuNext.brBefore = 1;
+        persist();
+        rerender();
+      });
+    }
+
     addItem("Move to Queue Tasks", "", () => {
       if (!requireSignIn()) return;
       const queue = getDRCQueueItems().slice();
