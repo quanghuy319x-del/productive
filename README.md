@@ -18,7 +18,6 @@ Branchline is a static site — no build step, no server-side code.
 | `app.js` | All application logic |
 | `style.css` | All styling, including light/dark themes |
 | `favicon.svg` | Browser tab icon |
-| `task-check-icon.svg` | Icon used for completed tasks |
 
 ## Core mind-mapping
 
