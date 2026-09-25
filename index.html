@@ -20,7 +20,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=205">
+<link rel="stylesheet" href="style.css?v=206">
 </head>
 <body>
 <div id="app">
@@ -563,6 +563,7 @@
     </div>
     <input id="note-title-input" class="note-title-input" spellcheck="false">
     <div id="note-lock-banner" class="note-lock-banner hidden" role="alert">🔒 Read-only — not connected to Google Drive. Everything up to here is saved.</div>
+    <div id="drc-queue-panel" class="drc-queue-panel hidden" aria-label="Shared DRC queue tasks"></div>
     <div id="note-textarea" class="note-textarea" contenteditable="true" spellcheck="false" data-placeholder="Add a note for this node…"></div>
     <div class="note-toolbar">
       <button type="button" id="note-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
@@ -806,6 +807,6 @@
 <!-- Same BUMP_VERSION note as style.css above — keep these two numbers in
      sync when you bump one, just to avoid confusion; they don't have to
      match technically, each file's version is independent. -->
-<script src="app.js?v=205"></script>
+<script src="app.js?v=206"></script>
 </body>
 </html>
