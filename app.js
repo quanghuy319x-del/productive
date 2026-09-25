@@ -18758,7 +18758,13 @@
     tasksModalTitle.textContent = `Tasks — ${label}`;
     renderTasksModal();
     zoomModalOpen(tasksModal);
-    requestAnimationFrame(() => { tasksNewInput.focus(); autosizeTextarea(tasksNewInput); });
+    requestAnimationFrame(() => {
+      // On phones, open the task list in a passive/minimized state:
+      // size the quick-add field but don't focus it, so the on-screen
+      // keyboard does not pop up until the user deliberately taps an input.
+      autosizeTextarea(tasksNewInput);
+      if (!window.matchMedia("(max-width: 640px)").matches) tasksNewInput.focus();
+    });
   }
 
   function closeTasksModal() {
