@@ -2248,17 +2248,7 @@ kbd{
   letter-spacing:.02em;
 }
 #tasks-modal .shared-queue-count{
-  flex:none;
-  min-width:28px;
-  padding:2px 7px;
-  border-radius:999px;
-  background:#fff9d8;
-  border:1px solid #e2c95a;
-  color:#765f00;
-  text-align:center;
-  font-size:11px;
-  font-weight:700;
-  font-variant-numeric:tabular-nums;
+  display:none;
 }
 #tasks-modal .shared-queue-add-btn{
   opacity:1;
