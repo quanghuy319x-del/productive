@@ -5818,3 +5818,20 @@ kbd{
 /* v266: Android-safe title mode. Normal text after "." must beat inherited/manual styles. */
 .title-mode-heading{font-weight:700!important;text-transform:uppercase!important;color:inherit!important}
 .title-mode-normal,.title-mode-normal *{font-weight:400!important;text-transform:none!important;color:inherit!important}
+
+/* v268: Tab/divider/Shift+Enter are momentary actions: never show selected/pressed state. */
+#note-tool-tab,#note-tool-divider,#note-tool-shift-enter,
+#brainstorm-tool-tab,#brainstorm-tool-divider,#brainstorm-tool-shift-enter{
+  background:var(--paper)!important;border-color:var(--paper-border)!important;
+  box-shadow:none!important;transform:none!important;filter:none!important;
+}
+#note-tool-tab:hover,#note-tool-divider:hover,#note-tool-shift-enter:hover,
+#brainstorm-tool-tab:hover,#brainstorm-tool-divider:hover,#brainstorm-tool-shift-enter:hover,
+#note-tool-tab:active,#note-tool-divider:active,#note-tool-shift-enter:active,
+#brainstorm-tool-tab:active,#brainstorm-tool-divider:active,#brainstorm-tool-shift-enter:active,
+#note-tool-tab:focus,#note-tool-divider:focus,#note-tool-shift-enter:focus,
+#brainstorm-tool-tab:focus,#brainstorm-tool-divider:focus,#brainstorm-tool-shift-enter:focus{
+  background:var(--paper)!important;border-color:var(--paper-border)!important;
+  box-shadow:none!important;transform:none!important;filter:none!important;outline:none!important;
+}
+.title-mode-heading{font-weight:700!important;text-transform:uppercase!important;color:inherit!important}
