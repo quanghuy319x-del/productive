@@ -2135,9 +2135,11 @@
           // has edits Drive never received, merge them if possible, otherwise
           // preserve a separate unsynced copy.
           let mergedContent = null;
+          let localHasUnsyncedEdits = false;
           if (existing) {
             const base = getSyncBase(id);
-            if (base !== undefined && (existing.updatedAt || 0) > base) {
+            localHasUnsyncedEdits = base !== undefined && (existing.updatedAt || 0) > base;
+            if (localHasUnsyncedEdits) {
               try {
                 const snapshot = await getSyncSnapshot(id);
                 if (snapshot) mergedContent = mergeMapContent(snapshot, existing, data);
@@ -2151,6 +2153,36 @@
             }
           }
 
+          // Device-cache self-cleaning: when Drive is newer, this local copy
+          // has no unuploaded edits, and the actual portable map content differs,
+          // purge the stale IndexedDB map + its PhotoDB rows before installing
+          // Drive's version. This avoids old map/photo cache accumulating and,
+          // importantly, never deletes a newer/dirty local edit.
+          let purgeStaleDeviceCache = false;
+          if (existing && !localHasUnsyncedEdits && remoteUpdatedAt > (existing.updatedAt || 0)) {
+            try {
+              const localPortable = await inlinePhotosForPortableCopy(existing);
+              const localSig = (localPortable.title || "") + "\u0000" + mapContentFingerprint(localPortable);
+              const remoteSig = (data.title || "") + "\u0000" + mapContentFingerprint(data);
+              purgeStaleDeviceCache = localSig !== remoteSig;
+            } catch (e) {
+              // Comparison failure is never a reason to delete local cache.
+              purgeStaleDeviceCache = false;
+              console.warn("Skipped stale cache cleanup because map comparison failed", e);
+            }
+          }
+
+          const replacingOpenMap = !!(purgeStaleDeviceCache && state.current && state.current.id === id);
+          if (purgeStaleDeviceCache) {
+            if (replacingOpenMap) {
+              revokePhotoCache();
+              photoCache = new Map();
+              photoBlobCache = new Map();
+            }
+            await DB.delete(id);
+            await PhotoDB.deleteAllForMap(id);
+          }
+
           ensureTheme(data);
           ensureLayout(data);
           ensureFavorite(data);
@@ -2160,8 +2192,11 @@
           // all of a map's photos in one IndexedDB transaction instead of one
           // transaction per photo.
           await ensurePhotosMigrated(data);
-          if (existing) {
+
+          let storedMap = data;
+          if (existing && !purgeStaleDeviceCache) {
             Object.assign(existing, data);
+            storedMap = existing;
             if (mergedContent) {
               existing.root = mergedContent.root;
               existing.links = mergedContent.links;
@@ -2169,12 +2204,22 @@
               existing.updatedAt = nextUpdatedAt(existing);
             }
             await DB.put(existing);
+          } else if (existing && purgeStaleDeviceCache) {
+            // Replace the in-memory object too, rather than Object.assign-ing
+            // over it, so fields that existed only on the stale cached version
+            // cannot survive the cleanup.
+            const mapIndex = state.maps.findIndex(m => m.id === id);
+            if (mapIndex >= 0) state.maps[mapIndex] = data;
+            if (state.current && state.current.id === id) state.current = data;
+            await DB.put(data);
+            if (replacingOpenMap) await loadPhotoCacheForMap(id);
           } else {
             state.maps.push(data);
             await DB.put(data);
           }
-          setSyncBase(id, Math.max(remoteUpdatedAt, data.updatedAt || 0));
-          await setSyncSnapshot(id, existing || data);
+
+          setSyncBase(id, Math.max(remoteUpdatedAt, storedMap.updatedAt || 0));
+          await setSyncSnapshot(id, storedMap);
           changed = true;
         } catch (e) {
           console.error("Drive download failed for one map", e);
@@ -2190,6 +2235,7 @@
         const existing = state.maps.find(m => m.id === id);
         if (!existing) continue;
         await DB.delete(id);
+        await PhotoDB.deleteAllForMap(id);
         await FolderDB.remove(existing);
         changed = true;
         state.maps = state.maps.filter(m => m.id !== id);
