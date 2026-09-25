@@ -2944,6 +2944,10 @@
     }
     DriveDB.busy = false;
     DriveDB.setSyncProgress("", 0, 0);
+    // The shared DRC queue lives in the small settings file rather than a
+    // map file. Refresh that file occasionally while this tab stays open,
+    // so a queue change made on another device arrives without a reload.
+    if (Date.now() - taskTemplateLastSyncAt > 30000) syncTaskTemplatesWithDrive();
     // Refresh the "Synced Xm ago" label every tick regardless of whether
     // this particular poll changed anything — otherwise it'd only ever
     // update at the moment something actually synced, and would sit
@@ -4534,6 +4538,75 @@
     const del = Object.keys(s.deleted || {}).map(id => id + ":" + s.deleted[id]).sort().join(",");
     return items + "|" + del;
   }
+  // Shared DRC "QUEUE TASKS" list. Unlike a normal node task list this is
+  // global to the app: every DRC note (in every map) reads the same items.
+  // It rides in the same small Drive settings file as task/note templates,
+  // so checking a queue item on phone is reflected in DRC notes on PC too.
+  // Each subtask carries its own updatedAt and deletions use tombstones,
+  // allowing concurrent edits to different queue items to merge safely.
+  const DRC_QUEUE_KEY = "branchlineDRCQueue_v1";
+  const DRC_QUEUE_DELETED_KEY = "branchlineDRCQueueDeleted_v1";
+  function getDRCQueueItems() {
+    try {
+      const list = JSON.parse(localStorage.getItem(DRC_QUEUE_KEY) || "[]");
+      return Array.isArray(list) ? list.filter(x => x && x.id) : [];
+    } catch (e) { return []; }
+  }
+  function saveDRCQueueItems(list) {
+    try { localStorage.setItem(DRC_QUEUE_KEY, JSON.stringify(Array.isArray(list) ? list : [])); } catch (e) {}
+  }
+  function getDeletedDRCQueueItems() {
+    try {
+      const o = JSON.parse(localStorage.getItem(DRC_QUEUE_DELETED_KEY) || "{}");
+      return o && typeof o === "object" && !Array.isArray(o) ? o : {};
+    } catch (e) { return {}; }
+  }
+  function saveDeletedDRCQueueItems(o) {
+    try { localStorage.setItem(DRC_QUEUE_DELETED_KEY, JSON.stringify(o || {})); } catch (e) {}
+  }
+  function drcQueueSet() {
+    return { items: getDRCQueueItems(), deleted: getDeletedDRCQueueItems() };
+  }
+  function drcQueueDisplayItems() {
+    // Stable sort: unfinished/failed first; completed items always fall to
+    // the end while preserving the user's order inside each group.
+    return getDRCQueueItems().slice().sort((a, b) => Number(!!a.done) - Number(!!b.done));
+  }
+  function saveDRCQueueMutation(items, deleted) {
+    saveDRCQueueItems(items);
+    if (deleted) saveDeletedDRCQueueItems(deleted);
+    scheduleTaskTemplateSync();
+    try { renderDRCQueueTask(); } catch (e) {}
+  }
+  function addDRCQueueSubtask(text) {
+    const clean = (text || "").trim();
+    if (!clean || !requireSignIn()) return false;
+    const items = getDRCQueueItems();
+    items.push({ id: uid(), text: clean, done: false, failed: false, updatedAt: Date.now() });
+    saveDRCQueueMutation(items);
+    return true;
+  }
+  function updateDRCQueueSubtask(id, mutator) {
+    if (!requireSignIn()) return false;
+    const items = getDRCQueueItems();
+    const item = items.find(x => x.id === id);
+    if (!item) return false;
+    mutator(item);
+    item.updatedAt = Date.now();
+    saveDRCQueueMutation(items);
+    return true;
+  }
+  function deleteDRCQueueSubtask(id) {
+    if (!requireSignIn()) return false;
+    const items = getDRCQueueItems();
+    const item = items.find(x => x.id === id);
+    if (!item) return false;
+    const deleted = getDeletedDRCQueueItems();
+    deleted[id] = Math.max(Number(deleted[id]) || 0, Date.now());
+    saveDRCQueueMutation(items.filter(x => x.id !== id), deleted);
+    return true;
+  }
+
   let taskTemplateSyncRunning = false;
   let taskTemplateSyncQueued = false;
   let taskTemplateSyncTimer = null;
@@ -4556,6 +4629,7 @@
       for (const f of files) remoteDocs.push(await DriveDB.downloadFile(f.id));
       let remote = { items: [], deleted: {} };
       let remoteNotes = { items: [], deleted: {} };
+      let remoteDRCQueue = { items: [], deleted: {} };
       for (const doc of remoteDocs) {
         const tt = (doc && doc.taskTemplates) || {};
         remote = mergeTaskTemplateSets(remote, {
@@ -4569,6 +4643,11 @@
         remoteNotes = mergeTaskTemplateSets(remoteNotes, {
           items: Array.isArray(nt.items) ? nt.items : [],
           deleted: (nt.deleted && typeof nt.deleted === "object") ? nt.deleted : {}
+        });
+        const dq = (doc && doc.drcQueue) || {};
+        remoteDRCQueue = mergeTaskTemplateSets(remoteDRCQueue, {
+          items: Array.isArray(dq.items) ? dq.items : [],
+          deleted: (dq.deleted && typeof dq.deleted === "object") ? dq.deleted : {}
         });
       }
       const local = { items: getTaskListTemplates(), deleted: getDeletedTaskTemplates() };
@@ -4587,15 +4666,28 @@
         saveDeletedNoteTemplates(mergedNotes.deleted);
         changedLocal = true;
       }
+      const localDRCQueue = drcQueueSet();
+      const mergedDRCQueue = mergeTaskTemplateSets(localDRCQueue, remoteDRCQueue);
+      const mergedDRCQueueSig = taskTemplateSetSig(mergedDRCQueue);
+      if (mergedDRCQueueSig !== taskTemplateSetSig(localDRCQueue)) {
+        saveDRCQueueItems(mergedDRCQueue.items);
+        saveDeletedDRCQueueItems(mergedDRCQueue.deleted);
+        changedLocal = true;
+        try { renderDRCQueueTask(); } catch (e) {}
+      }
       const somethingToStore = merged.items.length || Object.keys(merged.deleted).length
-        || mergedNotes.items.length || Object.keys(mergedNotes.deleted).length;
+        || mergedNotes.items.length || Object.keys(mergedNotes.deleted).length
+        || mergedDRCQueue.items.length || Object.keys(mergedDRCQueue.deleted).length;
       if (somethingToStore && (!files.length || files.length > 1
-          || mergedSig !== taskTemplateSetSig(remote) || mergedNotesSig !== taskTemplateSetSig(remoteNotes))) {
+          || mergedSig !== taskTemplateSetSig(remote)
+          || mergedNotesSig !== taskTemplateSetSig(remoteNotes)
+          || mergedDRCQueueSig !== taskTemplateSetSig(remoteDRCQueue))) {
         // Keep any other keys a newer app version may have put in the file.
         const payload = Object.assign({}, remoteDocs[0] || {}, {
           v: 1, savedAt: Date.now(),
           taskTemplates: { items: merged.items, deleted: merged.deleted },
-          noteTemplates: { items: mergedNotes.items, deleted: mergedNotes.deleted }
+          noteTemplates: { items: mergedNotes.items, deleted: mergedNotes.deleted },
+          drcQueue: { items: mergedDRCQueue.items, deleted: mergedDRCQueue.deleted }
         });
         const primaryId = await DriveDB.writeSettingsFile(files.length ? files[0].id : null, payload);
         // Two files only ever appear from a simultaneous first save on two
@@ -15016,6 +15108,7 @@
   const noteModal = $("#note-modal");
   const noteTextarea = $("#note-textarea");
   const noteTitleInput = $("#note-title-input");
+  const drcQueuePanel = $("#drc-queue-panel");
   const noteCard = $(".note-modal-card");
   const noteResizeHandle = $("#note-resize-handle");
   const noteLineCountEl = $("#note-line-count");
@@ -15652,6 +15745,10 @@
     if (migratedMood || migratedPhotos || linkedUrls) scheduleNoteAutosave();
     setNoteAutoColorEnabled(!isDRCNote(current));
     refreshDRCCards();
+    renderDRCQueueTask();
+    if (isDRCNote(current) && Date.now() - taskTemplateLastSyncAt > 5000) {
+      syncTaskTemplatesWithDrive().then((changed) => { if (changed) renderDRCQueueTask(); });
+    }
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
     noteAutoColorParagraphs();
@@ -15733,6 +15830,202 @@
     const folder = current ? notesFolderMgr.folderOf(current.id) : null;
     noteNavFolder.title = folder ? `In folder: ${folder}` : "Move to folder";
     noteNavFolder.classList.toggle("has-folder", !!folder);
+  }
+
+  // Shared QUEUE TASKS card shown at the top of every DRC note. It is not
+  // part of noteTextarea, so it never gets duplicated into each DRC note's
+  // saved HTML. The backing list is global (localStorage + Drive settings),
+  // which is why every DRC displays the same queue.
+  let drcQueueAddOpen = false;
+
+  function openDRCQueueSubtaskMenu(x, y, s) {
+    resetContextMenu();
+    const addItem = (label, cls, fn) => {
+      const it = document.createElement("div");
+      it.className = "ctx-item" + (cls ? " " + cls : "");
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "ctx-item-label";
+      labelSpan.textContent = label;
+      it.appendChild(labelSpan);
+      it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
+      ctxMenu.appendChild(it);
+    };
+    addItem(s.failed ? "↩ Clear failed" : "Mark failed", "", () => {
+      updateDRCQueueSubtask(s.id, (live) => {
+        live.failed = !live.failed;
+        if (live.failed) live.done = false;
+      });
+    });
+    addItem("Copy text", "", () => copySubtaskText(s.text || ""));
+    addItem("Delete subtask", "danger", () => {
+      if (!confirm(`Delete the subtask "${s.text || "Untitled subtask"}"?`)) return;
+      deleteDRCQueueSubtask(s.id);
+    });
+    positionContextMenu(x, y);
+  }
+
+  function renderDRCQueueTask() {
+    if (!drcQueuePanel) return;
+    const current = noteWorkingList[noteActiveIndex];
+    const isDRC = !!current && isDRCNote({ title: noteTitleInput.value || current.title });
+    drcQueuePanel.classList.toggle("hidden", !isDRC);
+    if (!isDRC) {
+      drcQueuePanel.innerHTML = "";
+      drcQueueAddOpen = false;
+      return;
+    }
+
+    drcQueuePanel.innerHTML = "";
+    const items = drcQueueDisplayItems();
+    const doneCount = items.filter(x => x.done).length;
+
+    const taskRow = document.createElement("div");
+    taskRow.className = "task-row drc-queue-task-row has-open-subtasks";
+
+    const title = document.createElement("span");
+    title.className = "task-text";
+    title.textContent = "QUEUE TASKS";
+
+    const count = document.createElement("span");
+    count.className = "drc-queue-count";
+    count.textContent = items.length ? `${doneCount}/${items.length}` : "";
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "drc-queue-add-btn";
+    addBtn.textContent = "+";
+    addBtn.title = "Add a queue subtask";
+    addBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!requireSignIn()) return;
+      drcQueueAddOpen = true;
+      renderDRCQueueTask();
+    });
+
+    taskRow.append(title, count, addBtn);
+    drcQueuePanel.appendChild(taskRow);
+
+    const subPanel = document.createElement("div");
+    subPanel.className = "subtask-panel drc-queue-subtask-panel";
+    const list = document.createElement("ul");
+    list.className = "subtask-list";
+
+    items.forEach((s) => {
+      const row = document.createElement("li");
+      row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "");
+      row.dataset.subtaskId = s.id;
+      row.draggable = false;
+
+      const text = document.createElement("span");
+      text.className = "subtask-text";
+      text.contentEditable = "false";
+      text.spellcheck = false;
+      text.textContent = s.text || "";
+      text.title = s.text || "";
+      if (!s.done && !s.failed) text.style.color = "#333333";
+
+      let clickTimer = null;
+      row.addEventListener("click", (e) => {
+        if (row.__subtaskLongPressConsumed) {
+          e.preventDefault();
+          e.stopPropagation();
+          row.__subtaskLongPressConsumed = false;
+          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+          return;
+        }
+        if (text.contentEditable === "true") return;
+        if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
+        clickTimer = setTimeout(() => {
+          clickTimer = null;
+          updateDRCQueueSubtask(s.id, (live) => {
+            live.done = !live.done;
+            if (live.done) live.failed = false;
+          });
+        }, 220);
+      });
+
+      text.addEventListener("dblclick", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!requireSignIn()) return;
+        text.contentEditable = "true";
+        text.focus();
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+      text.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); text.blur(); }
+        else if (e.key === "Escape") { e.preventDefault(); text.textContent = s.text || ""; text.blur(); }
+      });
+      text.addEventListener("blur", () => {
+        const v = text.textContent.trim();
+        text.contentEditable = "false";
+        if (v && v !== (s.text || "")) updateDRCQueueSubtask(s.id, (live) => { live.text = v; });
+        else text.textContent = s.text || "";
+      });
+
+      row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (row.__subtaskLongPressConsumed) return;
+        openDRCQueueSubtaskMenu(e.clientX, e.clientY, s);
+      });
+      installSubtaskLongPress(row, (x, y) => openDRCQueueSubtaskMenu(x, y, s));
+
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+
+    subPanel.appendChild(list);
+
+    if (drcQueueAddOpen) {
+      const addRow = document.createElement("div");
+      addRow.className = "subtask-add-row";
+      const input = document.createElement("textarea");
+      input.rows = 1;
+      input.className = "subtask-new-input autosize-input";
+      input.placeholder = "Add a queue task and press Enter…";
+      input.spellcheck = false;
+      input.addEventListener("input", () => autosizeTextarea(input));
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          const v = input.value.trim();
+          if (!v) return;
+          if (addDRCQueueSubtask(v)) {
+            drcQueueAddOpen = true;
+            requestAnimationFrame(() => {
+              const el = drcQueuePanel.querySelector(".subtask-new-input");
+              if (el) el.focus();
+            });
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          drcQueueAddOpen = false;
+          renderDRCQueueTask();
+        }
+      });
+      input.addEventListener("blur", () => {
+        if (!input.value.trim()) {
+          drcQueueAddOpen = false;
+          renderDRCQueueTask();
+        }
+      });
+      addRow.appendChild(input);
+      subPanel.appendChild(addRow);
+      requestAnimationFrame(() => {
+        const el = drcQueuePanel.querySelector(".subtask-new-input");
+        if (el) el.focus();
+      });
+    }
+
+    drcQueuePanel.appendChild(subPanel);
   }
 
   // Shows the open note as cards when its title is "DRC", or when it has
@@ -17050,7 +17343,11 @@
   noteModal.addEventListener("click", (e) => {
     if (!noteIsResizing && e.target === noteModal && noteBackdropMousedown) closeNoteModal();
   });
-  noteTitleInput.addEventListener("input", () => { scheduleNoteAutosave(); refreshDRCCardsSoon(); });
+  noteTitleInput.addEventListener("input", () => {
+    scheduleNoteAutosave();
+    refreshDRCCardsSoon();
+    renderDRCQueueTask();
+  });
   noteTitleInput.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Enter/Delete/arrows trigger the canvas shortcuts while typing a title
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
