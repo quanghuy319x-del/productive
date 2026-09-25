@@ -2229,6 +2229,89 @@ kbd{
 .brainstorm-color-swatch[data-color="#7c7c76"]{ color:#7c7c76; }
 .brainstorm-symbol-swatch{ font-size: 15px; }
 
+/* Shared DRC queue task — sits above the scrollable note body, so it
+   stays at the top of every DRC note while the report itself scrolls. */
+.drc-queue-panel{
+  flex:none;
+  max-height: 168px;
+  overflow-y:auto;
+  margin: 0 0 8px;
+  padding: 6px;
+  box-sizing:border-box;
+  border:1px solid var(--paper-border);
+  border-radius:8px;
+  background:#f7f7f7;
+  color:#333333;
+}
+.drc-queue-panel.hidden{ display:none; }
+.drc-queue-task-row{
+  min-height:30px;
+  padding:4px 8px;
+  gap:7px;
+  background:#eeeeee;
+  border-radius:6px 6px 0 0;
+}
+.drc-queue-task-row .task-text{
+  flex:1 1 auto;
+  color:#111111 !important;
+  font-size:13px;
+  font-weight:800;
+  letter-spacing:.02em;
+}
+.drc-queue-count{
+  flex:none;
+  color:#777777;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+}
+.drc-queue-add-btn{
+  flex:none;
+  width:22px;
+  height:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #bdbdbd;
+  border-radius:50%;
+  background:#ffffff;
+  color:#555555;
+  font:700 16px/1 inherit;
+  cursor:pointer;
+}
+.drc-queue-add-btn:hover{ border-color:#666666; color:#111111; background:#f2f2f2; }
+.drc-queue-subtask-panel{
+  margin:0;
+  padding:7px 8px 6px;
+  background:#f7f7f7;
+  border-radius:0 0 6px 6px;
+}
+.drc-queue-panel .subtask-row{
+  background:#ffffff;
+  border-color:#d1d1d1;
+}
+.drc-queue-panel .subtask-row.done{
+  background:transparent;
+  border-color:rgba(30,132,73,.35);
+}
+.drc-queue-panel .subtask-row.failed{
+  background:transparent;
+  border-color:rgba(192,57,43,.35);
+}
+.drc-queue-panel .subtask-text{
+  color:#333333;
+  max-width:180px;
+}
+.drc-queue-panel .subtask-new-input{
+  background:#ffffff;
+  color:#333333;
+  border-color:#c9c9c9;
+}
+.drc-queue-panel .subtask-new-input:focus{ border-color:#777777; }
+.note-locked .drc-queue-panel{
+  opacity:.55;
+  pointer-events:none;
+}
+
 .note-textarea{
   width:100%;
   flex: 1 1 auto;
