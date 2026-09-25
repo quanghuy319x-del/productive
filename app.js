@@ -19059,13 +19059,6 @@
   function installSubtaskTouchDrag(row, taskId, subtaskId) {
     const HOLD_MS = 800;
     const MOVE_TOLERANCE_SQ = 144; // 12px
-    const grip = document.createElement("span");
-    grip.className = "subtask-touch-drag-handle";
-    grip.textContent = "⠿";
-    grip.title = "Hold to drag subtask";
-    grip.setAttribute("role", "button");
-    grip.setAttribute("aria-label", "Hold to drag subtask");
-
     let timer = null;
     let pointerId = null;
     let startX = 0, startY = 0;
@@ -19174,13 +19167,14 @@
       else if (y > r.bottom - edge) tasksListEl.scrollTop += 12;
     };
 
-    grip.addEventListener("pointerdown", (e) => {
+    row.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
       if (e.isPrimary === false) return;
+      if (!window.matchMedia("(max-width: 640px)").matches) return;
+      if (e.target.closest && e.target.closest(".subtask-menu-btn, .subtask-note-icon, .subtask-add-btn, [contenteditable=\"true\"]")) return;
       if (!requireSignIn()) return;
-      e.stopPropagation();
-      cleanup();
 
+      cleanup();
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
@@ -19190,16 +19184,17 @@
       timer = setTimeout(() => {
         timer = null;
         active = true;
+        row.__subtaskLongPressConsumed = true;
         subtaskDragState = { taskId, subtaskId };
         row.classList.add("task-dragging", "touch-dragging");
-        try { grip.setPointerCapture(pointerId); } catch (err) {}
+        try { row.setPointerCapture(pointerId); } catch (err) {}
         try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
         makeGhost(startX, startY);
         findDropTarget(startX, startY);
       }, HOLD_MS);
     }, { passive: true });
 
-    grip.addEventListener("pointermove", (e) => {
+    row.addEventListener("pointermove", (e) => {
       if (pointerId == null || e.pointerId !== pointerId) return;
       if (!active) {
         const dx = e.clientX - startX, dy = e.clientY - startY;
@@ -19219,20 +19214,24 @@
         e.preventDefault();
         e.stopPropagation();
       }
+      const wasActive = active;
       const target = dropTarget ? { ...dropTarget } : null;
-      try { grip.releasePointerCapture(pointerId); } catch (err) {}
+      try { row.releasePointerCapture(pointerId); } catch (err) {}
       cleanup();
-      if (commit && target && target.taskId) {
+
+      if (wasActive) {
+        clearTimeout(row.__subtaskLongPressResetTimer);
+        row.__subtaskLongPressResetTimer = setTimeout(() => {
+          row.__subtaskLongPressConsumed = false;
+        }, 900);
+      }
+      if (commit && wasActive && target && target.taskId) {
         moveSubtask(taskId, subtaskId, target.taskId, target.subtaskId, target.before);
       }
     };
 
-    grip.addEventListener("pointerup", (e) => finish(e, true), { passive: false });
-    grip.addEventListener("pointercancel", (e) => finish(e, false), { passive: false });
-    grip.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
-    grip.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); });
-
-    return grip;
+    row.addEventListener("pointerup", (e) => finish(e, true), { passive: false });
+    row.addEventListener("pointercancel", (e) => finish(e, false), { passive: false });
   }
 
   // Builds the expanded subtask checklist panel for one task — a nested
@@ -19370,9 +19369,6 @@
         if (!target) return;
         openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null, false, s.id);
       };
-      installSubtaskLongPress(row, (x, y) => {
-        openSubtaskContextMenu(x, y, t, s, () => renderTasksModal(), openSubtaskNotes);
-      });
       const subtaskNotesForS = getTaskNotes(s);
       // A subtask literally named "DRC" behaves exactly like a task named
       // "DRC" (see the redirect in openNoteModal above): it shares the
@@ -19397,15 +19393,32 @@
         snote.addEventListener("click", (e) => { e.stopPropagation(); openSubtaskNotes(); });
       }
 
-      // Native whole-pill drag stays for mouse. Touch browsers get a
-      // dedicated grip because native draggable rows are not reliable there.
-      const touchDragGrip = installSubtaskTouchDrag(row, t.id, s.id);
+      // Desktop keeps native whole-pill drag. On phones, holding the pill
+      // itself for ~0.8s arms the pointer-based drag instead of showing a
+      // separate drag handle.
+      installSubtaskTouchDrag(row, t.id, s.id);
+
+      // Phone menu: a compact ⋯ button replaces the old long-press menu,
+      // because long-press is now reserved for dragging.
+      const subMenuBtn = document.createElement("button");
+      subMenuBtn.type = "button";
+      subMenuBtn.className = "subtask-menu-btn";
+      subMenuBtn.textContent = "⋯";
+      subMenuBtn.title = "Subtask menu";
+      subMenuBtn.setAttribute("aria-label", "Subtask menu");
+      subMenuBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+      subMenuBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const r = subMenuBtn.getBoundingClientRect();
+        openSubtaskContextMenu(r.right, r.bottom + 4, t, s, () => renderTasksModal(), openSubtaskNotes);
+      });
 
       // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
-      // lives only in the pill's right-click menu (openSubtaskContextMenu).
-      row.appendChild(touchDragGrip);
+      // lives in the subtask menu/right-click menu.
       row.appendChild(stext);
       if (snote) row.appendChild(snote);
+      row.appendChild(subMenuBtn);
       list.appendChild(row);
     });
 
