@@ -3086,6 +3086,16 @@ kbd{
   box-shadow:0 8px 30px rgba(85,64,179,.42);
 }
 
+@keyframes subtask-pickup{
+  0%{ transform:translateY(0) scale(1); box-shadow:0 0 0 rgba(0,0,0,0); }
+  55%{ transform:translateY(-5px) scale(1.09); box-shadow:0 10px 22px rgba(0,0,0,.24); }
+  100%{ transform:translateY(-3px) scale(1.06); box-shadow:0 7px 16px rgba(0,0,0,.20); }
+}
+@keyframes subtask-ghost-pickup{
+  0%{ transform:scale(.78); opacity:0; }
+  70%{ transform:scale(1.06); opacity:1; }
+  100%{ transform:scale(1); opacity:.97; }
+}
 .subtask-touch-ghost{
   position:fixed;
   z-index:10050;
@@ -3095,14 +3105,16 @@ kbd{
   border-radius:999px;
   background:#ffffff;
   color:#333333;
-  box-shadow:0 5px 18px rgba(0,0,0,.22);
+  box-shadow:0 8px 24px rgba(0,0,0,.26);
   font-size:12px;
   line-height:1.2;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
   pointer-events:none;
-  opacity:.96;
+  opacity:.97;
+  transform-origin:center;
+  animation:subtask-ghost-pickup .18s cubic-bezier(.2,.85,.3,1.25);
 }
 @media (any-pointer: coarse){
   .subtask-touch-drag-handle{
@@ -3110,7 +3122,12 @@ kbd{
     touch-action:none;
   }
   .subtask-touch-drag-handle:active{ cursor:grabbing; color:var(--text); }
-  .subtask-row.touch-dragging{ opacity:.35; }
+  .subtask-row.touch-dragging{
+    z-index:3;
+    opacity:.78;
+    transform-origin:center;
+    animation:subtask-pickup .18s cubic-bezier(.2,.85,.3,1.25) forwards;
+  }
 }
 
 .subtask-text{
