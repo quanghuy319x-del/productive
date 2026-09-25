@@ -2233,35 +2233,39 @@ kbd{
    stays at the top of every DRC note while the report itself scrolls. */
 .drc-queue-panel{
   flex:none;
-  max-height: 168px;
+  max-height:168px;
   overflow-y:auto;
-  margin: 0 0 8px;
-  padding: 6px;
+  margin:0 0 8px;
+  padding:6px;
   box-sizing:border-box;
-  border:1px solid var(--paper-border);
-  border-radius:8px;
-  background:#f7f7f7;
-  color:#333333;
+  border:1px solid #b8d4e4;
+  border-radius:10px;
+  background:#eef7fb;
+  color:#29485a;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
 }
 .drc-queue-panel.hidden{ display:none; }
 .drc-queue-task-row{
   min-height:30px;
-  padding:4px 8px;
+  padding:5px 9px;
   gap:7px;
-  background:#eeeeee;
-  border-radius:6px 6px 0 0;
+  background:#d9edf7;
+  border:1px solid #b8d4e4;
+  border-bottom:none;
+  border-radius:7px 7px 0 0;
 }
 .drc-queue-task-row .task-text{
   flex:1 1 auto;
-  color:#111111 !important;
+  color:#23495f !important;
   font-size:13px;
   font-weight:800;
-  letter-spacing:.02em;
+  letter-spacing:.025em;
 }
 .drc-queue-count{
   flex:none;
-  color:#777777;
+  color:#5c7f92;
   font-size:11px;
+  font-weight:700;
   font-variant-numeric:tabular-nums;
 }
 .drc-queue-add-btn{
@@ -2271,42 +2275,64 @@ kbd{
   display:flex;
   align-items:center;
   justify-content:center;
-  border:1px solid #bdbdbd;
+  border:1px solid #8eb8cf;
   border-radius:50%;
-  background:#ffffff;
-  color:#555555;
+  background:#f9fdff;
+  color:#39718f;
   font:700 16px/1 inherit;
   cursor:pointer;
+  box-shadow:0 1px 2px rgba(55,105,130,.12);
 }
-.drc-queue-add-btn:hover{ border-color:#666666; color:#111111; background:#f2f2f2; }
+.drc-queue-add-btn:hover{
+  border-color:#5e98b7;
+  color:#1f5f80;
+  background:#ffffff;
+}
 .drc-queue-subtask-panel{
   margin:0;
-  padding:7px 8px 6px;
-  background:#f7f7f7;
-  border-radius:0 0 6px 6px;
+  padding:8px 8px 7px;
+  background:#f4fafc;
+  border:1px solid #b8d4e4;
+  border-top:none;
+  border-radius:0 0 7px 7px;
 }
 .drc-queue-panel .subtask-row{
   background:#ffffff;
-  border-color:#d1d1d1;
+  border-color:#c7dce8;
+  box-shadow:0 1px 1px rgba(50,90,110,.05);
+}
+.drc-queue-panel .subtask-row:hover{
+  border-color:#8fb9cf;
+  background:#fbfeff;
 }
 .drc-queue-panel .subtask-row.done{
-  background:transparent;
-  border-color:rgba(30,132,73,.35);
+  background:#eef8f1;
+  border-color:#b8d8c1;
+}
+.drc-queue-panel .subtask-row.done .subtask-text{
+  color:#7a9782;
 }
 .drc-queue-panel .subtask-row.failed{
-  background:transparent;
-  border-color:rgba(192,57,43,.35);
+  background:#fff1f1;
+  border-color:#e2bcbc;
+}
+.drc-queue-panel .subtask-row.failed .subtask-text{
+  color:#b36e6e;
 }
 .drc-queue-panel .subtask-text{
-  color:#333333;
+  color:#34566a;
   max-width:180px;
 }
 .drc-queue-panel .subtask-new-input{
   background:#ffffff;
-  color:#333333;
-  border-color:#c9c9c9;
+  color:#29485a;
+  border-color:#b8d4e4;
 }
-.drc-queue-panel .subtask-new-input:focus{ border-color:#777777; }
+.drc-queue-panel .subtask-new-input::placeholder{ color:#89a2b1; }
+.drc-queue-panel .subtask-new-input:focus{
+  border-color:#6ea4c0;
+  box-shadow:0 0 0 2px rgba(110,164,192,.12);
+}
 .note-locked .drc-queue-panel{
   opacity:.55;
   pointer-events:none;
