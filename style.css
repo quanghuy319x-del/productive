@@ -3292,6 +3292,39 @@ kbd{
   }
   #tasks-modal .task-text{ font-size:13px; }
   #tasks-modal .subtask-text{ font-size:11px; }
+
+  /* Phone task rows stay uncluttered. Touching the row background gives
+     that row the browser's touch-hover state, revealing its extra tools
+     until the user taps somewhere else. The done checkbox remains visible. */
+  #tasks-modal .task-row .task-drag-handle,
+  #tasks-modal .task-row .task-fail-btn,
+  #tasks-modal .task-row .task-star,
+  #tasks-modal .task-row .task-delete,
+  #tasks-modal .task-row .task-note-btn,
+  #tasks-modal .task-row .task-due-btn,
+  #tasks-modal .task-row .task-color-dot,
+  #tasks-modal .task-row .task-subtask-btn{
+    display:none;
+  }
+
+  #tasks-modal .task-row:hover .task-drag-handle,
+  #tasks-modal .task-row:hover .task-fail-btn,
+  #tasks-modal .task-row:hover .task-star,
+  #tasks-modal .task-row:hover .task-delete,
+  #tasks-modal .task-row:hover .task-note-btn,
+  #tasks-modal .task-row:hover .task-due-btn,
+  #tasks-modal .task-row:hover .task-color-dot,
+  #tasks-modal .task-row:hover .task-subtask-btn,
+  #tasks-modal .task-row:focus-within .task-drag-handle,
+  #tasks-modal .task-row:focus-within .task-fail-btn,
+  #tasks-modal .task-row:focus-within .task-star,
+  #tasks-modal .task-row:focus-within .task-delete,
+  #tasks-modal .task-row:focus-within .task-note-btn,
+  #tasks-modal .task-row:focus-within .task-due-btn,
+  #tasks-modal .task-row:focus-within .task-color-dot,
+  #tasks-modal .task-row:focus-within .task-subtask-btn{
+    display:inline-flex;
+  }
 }
 
 
