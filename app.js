@@ -6249,8 +6249,14 @@
   // hides the "Sign in with Google" panel) hadn't run yet — so for that
   // whole sync window you'd see stale/cached map content AND the sign-in
   // panel on screen at once. Requiring dataSynced too closes that gap.
+  // During startup, a previously connected device can show its IndexedDB
+  // copy immediately while Drive verification runs in the background.
+  // Editing remains locked by isEditingAllowed() until DriveDB reaches a
+  // synced state, so this improves reopen speed without allowing a stale
+  // local copy to overwrite a newer remote one.
+  let startupLocalPreview = false;
   function mapsReadyToShow() {
-    return !!DriveDB.signedIn && !!DriveDB.dataSynced;
+    return startupLocalPreview || (!!DriveDB.signedIn && !!DriveDB.dataSynced);
   }
 
   // Toggles the body-level CSS gate (canvas/FABs, see style.css) and
@@ -23902,34 +23908,98 @@
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => renderAll());
     }
+
+    // Fast path: IndexedDB is local and normally available in milliseconds.
+    // Load it first and put the last-opened map on screen BEFORE any folder
+    // or Google Drive network work. A known previous Drive session gets a
+    // read-only local preview while verification/upload continues.
     await loadAllMaps();
     await loadAffirmationQuotes();
     await FolderDB.restore();
-    if (FolderDB.dir && !FolderDB.needsPermission) {
-      await FolderDB.syncFromFolder();
+
+    let hadDriveSession = !!loadCachedDriveToken();
+    if (!hadDriveSession) {
+      try { hadDriveSession = !!(await DB.getHandle(DRIVE_SIGNED_IN_KEY)); } catch (e) {}
     }
-    await DriveDB.restore(); // silent re-sign-in, only if previously connected
-    const dupesTrashed = await autoRemoveDuplicateMaps();
-    if (dupesTrashed) console.log(`Auto-removed ${dupesTrashed} duplicate map(s) to trash`);
-    if (activeMaps().length === 0) {
-      const sample = sampleMindMap();
-      await DB.put(sample);
-      await FolderDB.save(sample);
-      await DriveDB.save(sample);
-      state.maps.push(sample);
+
+    const localActive = activeMaps();
+    if (hadDriveSession && localActive.length) {
+      startupLocalPreview = true;
+      // Make the UI say "syncing" (and keep editing locked) immediately
+      // instead of briefly looking signed-out before DriveDB.restore runs.
+      DriveDB.status = "connecting";
+      DriveDB.setSyncProgress("Opening local copy…", 0, 0, 1);
+
+      let lastId = null;
+      try { lastId = localStorage.getItem(LAST_OPENED_MAP_KEY); } catch (e) {}
+      const lastStillActive = lastId && localActive.find(m => m.id === lastId);
+      const toOpen = lastStillActive ? lastId : localActive[0].id;
+
+      updateFolderUI();
+      updateDriveUI("Syncing…");
+      renderSidebar();
+      await openMap(toOpen);
+    } else {
+      updateFolderUI();
+      updateDriveUI();
+      renderSidebar();
     }
-    updateFolderUI();
-    updateDriveUI();
-    renderSidebar();
-    // Reopen whichever map you had open last, if it still exists and isn't
-    // trashed — falls back to the top of the active list (e.g. first run,
-    // or that map got deleted/trashed on another device since).
-    let lastId = null;
-    try { lastId = localStorage.getItem(LAST_OPENED_MAP_KEY); } catch (e) {}
-    const activeList = activeMaps();
-    const lastStillActive = lastId && activeList.find(m => m.id === lastId);
-    const toOpen = lastStillActive ? lastId : activeList[0].id;
-    await openMap(toOpen);
+
+    // Yield a frame so the cached map is actually painted before starting
+    // slow Drive/folder I/O. This is the key difference from the old boot:
+    // sync can take minutes for photo-heavy maps, but reopen no longer does.
+    requestAnimationFrame(() => {
+      setTimeout(async () => {
+        try {
+          if (FolderDB.dir && !FolderDB.needsPermission) {
+            await FolderDB.syncFromFolder();
+            if (state.current && !state.editingId && !unsavedEdits) {
+              renderSidebar();
+              renderAll();
+            }
+          }
+
+          await DriveDB.restore(); // may download/upload large maps; now background work
+          startupLocalPreview = false;
+
+          const dupesTrashed = await autoRemoveDuplicateMaps();
+          if (dupesTrashed) console.log(`Auto-removed ${dupesTrashed} duplicate map(s) to trash`);
+
+          if (activeMaps().length === 0) {
+            const sample = sampleMindMap();
+            await DB.put(sample);
+            await FolderDB.save(sample);
+            await DriveDB.save(sample);
+            state.maps.push(sample);
+          }
+
+          updateFolderUI();
+          updateDriveUI();
+          renderSidebar();
+
+          // If there was no local map to preview (fresh browser / maps only
+          // existed on Drive), open one as soon as background sync supplies it.
+          if (!state.current) {
+            let lastId = null;
+            try { lastId = localStorage.getItem(LAST_OPENED_MAP_KEY); } catch (e) {}
+            const activeList = activeMaps();
+            if (activeList.length) {
+              const lastStillActive = lastId && activeList.find(m => m.id === lastId);
+              await openMap(lastStillActive ? lastId : activeList[0].id);
+            }
+          } else if (!state.editingId && !unsavedEdits) {
+            // DriveDB.restore may have replaced the currently-open map with a
+            // newer remote copy. Repaint after the reconciliation is complete.
+            renderAll();
+          }
+        } catch (e) {
+          startupLocalPreview = false;
+          console.error("Background startup sync failed", e);
+          updateDriveUI();
+          renderSidebar();
+        }
+      }, 0);
+    });
   }
 
   $("#btn-connect-folder").addEventListener("click", () => FolderDB.pick());
