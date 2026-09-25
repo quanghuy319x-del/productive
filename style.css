@@ -5814,3 +5814,7 @@ kbd{
   transform:none!important;
   outline:none!important;
 }
+
+/* v266: Android-safe title mode. Normal text after "." must beat inherited/manual styles. */
+.title-mode-heading{font-weight:700!important;text-transform:uppercase!important;color:inherit!important}
+.title-mode-normal,.title-mode-normal *{font-weight:400!important;text-transform:none!important;color:inherit!important}
