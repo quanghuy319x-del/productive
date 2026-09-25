@@ -2477,6 +2477,9 @@ kbd{
 .tasks-modal-card > .tasks-add-row{
   flex: none;
 }
+.tasks-add-submit{
+  display:none;
+}
 .tasks-progress-row{
   display:flex;
   align-items:center;
@@ -5340,7 +5343,7 @@ kbd{
 
 
 /* =====================================================================
-   PHONE TASKS v210
+   PHONE TASKS v211
    A full-screen, thumb-first task workspace. Desktop is intentionally
    unchanged; these rules only apply to narrow coarse-pointer devices.
    ===================================================================== */
@@ -5452,10 +5455,10 @@ kbd{
     display:flex;
     flex-wrap:wrap;
     align-items:center;
-    gap:5px;
-    min-height:50px;
-    margin:0 0 8px;
-    padding:6px 7px;
+    gap:6px;
+    min-height:54px;
+    margin:0 0 9px;
+    padding:7px 7px;
     border:1px solid #dedede;
     border-radius:12px;
     box-shadow:0 1px 3px rgba(0,0,0,.05);
@@ -5545,70 +5548,68 @@ kbd{
     order:10;
     display:none;
     flex:1 0 100%;
-    align-items:center;
-    gap:6px;
     width:100%;
-    padding:7px 2px 1px;
-    margin-top:1px;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:7px;
+    padding:8px 0 2px;
+    margin-top:2px;
     border-top:1px solid rgba(0,0,0,.07);
-    overflow-x:auto;
-    overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
   }
-  #tasks-modal .task-mobile-actions::-webkit-scrollbar{ display:none; }
-  #tasks-modal .task-mobile-actions.open{ display:flex; }
+  #tasks-modal .task-mobile-actions.open{ display:grid; }
 
-  /* Turn the old tiny icon controls into real thumb targets only while
-     the drawer is open. Active states/colors from the existing rules
-     still carry through. */
-  #tasks-modal .task-mobile-actions > *{
-    flex:none;
-    opacity:1 !important;
-    pointer-events:auto !important;
-  }
-  #tasks-modal .task-mobile-actions .task-fail-btn,
-  #tasks-modal .task-mobile-actions .task-note-btn,
-  #tasks-modal .task-mobile-actions .task-subtask-btn,
-  #tasks-modal .task-mobile-actions .task-star,
-  #tasks-modal .task-mobile-actions .task-color-dot,
-  #tasks-modal .task-mobile-actions .task-delete{
+  /* Phone actions are now named, not mystery icons. Each action is a
+     thumb-sized tile with the existing icon/state above a short label. */
+  #tasks-modal .task-mobile-actions > [data-mobile-label]{
+    position:relative;
     display:flex !important;
+    flex-direction:column;
     align-items:center;
     justify-content:center;
-    width:40px;
-    height:40px;
-    min-width:40px;
+    gap:3px;
+    width:100% !important;
+    min-width:0 !important;
+    height:58px !important;
+    padding:5px 4px !important;
+    opacity:1 !important;
+    pointer-events:auto !important;
     border:1px solid #dddddd;
-    border-radius:10px;
+    border-radius:12px;
     background:#ffffff;
     box-sizing:border-box;
+    color:#555555;
+    overflow:hidden;
   }
-  #tasks-modal .task-mobile-actions .task-due-btn{
-    display:flex !important;
-    min-width:44px;
-    height:40px;
-    padding:0 9px;
-    border:1px solid #dddddd;
-    border-radius:10px;
-    background:#ffffff;
-    box-sizing:border-box;
+  #tasks-modal .task-mobile-actions > [data-mobile-label]::after{
+    content:attr(data-mobile-label);
+    display:block;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    color:#707070;
+    font:650 10px/1.1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    letter-spacing:0;
   }
   #tasks-modal .task-mobile-actions .task-fail-btn.failed{
     background:#c0392b;
     border-color:#c0392b;
+    color:#ffffff;
   }
+  #tasks-modal .task-mobile-actions .task-fail-btn.failed::after{ color:#ffffff; }
   #tasks-modal .task-mobile-actions .task-delete{
-    font-size:27px;
+    font-size:24px;
     color:#c66767;
   }
-  #tasks-modal .task-mobile-actions .task-star{ font-size:19px; }
+  #tasks-modal .task-mobile-actions .task-star{ font-size:20px; }
   #tasks-modal .task-mobile-actions .task-color-dot{
     border-width:3px;
-    border-radius:50%;
-    padding:10px;
+    padding:0 !important;
     background:#fff;
   }
+  #tasks-modal .task-mobile-actions .task-due-btn{
+    flex-direction:column;
+  }
+  #tasks-modal .task-mobile-actions .task-due-label{ display:none; }
 
   #tasks-modal .subtask-panel{
     padding:7px 7px 9px;
@@ -5617,35 +5618,71 @@ kbd{
     border-radius:0 0 12px 12px;
   }
   #tasks-modal .subtask-list{
-    gap:3px;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:6px;
     margin:0;
   }
   #tasks-modal .subtask-row{
-    min-height:36px;
-    margin:2px;
-    padding:4px 9px;
-    gap:5px;
-    border-radius:18px;
+    width:100%;
+    max-width:none;
+    min-height:46px;
+    margin:0;
+    padding:5px 8px 5px 6px;
+    gap:7px;
+    justify-content:flex-start;
+    border-radius:11px;
+    box-sizing:border-box;
   }
   #tasks-modal .subtask-text{
-    max-width:min(50vw, 180px);
-    font-size:13px;
+    flex:1 1 auto;
+    max-width:none;
+    min-width:0;
+    font-size:14px;
     line-height:1.35;
+    text-align:left;
   }
   #tasks-modal .subtask-touch-drag-handle{
-    width:28px;
-    height:28px;
-    margin-left:-5px;
-    font-size:18px;
-    border-radius:50%;
-    color:#8b8b8b;
+    width:36px;
+    height:36px;
+    margin-left:0;
+    font-size:20px;
+    border-radius:10px;
+    color:#7d7d7d;
+    background:rgba(0,0,0,.035);
+  }
+  #tasks-modal .subtask-note-icon{
+    width:36px;
+    height:36px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:none;
+  }
+  #tasks-modal .subtask-add-trigger{
+    width:100%;
+    margin:0;
   }
   #tasks-modal .subtask-add-btn{
-    min-width:36px;
-    min-height:36px;
-    border-radius:18px;
-    font-size:18px;
+    width:100%;
+    min-height:42px;
+    border-radius:10px;
+    font-size:20px;
   }
+  /* In the phone's vertical subtask list, before/after means above/below
+     rather than left/right. */
+  #tasks-modal .subtask-row.drag-over-top::before,
+  #tasks-modal .subtask-row.drag-over-bottom::after{
+    left:4px;
+    right:4px;
+    width:auto;
+    height:3px;
+    top:auto;
+    bottom:auto;
+  }
+  #tasks-modal .subtask-row.drag-over-top::before{ top:-4px; }
+  #tasks-modal .subtask-row.drag-over-bottom::after{ bottom:-4px; }
   #tasks-modal .subtask-new-input{
     min-height:44px;
     padding:9px 10px;
@@ -5656,18 +5693,43 @@ kbd{
   /* The composer is always reachable with one thumb. It no longer forces
      the keyboard open when the modal itself opens. */
   #tasks-modal .tasks-add-row{
+    display:flex;
+    align-items:flex-end;
+    gap:8px;
     margin:0;
     padding:7px 0 max(2px, env(safe-area-inset-bottom));
     background:#fafafa;
     border-top:1px solid #e2e2e2;
   }
   #tasks-modal .tasks-new-input{
+    flex:1 1 auto;
+    min-width:0;
     min-height:48px;
     max-height:120px;
     padding:11px 12px;
     font-size:16px;
     border-radius:12px;
     background:#fff;
+  }
+  #tasks-modal .tasks-add-submit{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:none;
+    width:50px;
+    height:50px;
+    border-radius:14px;
+    background:#4b7f98;
+    color:#ffffff;
+    font-size:27px;
+    font-weight:500;
+    line-height:1;
+    box-shadow:0 2px 7px rgba(55,100,125,.25);
+    touch-action:manipulation;
+  }
+  #tasks-modal .tasks-add-submit:active{
+    transform:scale(.95);
+    background:#396d86;
   }
 
   #tasks-modal .shared-queue-task-row{
