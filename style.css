@@ -3290,6 +3290,10 @@ kbd{
   #tasks-modal .tasks-modal-card{
     padding-top:10px;
   }
+  #tasks-modal .task-drag-handle{
+    touch-action:none;
+    -webkit-touch-callout:none;
+  }
   #tasks-modal .modal-back-row{
     margin-bottom:7px;
   }
