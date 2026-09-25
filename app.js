@@ -15822,6 +15822,14 @@
       it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
       ctxMenu.appendChild(it);
     };
+    addItem("Rename", "", () => {
+      if (!requireSignIn()) return;
+      const next = prompt("Rename subtask", s.text || "");
+      if (next === null) return;
+      const clean = next.trim();
+      if (!clean || clean === (s.text || "")) return;
+      updateDRCQueueSubtask(s.id, (live) => { live.text = clean; });
+    });
     addItem(s.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
       updateDRCQueueSubtask(s.id, (live) => {
         live.done = !live.done;
@@ -19106,6 +19114,17 @@
       const n = getTaskNotes(s).length;
       addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", openNotes);
     }
+    addItem("Rename", "", () => {
+      if (!requireSignIn()) return;
+      const next = prompt("Rename subtask", s.text || "");
+      if (next === null) return;
+      const clean = next.trim();
+      if (!clean || clean === (s.text || "")) return;
+      pushUndo();
+      s.text = clean;
+      persist();
+      rerender();
+    });
     addItem(s.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
       pushUndo();
       setSubtaskDone(t, s, !s.done);
@@ -19175,6 +19194,119 @@
       rerender();
     });
     positionContextMenu(x, y);
+  }
+
+  // Right-click / long-press menu for a task row. Phone task text stays
+  // read-only until Rename is explicitly chosen here, preventing an
+  // accidental tap from summoning the on-screen keyboard.
+  function openTaskContextMenu(x, y, host, t, rerender) {
+    resetContextMenu();
+    const addItem = (label, cls, fn) => {
+      const it = document.createElement("div");
+      it.className = "ctx-item" + (cls ? " " + cls : "");
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "ctx-item-label";
+      labelSpan.textContent = label;
+      it.appendChild(labelSpan);
+      it.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeContextMenu();
+        fn();
+      });
+      ctxMenu.appendChild(it);
+    };
+
+    addItem("Rename", "", () => {
+      if (!requireSignIn()) return;
+      const next = prompt("Rename task", t.text || "");
+      if (next === null) return;
+      const clean = next.trim();
+      if (!clean || clean === (t.text || "")) return;
+      pushUndo();
+      t.text = clean;
+      persist();
+      rerender();
+    });
+    addItem(t.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
+      if (!requireSignIn()) return;
+      pushUndo();
+      setTaskDone(t, !t.done);
+      persist();
+      rerender();
+    });
+    addItem(t.failed ? "↩ Clear failed" : "Mark failed", "", () => {
+      if (!requireSignIn()) return;
+      pushUndo();
+      setTaskFailed(t, !t.failed);
+      persist();
+      rerender();
+    });
+    addItem("Delete task", "danger", () => {
+      if (!requireSignIn()) return;
+      if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
+      pushUndo();
+      host.tasks = getNodeTasks(host).filter(x => x !== t);
+      persist();
+      rerender();
+    });
+    positionContextMenu(x, y);
+  }
+
+  function installTaskContextLongPress(row, openMenu) {
+    const HOLD_MS = 520;
+    const MOVE_TOLERANCE_SQ = 144;
+    let timer = null;
+    let pointerId = null;
+    let startX = 0, startY = 0;
+
+    const cancel = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      pointerId = null;
+    };
+
+    row.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      if (e.isPrimary === false) return;
+      if (!window.matchMedia("(max-width: 640px)").matches) return;
+      // Controls keep their own tap/hold behavior. The task background
+      // and task text are the menu targets.
+      if (e.target.closest && e.target.closest(
+        "button,input,.task-checkbox,.task-fail-btn,.task-star,.task-color-dot,.task-delete,.task-drag-handle,.task-note-btn,.task-due-btn,.task-subtask-btn,.task-source-node"
+      )) return;
+      if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
+
+      cancel();
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      timer = setTimeout(() => {
+        timer = null;
+        row.__taskLongPressConsumed = true;
+        clearTimeout(row.__taskLongPressResetTimer);
+        row.__taskLongPressResetTimer = setTimeout(() => {
+          row.__taskLongPressConsumed = false;
+        }, 900);
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+        closeContextMenu();
+        openMenu(startX, startY);
+      }, HOLD_MS);
+    }, { passive: true });
+
+    row.addEventListener("pointermove", (e) => {
+      if (pointerId == null || e.pointerId !== pointerId || !timer) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if ((dx * dx + dy * dy) > MOVE_TOLERANCE_SQ) cancel();
+    }, { passive: true });
+    row.addEventListener("pointerup", cancel, { passive: true });
+    row.addEventListener("pointercancel", cancel, { passive: true });
+
+    row.addEventListener("click", (e) => {
+      if (!row.__taskLongPressConsumed) return;
+      e.preventDefault();
+      e.stopPropagation();
+      row.__taskLongPressConsumed = false;
+    }, true);
   }
 
   // Mobile browsers do not reliably synthesize `contextmenu` for an element
@@ -19636,7 +19768,8 @@
 
       const text = document.createElement("span");
       text.className = "task-text";
-      text.contentEditable = "true";
+      const taskPhoneMode = window.matchMedia("(max-width: 640px)").matches;
+      text.contentEditable = taskPhoneMode ? "false" : "true";
       text.spellcheck = false;
       text.textContent = t.text;
       // Skip the auto color once done — .task-row.done .task-text (dim)
@@ -19657,6 +19790,18 @@
         } else {
           text.textContent = t.text;
         }
+      });
+
+      li.addEventListener("contextmenu", (e) => {
+        if (e.target.closest("button,input,.task-checkbox,.task-fail-btn,.task-star,.task-color-dot,.task-delete,.task-drag-handle,.task-note-btn,.task-due-btn,.task-subtask-btn")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Phone uses the explicit long-press helper below.
+        if (window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
+        openTaskContextMenu(e.clientX, e.clientY, host, t, () => renderTasksModal());
+      });
+      installTaskContextLongPress(li, (x, y) => {
+        openTaskContextMenu(x, y, host, t, () => renderTasksModal());
       });
 
       // Double-clicking anywhere on the row (other than its own controls,
@@ -20263,6 +20408,24 @@
     li.title = subExpanded
       ? "Double-click to hide subtasks"
       : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
+
+    li.addEventListener("contextmenu", (e) => {
+      if (e.target.closest("button,input,.task-checkbox,.task-fail-btn,.task-star,.task-color-dot,.task-delete,.task-drag-handle,.task-source-node,.task-subtask-btn")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
+      openTaskContextMenu(e.clientX, e.clientY, host, t, () => {
+        renderCalDayModal();
+        renderCalendar();
+      });
+    });
+    installTaskContextLongPress(li, (x, y) => {
+      openTaskContextMenu(x, y, host, t, () => {
+        renderCalDayModal();
+        renderCalendar();
+      });
+    });
+
     li.addEventListener("dblclick", (e) => {
       if (e.target.closest(".task-checkbox, .task-fail-btn, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-source-node")) return;
       if (subExpanded) {
