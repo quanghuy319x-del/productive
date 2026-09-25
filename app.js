@@ -19071,6 +19071,30 @@
       rerender();
     });
     addItem("Copy text", "", () => copySubtaskText(s.text));
+    addItem("Move to Queue Tasks", "", () => {
+      if (!requireSignIn()) return;
+      const queue = getDRCQueueItems().slice();
+      const deleted = getDeletedDRCQueueItems();
+
+      pushUndo();
+
+      // Remove it from its current normal task.
+      t.subtasks = getTaskSubtasks(t).filter(x => x !== s);
+      syncTaskDoneFromSubtasks(t);
+
+      // Keep the complete subtask object (including notes/state) when it
+      // becomes a Queue item, and mark it fresh for shared Queue sync.
+      s.updatedAt = Date.now();
+      queue.push(s);
+      if (deleted[s.id]) delete deleted[s.id];
+      saveDRCQueueItems(queue);
+      saveDeletedDRCQueueItems(deleted);
+      scheduleTaskTemplateSync();
+
+      persist();
+      rerender();
+      showToast("Moved to Queue Tasks");
+    });
     addItem("Move to another node…", "", () => {
       openSubtaskMoveToNodePopover(x, y, t, s);
     });
