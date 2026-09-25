@@ -17819,6 +17819,10 @@
   // for the life of the page (not persisted) so it survives re-renders
   // but resets on reload.
   const collapsedSubtaskIds = new Set();
+  // On a phone, a task keeps its common actions tucked behind one large
+  // "…" button so the title gets most of the screen width. Remember the
+  // open drawer across re-renders caused by checkbox/date/star changes.
+  let mobileTaskActionsOpenId = null;
   // The subtask most recently chosen by the "🎲 Random" button — drawn
   // highlighted in the tasks modal until it's done, another one is
   // picked, or the modal closes. Just an id; nothing is saved.
@@ -18306,6 +18310,97 @@
     tasksListEl.querySelectorAll(".task-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
   }
 
+  // Mouse uses native HTML5 drag/drop. Touch browsers are much less
+  // reliable there, so the same visible task grip uses Pointer Events on
+  // phones: hold the grip and move immediately, with a floating preview
+  // and auto-scroll near the list edges.
+  function installTaskTouchDrag(handle, li, taskId) {
+    let pointerId = null;
+    let ghost = null;
+    let target = null; // { id, before }
+
+    const clearTargets = () => {
+      tasksListEl.querySelectorAll(".task-row.drag-over-top, .task-row.drag-over-bottom")
+        .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom"));
+    };
+    const cleanup = () => {
+      clearTargets();
+      if (ghost && ghost.parentNode) ghost.remove();
+      ghost = null;
+      target = null;
+      li.classList.remove("task-dragging", "touch-dragging");
+      taskDragState = null;
+      pointerId = null;
+    };
+    const moveGhost = (x, y) => {
+      if (!ghost) return;
+      ghost.style.left = Math.max(6, Math.min(x + 12, window.innerWidth - ghost.offsetWidth - 6)) + "px";
+      ghost.style.top = Math.max(6, Math.min(y + 12, window.innerHeight - ghost.offsetHeight - 6)) + "px";
+    };
+    const findTarget = (x, y) => {
+      clearTargets();
+      target = null;
+      const stack = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+      for (const el of stack) {
+        if (!el || !el.closest) continue;
+        const row = el.closest(".task-row[data-task-id]");
+        if (!row || row === li || !tasksListEl.contains(row) || row.dataset.sharedQueue === "1") continue;
+        const rect = row.getBoundingClientRect();
+        const before = y < rect.top + rect.height / 2;
+        row.classList.toggle("drag-over-top", before);
+        row.classList.toggle("drag-over-bottom", !before);
+        target = { id: row.dataset.taskId, before };
+        break;
+      }
+    };
+    const autoScroll = (y) => {
+      const r = tasksListEl.getBoundingClientRect();
+      if (y < r.top + 52) tasksListEl.scrollTop -= 14;
+      else if (y > r.bottom - 52) tasksListEl.scrollTop += 14;
+    };
+
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+      if (e.isPrimary === false || !requireSignIn()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeContextMenu();
+      pointerId = e.pointerId;
+      taskDragState = { taskId };
+      li.classList.add("task-dragging", "touch-dragging");
+      try { handle.setPointerCapture(pointerId); } catch (err) {}
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (err) {}
+      ghost = document.createElement("div");
+      ghost.className = "task-touch-ghost";
+      const label = li.querySelector(".task-text");
+      ghost.textContent = label ? label.textContent : "";
+      document.body.appendChild(ghost);
+      moveGhost(e.clientX, e.clientY);
+      findTarget(e.clientX, e.clientY);
+    }, { passive:false });
+
+    handle.addEventListener("pointermove", (e) => {
+      if (pointerId == null || e.pointerId !== pointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveGhost(e.clientX, e.clientY);
+      autoScroll(e.clientY);
+      findTarget(e.clientX, e.clientY);
+    }, { passive:false });
+
+    const finish = (e, commit) => {
+      if (pointerId == null || e.pointerId !== pointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const drop = target ? { ...target } : null;
+      try { handle.releasePointerCapture(pointerId); } catch (err) {}
+      cleanup();
+      if (commit && drop) reorderTask(taskId, drop.id, drop.before);
+    };
+    handle.addEventListener("pointerup", (e) => finish(e, true), { passive:false });
+    handle.addEventListener("pointercancel", (e) => finish(e, false), { passive:false });
+  }
+
   // Single "★ Sort" button that alternates between two one-click reorders
   // each time it's pressed: star (then color) first, then color-only next
   // time, then back to star, etc. Each press is a real edit (goes through
@@ -18758,12 +18853,20 @@
     tasksModalTitle.textContent = `Tasks — ${label}`;
     renderTasksModal();
     zoomModalOpen(tasksModal);
-    requestAnimationFrame(() => { tasksNewInput.focus(); autosizeTextarea(tasksNewInput); });
+    requestAnimationFrame(() => {
+      autosizeTextarea(tasksNewInput);
+      // Desktop benefits from immediate typing. On a phone this used to
+      // open the keyboard every single time the task list was opened,
+      // hiding half the list before the user even chose what to do.
+      const phoneLike = window.matchMedia && window.matchMedia("(max-width: 700px) and (any-pointer: coarse)").matches;
+      if (!phoneLike) tasksNewInput.focus();
+    });
   }
 
   function closeTasksModal() {
     tasksEditingTarget = null;
     randomPickedSubtaskId = null;
+    mobileTaskActionsOpenId = null;
     subtaskAddOpenFor.clear();
     closeTaskTemplatesPopover();
     renderAll();
@@ -19388,6 +19491,7 @@
       handle.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       handle.addEventListener("dragstart", (e) => startTaskDrag(e, li, t.id));
       handle.addEventListener("dragend", () => endTaskDrag(li));
+      installTaskTouchDrag(handle, li, t.id);
 
       const cb = document.createElement("input");
       cb.type = "checkbox";
@@ -19472,22 +19576,36 @@
         }
       });
 
-      // Double-clicking anywhere on the row (other than its own controls,
-      // which have their own click behavior) opens/closes this task's
-      // subtask panel — replaces the old separate ▸/▾ expand button.
+      // Desktop keeps the old double-click shortcut. Phones also get a
+      // dedicated one-tap subtask count button below, because double-tap
+      // is slow and conflicts with zoom/text selection on touch screens.
       li.title = subExpanded
         ? "Double-click to hide subtasks"
         : (subProg.total ? `${subProg.done} of ${subProg.total} subtasks — double-click to view` : "Double-click to add subtasks");
       li.addEventListener("dblclick", (e) => {
-        if (e.target.closest(".task-checkbox, .task-fail-btn, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-note-btn, .task-due-btn, .task-text")) return;
+        if (e.target.closest(".task-checkbox, .task-fail-btn, .task-star, .task-color-dot, .task-delete, .task-drag-handle, .task-note-btn, .task-due-btn, .task-text, .task-mobile-more, .task-mobile-subtasks, .task-mobile-actions")) return;
         if (subExpanded) {
           collapsedSubtaskIds.add(t.id);
         } else {
           collapsedSubtaskIds.delete(t.id);
-          // No subtasks yet — double-clicking to "expand" should behave
-          // like pressing the + button: open the add-subtask input.
           if (!subProg.total) subtaskAddOpenFor.add(t.id);
         }
+        renderTasksModal();
+      });
+
+      const mobileSubtasksBtn = document.createElement("button");
+      mobileSubtasksBtn.type = "button";
+      mobileSubtasksBtn.className = "task-mobile-subtasks" + (subProg.total ? "" : " hidden");
+      mobileSubtasksBtn.textContent = subProg.total
+        ? ((subExpanded ? "▾ " : "▸ ") + subProg.done + "/" + subProg.total)
+        : "";
+      mobileSubtasksBtn.title = subExpanded ? "Hide subtasks" : "Show subtasks";
+      mobileSubtasksBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!subProg.total) return;
+        if (subExpanded) collapsedSubtaskIds.add(t.id);
+        else collapsedSubtaskIds.delete(t.id);
         renderTasksModal();
       });
 
@@ -19571,23 +19689,48 @@
         if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
         pushUndo();
         host.tasks = getNodeTasks(host).filter(x => x !== t);
+        if (mobileTaskActionsOpenId === t.id) mobileTaskActionsOpenId = null;
         persist();
         renderTasksModal();
       });
 
+      // Desktop renders the wrapper as display:contents, preserving the
+      // familiar one-line controls. On a phone it becomes a wide action
+      // drawer revealed by one large "…" button, so the task name does
+      // not get crushed by seven tiny controls.
+      const mobileActions = document.createElement("div");
+      mobileActions.className = "task-mobile-actions" + (mobileTaskActionsOpenId === t.id ? " open" : "");
+      mobileActions.append(failBtn, subtaskBtn, dueBtn, noteBtn, star, colorBtn, del);
+
+      const mobileMore = document.createElement("button");
+      mobileMore.type = "button";
+      mobileMore.className = "task-mobile-more" + (mobileTaskActionsOpenId === t.id ? " active" : "");
+      mobileMore.textContent = "⋯";
+      mobileMore.title = mobileTaskActionsOpenId === t.id ? "Hide task actions" : "Show task actions";
+      mobileMore.setAttribute("aria-expanded", mobileTaskActionsOpenId === t.id ? "true" : "false");
+      mobileMore.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const opening = mobileTaskActionsOpenId !== t.id;
+        mobileTaskActionsOpenId = opening ? t.id : null;
+        tasksListEl.querySelectorAll(".task-mobile-actions.open").forEach(el => el.classList.remove("open"));
+        tasksListEl.querySelectorAll(".task-mobile-more.active").forEach(el => {
+          el.classList.remove("active");
+          el.setAttribute("aria-expanded", "false");
+        });
+        if (opening) {
+          mobileActions.classList.add("open");
+          mobileMore.classList.add("active");
+          mobileMore.setAttribute("aria-expanded", "true");
+        }
+      });
+
       li.appendChild(handle);
       li.appendChild(cb);
-      li.appendChild(failBtn);
       li.appendChild(text);
-      // Add-subtask "+" sits right at the end of the task name (before the
-      // due date / note icons) — still hidden until the row is hovered,
-      // see .task-subtask-btn in style.css.
-      li.appendChild(subtaskBtn);
-      li.appendChild(dueBtn);
-      li.appendChild(noteBtn);
-      li.appendChild(star);
-      li.appendChild(colorBtn);
-      li.appendChild(del);
+      li.appendChild(mobileSubtasksBtn);
+      li.appendChild(mobileMore);
+      li.appendChild(mobileActions);
       tasksListEl.appendChild(li);
 
       if (subExpanded) tasksListEl.appendChild(renderSubtaskPanel(node, t));
