@@ -5972,3 +5972,16 @@ kbd{
     pointer-events:auto!important;
   }
 }
+
+/* v281 Title Mode: visual uppercase preserves Vietnamese IME composition.
+   Color is inherited from Note/DRC/Brainstorm auto line coloring. */
+.title-mode-heading{
+  font-weight:700!important;
+  text-transform:uppercase!important;
+  color:inherit!important;
+}
+.title-mode-normal{
+  font-weight:400!important;
+  text-transform:none!important;
+  color:inherit!important;
+}
