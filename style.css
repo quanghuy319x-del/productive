@@ -5920,3 +5920,21 @@ kbd{
   padding-top:6px!important;
   border-radius:10px!important;
 }
+
+/* v277 Desktop Task List: always show all four action buttons.
+   Phone keeps the compact dropdown. */
+@media (min-width:641px){
+  #tasks-modal .tasks-compact-menu{
+    display:contents!important;
+  }
+  #tasks-modal .tasks-compact-menu-toggle{
+    display:none!important;
+  }
+  #tasks-modal .tasks-compact-menu-actions{
+    display:contents!important;
+    position:static!important;
+  }
+  #tasks-modal .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    display:inline-flex!important;
+  }
+}
