@@ -1881,24 +1881,69 @@
         }
       };
       if (!metadata.parents) delete metadata.parents;
-      const uploadUrl = await this.startResumableSession(
-        "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id", "POST", metadata
-      );
-      const putRes = await this.api(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": blob.type || "application/octet-stream" },
-        body: blob,
-        timeoutMs: 180000
-      });
-      if (!putRes.ok) throw new Error("Couldn't upload a photo to Drive (" + putRes.status + ")");
-      const data = await putRes.json();
-      return data.id;
+
+      // Large first-time migrations can mean dozens/hundreds of separate
+      // photo uploads. A single transient 429/5xx/network hiccup must not
+      // abort the entire map after 30 successful photos. Retry each photo
+      // independently. Before retrying, re-list Drive once: if Google
+      // actually committed the previous attempt but the response was lost,
+      // reuse that file instead of creating a duplicate.
+      let lastError = null;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        if (attempt > 1) {
+          try {
+            const refreshed = await this.listRemotePhotos(map.id, true);
+            if (refreshed[photoId]) return refreshed[photoId].id;
+          } catch (e) {
+            // A failed verification is not fatal; the fresh upload attempt
+            // below can still succeed.
+          }
+          const waitMs = Math.min(12000, 800 * Math.pow(2, attempt - 2));
+          this.setSyncProgress(`Drive paused — retrying photo in ${Math.ceil(waitMs / 1000)}s…`, 0, 0);
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
+
+        try {
+          const uploadUrl = await this.startResumableSession(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id", "POST", metadata
+          );
+          const putRes = await this.api(uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": blob.type || "application/octet-stream" },
+            body: blob,
+            timeoutMs: 300000
+          });
+          if (putRes.ok) {
+            const data = await putRes.json();
+            return data.id;
+          }
+
+          const status = putRes.status;
+          let bodyText = "";
+          try { bodyText = (await putRes.text()).slice(0, 300); } catch (e) {}
+          lastError = new Error("Photo upload failed (" + status + ")" + (bodyText ? ": " + bodyText : ""));
+
+          // 408/409/429 and 5xx are explicitly transient. Google may also
+          // return 403 for rate-limit/backend throttling, so retry that too.
+          const retryable = status === 403 || status === 408 || status === 409 ||
+            status === 429 || (status >= 500 && status <= 599);
+          if (!retryable) throw lastError;
+        } catch (e) {
+          lastError = e;
+          // Authentication failures are handled inside api() and should not
+          // be hammered with repeated new sessions after reauth was required.
+          if (this.needsReauth) throw e;
+          if (attempt >= 5) throw e;
+        }
+      }
+      throw lastError || new Error("Couldn't upload photo to Drive");
     },
 
     async syncPhotosForMap(map) {
       const referenced = collectReferencedPhotoIds(map.root);
       const remote = await this.listRemotePhotos(map.id, false);
       const missing = Array.from(referenced).filter((id) => !remote[id]);
+      const alreadyUploaded = referenced.size - missing.length;
       let folderId = null;
       for (let i = 0; i < missing.length; i++) {
         const photoId = missing[i];
@@ -1913,11 +1958,12 @@
           throw new Error("A photo referenced by this map is missing locally and is not on Drive yet (" + photoId + ")");
         }
         if (!folderId) folderId = await this.ensurePhotoFolder(map);
+        const overallDone = alreadyUploaded + i;
         this.setSyncProgress(
-          `Uploading photos ${i + 1}/${missing.length}…`,
-          i,
-          missing.length,
-          missing.length ? Math.max(5, Math.min(88, Math.round(((i + 1) / missing.length) * 88))) : 88
+          `Uploading photos ${overallDone + 1}/${referenced.size}…`,
+          overallDone,
+          referenced.size,
+          referenced.size ? Math.max(5, Math.min(88, Math.round(((overallDone + 1) / referenced.size) * 88))) : 88
         );
         const fileId = await this.uploadPhotoFile(map, photoId, photoBlob, folderId);
         remote[photoId] = {
@@ -2152,7 +2198,19 @@
       } catch (e) {
         console.error("Drive save failed", e);
         const tokenLooksExpired = !this.accessToken || Date.now() >= this.tokenExpiresAt;
-        this.status = tokenLooksExpired ? "reauth" : "broken";
+        if (tokenLooksExpired || this.needsReauth) {
+          this.status = "reauth";
+        } else {
+          // Keep the existing safety lock, but mark the failure as recoverable:
+          // pushLocalNewer() will resume from the photos already confirmed on
+          // Drive instead of starting the entire migration over.
+          this.status = "broken";
+          this.lastLocalPushTryAt = Date.now() - 10000;
+          this.setSyncProgress("Upload interrupted — retrying from saved photos…", 0, 0, Math.max(1, this.syncProgressPercent || 1));
+          setTimeout(() => {
+            try { this.pushLocalNewer({ force: true, includeNew: true }); } catch (e3) {}
+          }, 1800);
+        }
         try { updateDriveUI(); } catch (e2) {}
         return false;
       }
