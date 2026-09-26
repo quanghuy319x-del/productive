@@ -329,6 +329,15 @@
         tx.onerror = (e) => reject(e.target.error);
       });
     },
+    async get(id) {
+      const db = await DB.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_STORE, "readonly");
+        const req = tx.objectStore(PHOTO_STORE).get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = (e) => reject(e.target.error);
+      });
+    },
     // Bulk insert is dramatically faster during a first/new-device sync:
     // a Drive map can contain dozens or hundreds of inline photos. The old
     // migration opened one IndexedDB transaction per photo, so the browser
@@ -1182,11 +1191,11 @@
   }
 
   /* ---------------- Google Drive sync ----------------
-     Mirrors every map to Google Drive as its own .json file, the same way
-     FolderDB mirrors to a local folder — same merge-by-updatedAt policy,
-     just a different backend. This is what actually gets your maps from
-     one device/browser to another (a local "Connect folder" only syncs
-     devices that share a filesystem, e.g. via Dropbox/iCloud).
+     Drive v2 stores each map as a small JSON manifest (nodes/text/settings
+     plus stable photo ids) and stores full-resolution photos as separate
+     binary files. Metadata can sync/open immediately while photo Blobs are
+     fetched lazily only for the map being opened. Legacy v1 inline-photo
+     JSON files remain readable and migrate automatically on next save.
 
      REQUIRES a Google Cloud OAuth Client ID pasted into GOOGLE_CLIENT_ID
      below — see the "Google Drive sync setup" section of the README for
@@ -1388,6 +1397,13 @@
     // map id -> { fileId, updatedAt } for every map we know is mirrored to
     // Drive, so save/remove don't have to search every time.
     fileIndex: {},
+    // Drive v2 stores the map structure separately from photo Blobs.
+    // Cache the remote photo index so normal text autosaves don't list
+    // hundreds of photo files again and again.
+    photoFileIndex: {},
+    photoFolderIndex: {},
+    photoHydrationByMap: {},
+    photoHydratedMaps: new Set(),
 
     configured() {
       return !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith("PASTE_");
@@ -1706,6 +1722,10 @@
       this.freshUntil = 0;
       this.conflictDetected = false;
       this.fileIndex = {};
+      this.photoFileIndex = {};
+      this.photoFolderIndex = {};
+      this.photoHydrationByMap = {};
+      this.photoHydratedMaps.clear();
       this.lastSyncedAt = 0;
       this.setSyncProgress("", 0, 0);
       DB.setHandle(DRIVE_SIGNED_IN_KEY, false).catch(() => {});
@@ -1719,29 +1739,58 @@
     // metadata we tagged them with — cheap compared to downloading every
     // file's content just to check whether it changed.
     async listRemote() {
-      const fields = encodeURIComponent("files(id,name,appProperties)");
-      const q = encodeURIComponent("trashed=false");
-      const res = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&spaces=drive&pageSize=1000`);
-      if (!res.ok) throw new Error("Couldn't list Drive files (" + res.status + ")");
-      const data = await res.json();
-      return (data.files || []).filter(f => f.appProperties && f.appProperties.branchlineId);
+      // Query only map manifests. Photo files use branchlineMapId rather
+      // than branchlineId, so even a map with thousands of photos does not
+      // make the 10-second metadata poll enumerate every image.
+      const fields = encodeURIComponent("nextPageToken,files(id,name,mimeType,appProperties)");
+      const q = encodeURIComponent("trashed=false and appProperties has { key='branchlineId' }");
+      const out = [];
+      let pageToken = "";
+      do {
+        const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+        const res = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&spaces=drive&pageSize=1000${tokenPart}`);
+        if (!res.ok) throw new Error("Couldn't list Drive maps (" + res.status + ")");
+        const data = await res.json();
+        out.push(...(data.files || []));
+        pageToken = data.nextPageToken || "";
+      } while (pageToken);
+      return out;
+    },
+
+    driveFormatFor(file) {
+      return String((file && file.appProperties && file.appProperties.branchlineFormat) || "1");
     },
 
     async downloadFile(fileId) {
-      const res = await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+      const res = await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { timeoutMs: 180000 });
       if (!res.ok) throw new Error("Couldn't download a map from Drive (" + res.status + ")");
       return res.json();
+    },
+
+    async downloadPhotoFile(fileId) {
+      const res = await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { timeoutMs: 180000 });
+      if (!res.ok) throw new Error("Couldn't download a photo from Drive (" + res.status + ")");
+      return res.blob();
     },
 
     filenameFor(map) {
       const safe = (map.title || "untitled").toLowerCase()
         .replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "").slice(0, 40) || "untitled";
-      return `${safe}-${map.id}.json`;
+      return `${safe}-${map.id}.map.json`;
     },
 
-    // Both create and update go through Drive's *resumable* upload
-    // protocol (rather than the 5MB-capped "multipart" one) since a
-    // mindmap full of full-resolution photos can easily exceed that.
+    photoFilename(mapId, photoId, mime) {
+      const ext = mime === "image/png" ? "png"
+        : mime === "image/webp" ? "webp"
+        : mime === "image/gif" ? "gif"
+        : mime === "image/svg+xml" ? "svg"
+        : "jpg";
+      return `photo-${String(photoId).slice(0, 48)}.${ext}`;
+    },
+
+    // Both map manifests and binary photos use resumable uploads. The map
+    // manifest stays small; full-resolution image bytes never get expanded
+    // into base64 just to sync them.
     async startResumableSession(url, method, metadata) {
       const res = await this.api(url, {
         method,
@@ -1754,8 +1803,221 @@
       return uploadUrl;
     },
 
+    _escapeDriveQueryValue(value) {
+      return String(value || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    },
+
+    async _listPhotoEntries(mapId) {
+      const mid = this._escapeDriveQueryValue(mapId);
+      const q = encodeURIComponent(`trashed=false and appProperties has { key='branchlineMapId' and value='${mid}' }`);
+      const fields = encodeURIComponent("nextPageToken,files(id,name,mimeType,size,appProperties)");
+      const out = [];
+      let pageToken = "";
+      do {
+        const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "";
+        const res = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&spaces=drive&pageSize=1000${tokenPart}`);
+        if (!res.ok) throw new Error("Couldn't list Drive photos (" + res.status + ")");
+        const data = await res.json();
+        out.push(...(data.files || []));
+        pageToken = data.nextPageToken || "";
+      } while (pageToken);
+      return out;
+    },
+
+    async listRemotePhotos(mapId, force) {
+      if (!force && this.photoFileIndex[mapId]) return this.photoFileIndex[mapId];
+      const entries = await this._listPhotoEntries(mapId);
+      const index = {};
+      entries.forEach((f) => {
+        const p = f.appProperties || {};
+        if (p.branchlinePhoto === "1" && p.branchlinePhotoId) index[p.branchlinePhotoId] = f;
+        if (p.branchlinePhotoFolder === "1") this.photoFolderIndex[mapId] = f.id;
+      });
+      this.photoFileIndex[mapId] = index;
+      return index;
+    },
+
+    async ensurePhotoFolder(map) {
+      if (this.photoFolderIndex[map.id]) return this.photoFolderIndex[map.id];
+      const entries = await this._listPhotoEntries(map.id);
+      const existing = entries.find((f) => f.appProperties && f.appProperties.branchlinePhotoFolder === "1");
+      if (existing) {
+        this.photoFolderIndex[map.id] = existing.id;
+        return existing.id;
+      }
+      const safe = (map.title || "Untitled map").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 48) || "Untitled map";
+      const metadata = {
+        name: `Branchline Photos - ${safe}`,
+        mimeType: "application/vnd.google-apps.folder",
+        appProperties: {
+          branchlineMapId: map.id,
+          branchlinePhotoFolder: "1"
+        }
+      };
+      const res = await this.api("https://www.googleapis.com/drive/v3/files?fields=id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=UTF-8" },
+        body: JSON.stringify(metadata)
+      });
+      if (!res.ok) throw new Error("Couldn't create the Drive photo folder (" + res.status + ")");
+      const data = await res.json();
+      this.photoFolderIndex[map.id] = data.id;
+      return data.id;
+    },
+
+    async uploadPhotoFile(map, photoId, blob, folderId) {
+      const metadata = {
+        name: this.photoFilename(map.id, photoId, blob.type),
+        mimeType: blob.type || "application/octet-stream",
+        parents: folderId ? [folderId] : undefined,
+        appProperties: {
+          branchlineMapId: map.id,
+          branchlinePhoto: "1",
+          branchlinePhotoId: photoId
+        }
+      };
+      if (!metadata.parents) delete metadata.parents;
+      const uploadUrl = await this.startResumableSession(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id", "POST", metadata
+      );
+      const putRes = await this.api(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": blob.type || "application/octet-stream" },
+        body: blob,
+        timeoutMs: 180000
+      });
+      if (!putRes.ok) throw new Error("Couldn't upload a photo to Drive (" + putRes.status + ")");
+      const data = await putRes.json();
+      return data.id;
+    },
+
+    async syncPhotosForMap(map) {
+      const referenced = collectReferencedPhotoIds(map.root);
+      const remote = await this.listRemotePhotos(map.id, false);
+      const missing = Array.from(referenced).filter((id) => !remote[id]);
+      let folderId = null;
+      for (let i = 0; i < missing.length; i++) {
+        const photoId = missing[i];
+        let rec = null;
+        try { rec = await PhotoDB.get(photoId); } catch (e) {}
+        let photoBlob = rec && rec.blob;
+        if (!photoBlob && rec && rec.data) {
+          try { photoBlob = dataUrlToBlob(rec.data); } catch (e) {}
+        }
+        if (!photoBlob && state.current && state.current.id === map.id) photoBlob = photoBlobCache.get(photoId) || null;
+        if (!photoBlob) {
+          throw new Error("A photo referenced by this map is missing locally and is not on Drive yet (" + photoId + ")");
+        }
+        if (!folderId) folderId = await this.ensurePhotoFolder(map);
+        this.setSyncProgress(
+          `Uploading photos ${i + 1}/${missing.length}…`,
+          i,
+          missing.length,
+          missing.length ? Math.max(5, Math.min(88, Math.round(((i + 1) / missing.length) * 88))) : 88
+        );
+        const fileId = await this.uploadPhotoFile(map, photoId, photoBlob, folderId);
+        remote[photoId] = {
+          id: fileId,
+          name: this.photoFilename(map.id, photoId, photoBlob.type),
+          mimeType: photoBlob.type || "application/octet-stream",
+          appProperties: { branchlineMapId: map.id, branchlinePhoto: "1", branchlinePhotoId: photoId }
+        };
+      }
+      this.photoFileIndex[map.id] = remote;
+      return { referenced, remote };
+    },
+
+    async cleanupRemotePhotos(mapId, referenced, remoteIndex) {
+      const index = remoteIndex || await this.listRemotePhotos(mapId, false);
+      const doomed = Object.keys(index).filter((id) => !referenced.has(id));
+      for (const id of doomed) {
+        try {
+          await this.api(`https://www.googleapis.com/drive/v3/files/${index[id].id}`, { method: "DELETE" });
+          delete index[id];
+        } catch (e) {
+          console.warn("Couldn't remove an unused Drive photo", id, e);
+        }
+      }
+    },
+
+    async hydratePhotosForMap(map, opts) {
+      if (!map || !map.root || !this.signedIn) return false;
+      const options = opts || {};
+      if (!options.force && this.photoHydratedMaps.has(map.id)) return false;
+      if (this.photoHydrationByMap[map.id]) return this.photoHydrationByMap[map.id];
+
+      const run = (async () => {
+        const referenced = collectReferencedPhotoIds(map.root);
+        if (!referenced.size) {
+          this.photoHydratedMaps.add(map.id);
+          return false;
+        }
+        const rows = await PhotoDB.getAllForMap(map.id);
+        const localIds = new Set(rows.map((r) => r.id));
+        const missing = Array.from(referenced).filter((id) => !localIds.has(id));
+        if (!missing.length) {
+          this.photoHydratedMaps.add(map.id);
+          return false;
+        }
+        const remote = await this.listRemotePhotos(map.id, !!options.forceIndex);
+        let downloaded = 0;
+        for (let i = 0; i < missing.length; i++) {
+          const id = missing[i];
+          const f = remote[id];
+          if (!f) {
+            console.warn("Drive photo is missing for map", map.id, id);
+            continue;
+          }
+          const photoBlob = await this.downloadPhotoFile(f.id);
+          await PhotoDB.put({ id, mapId: map.id, blob: photoBlob });
+          downloaded++;
+          if (state.current && state.current.id === map.id) {
+            const old = photoCache.get(id);
+            if (old) { try { URL.revokeObjectURL(old); } catch (e) {} }
+            photoBlobCache.set(id, photoBlob);
+            photoCache.set(id, URL.createObjectURL(photoBlob));
+            if (downloaded % 4 === 0 || i === missing.length - 1) {
+              try { if (!state.editingId && !unsavedEdits) renderAll(); } catch (e) {}
+            }
+          }
+        }
+        if (downloaded && state.current && state.current.id === map.id) {
+          photoFpGeneration++;
+          photoFpIndexPromise = indexPhotoFingerprints(photoFpGeneration);
+        }
+        this.photoHydratedMaps.add(map.id);
+        return downloaded > 0;
+      })();
+
+      this.photoHydrationByMap[map.id] = run;
+      try {
+        return await run;
+      } finally {
+        delete this.photoHydrationByMap[map.id];
+      }
+    },
+
+    // Conflict copies are rare, so only here do we temporarily rebuild a
+    // self-contained/base64 copy. Normal sync never does this anymore.
+    async portableRemoteCopy(fileMeta, data) {
+      const map = data || await this.downloadFile(fileMeta.id);
+      if (this.driveFormatFor(fileMeta) !== "2") return map;
+      await this.hydratePhotosForMap(map, { force: true, forceIndex: true });
+      return inlinePhotosForPortableCopy(map);
+    },
+
     async createFile(map) {
-      const metadata = { name: this.filenameFor(map), appProperties: { branchlineId: map.id, updatedAt: String(map.updatedAt || 0) } };
+      const refs = collectReferencedPhotoIds(map.root);
+      const metadata = {
+        name: this.filenameFor(map),
+        mimeType: "application/json",
+        appProperties: {
+          branchlineId: map.id,
+          updatedAt: String(map.updatedAt || 0),
+          branchlineFormat: "2",
+          branchlinePhotoCount: String(refs.size)
+        }
+      };
       const uploadUrl = await this.startResumableSession(
         "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id", "POST", metadata
       );
@@ -1765,13 +2027,23 @@
         body: JSON.stringify(map),
         timeoutMs: 180000
       });
-      if (!putRes.ok) throw new Error("Couldn't upload a map to Drive (" + putRes.status + ")");
+      if (!putRes.ok) throw new Error("Couldn't upload a map manifest to Drive (" + putRes.status + ")");
       const data = await putRes.json();
       return data.id;
     },
 
     async updateFile(fileId, map) {
-      const metadata = { name: this.filenameFor(map), appProperties: { branchlineId: map.id, updatedAt: String(map.updatedAt || 0) } };
+      const refs = collectReferencedPhotoIds(map.root);
+      const metadata = {
+        name: this.filenameFor(map),
+        mimeType: "application/json",
+        appProperties: {
+          branchlineId: map.id,
+          updatedAt: String(map.updatedAt || 0),
+          branchlineFormat: "2",
+          branchlinePhotoCount: String(refs.size)
+        }
+      };
       const uploadUrl = await this.startResumableSession(
         `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=resumable`, "PATCH", metadata
       );
@@ -1781,7 +2053,7 @@
         body: JSON.stringify(map),
         timeoutMs: 180000
       });
-      if (!putRes.ok) throw new Error("Couldn't update a map on Drive (" + putRes.status + ")");
+      if (!putRes.ok) throw new Error("Couldn't update a map manifest on Drive (" + putRes.status + ")");
     },
 
     // A 200 from the upload request means Google accepted the bytes, but the
@@ -1831,11 +2103,6 @@
         if (knownBefore && !skipRemoteGuard) {
           const remoteNow = await this.readRemoteStamp(knownBefore.fileId);
           if (remoteNow.updatedAt > (knownBefore.updatedAt || 0)) {
-            // Another device changed Drive after our last confirmed base.
-            // Never overwrite it from autosave. Mark this device stale and
-            // schedule a full reconcile just after the local save finishes;
-            // syncFromDrive's existing three-way merge/conflict-copy logic
-            // will preserve both sides, then push the merged result.
             this.conflictDetected = true;
             this.freshUntil = 0;
             try { updateDriveUI(); } catch (e) {}
@@ -1843,44 +2110,40 @@
             return false;
           }
         }
-        // The Drive copy is what actually crosses devices, so — same as
-        // the folder mirror — it needs real photo bytes inline rather
-        // than this browser's local-only photo ids.
-        const portable = await inlinePhotosForPortableCopy(map);
-        // The stamp of the copy actually being uploaded — NOT the live
-        // map's, which can have moved on during a slow upload. Recording
-        // the live one made edits made mid-upload look already synced.
-        const uploadedStamp = portable.updatedAt || map.updatedAt;
+
+        if (!map._photosMigrated) await ensurePhotosMigrated(map);
+
+        // Upload missing binary photos before publishing the new metadata
+        // revision. A second device can therefore never see a manifest that
+        // points at photo files which have not finished uploading yet.
+        const photoSync = await this.syncPhotosForMap(map);
+        const uploadedStamp = map.updatedAt || 0;
         const known = this.fileIndex[map.id];
         let fileId;
+        this.setSyncProgress("Uploading map data…", 0, 1, 92);
         if (known) {
           fileId = known.fileId;
-          await this.updateFile(fileId, portable);
+          await this.updateFile(fileId, map);
         } else {
-          fileId = await this.createFile(portable);
+          fileId = await this.createFile(map);
         }
 
-        // Do not advance fileIndex / sync-base until Drive itself proves it
-        // has this exact revision. If verification fails, the map remains
-        // dirty and the retry loop will push it again instead of silently
-        // treating a local-only edit as synced.
         const verified = await this.verifyUploadedStamp(fileId, uploadedStamp);
         if (!verified) throw new Error("Drive did not confirm the uploaded revision yet");
-        this.fileIndex[map.id] = { fileId, updatedAt: uploadedStamp };
+        this.fileIndex[map.id] = { fileId, updatedAt: uploadedStamp, format: "2" };
+        this.photoHydratedMaps.add(map.id);
         setSyncBase(map.id, uploadedStamp);
         await setSyncSnapshot(map.id, map);
         this.lastSyncedAt = Date.now();
         this.consecutivePollFailures = 0;
         if (this.status === "broken") this.status = "ok";
         updateDriveUI();
+
+        this.cleanupRemotePhotos(map.id, photoSync.referenced, photoSync.remote).catch((e) => {
+          console.warn("Drive photo cleanup failed", e);
+        });
         return true;
       } catch (e) {
-        // A failed upload used to be a console-only event: the toolbar
-        // still said "Saved" (which was true — locally), the sidebar
-        // still said "Synced 4m ago" (also true, and useless), and the
-        // person kept editing into what was effectively a local-only
-        // copy. Treat it as the connection loss it is: flag it, lock
-        // editing, and say so on screen.
         console.error("Drive save failed", e);
         const tokenLooksExpired = !this.accessToken || Date.now() >= this.tokenExpiresAt;
         this.status = tokenLooksExpired ? "reauth" : "broken";
@@ -1920,11 +2183,27 @@
     async remove(map) {
       if (!this.signedIn || !map) return;
       const known = this.fileIndex[map.id];
-      if (!known) return;
       try {
-        await this.api(`https://www.googleapis.com/drive/v3/files/${known.fileId}`, { method: "DELETE" });
+        const entries = await this._listPhotoEntries(map.id);
+        const files = entries.filter((f) => f.appProperties && f.appProperties.branchlinePhoto === "1");
+        for (const f of files) {
+          try { await this.api(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: "DELETE" }); } catch (e) {}
+        }
+        const folders = entries.filter((f) => f.appProperties && f.appProperties.branchlinePhotoFolder === "1");
+        for (const f of folders) {
+          try { await this.api(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: "DELETE" }); } catch (e) {}
+        }
       } catch (e) { /* best-effort */ }
+      if (known) {
+        try {
+          await this.api(`https://www.googleapis.com/drive/v3/files/${known.fileId}`, { method: "DELETE" });
+        } catch (e) { /* best-effort */ }
+      }
       delete this.fileIndex[map.id];
+      delete this.photoFileIndex[map.id];
+      delete this.photoFolderIndex[map.id];
+      delete this.photoHydrationByMap[map.id];
+      this.photoHydratedMaps.delete(map.id);
     },
 
     // The push half of sync. syncFromDrive() only ever *pulls*, and skips
@@ -2096,7 +2375,13 @@
         if (!id) continue;
         seenRemoteIds.add(id);
         const remoteUpdatedAt = Number((f.appProperties && f.appProperties.updatedAt) || 0);
-        this.fileIndex[id] = { fileId: f.id, updatedAt: remoteUpdatedAt };
+        const remoteFormat = this.driveFormatFor(f);
+        const previousKnown = this.fileIndex[id];
+        this.fileIndex[id] = { fileId: f.id, updatedAt: remoteUpdatedAt, format: remoteFormat };
+        if (!previousKnown || previousKnown.updatedAt !== remoteUpdatedAt || previousKnown.format !== remoteFormat) {
+          delete this.photoFileIndex[id];
+          this.photoHydratedMaps.delete(id);
+        }
         const existing = state.maps.find(m => m.id === id);
         if (existing) {
           const localUpdatedAt = existing.updatedAt || 0;
@@ -2145,7 +2430,8 @@
                     await DB.put(existing);
                     showToast("Combined your edits with changes from another device");
                   } else {
-                    await saveConflictCopy(other, "other device");
+                    const portableOther = await this.portableRemoteCopy(f, other);
+                    await saveConflictCopy(portableOther, "other device");
                   }
                 }
                 setSyncBase(id, remoteUpdatedAt);
@@ -2194,14 +2480,16 @@
           // Drive's version. This avoids old map/photo cache accumulating and,
           // importantly, never deletes a newer/dirty local edit.
           let purgeStaleDeviceCache = false;
-          if (existing && !localHasUnsyncedEdits && remoteUpdatedAt > (existing.updatedAt || 0)) {
+          // v2 manifests keep stable photo ids. Preserve PhotoDB rows across
+          // metadata revisions and lazy-download only ids this device lacks.
+          // Legacy v1 files still inline bytes and keep the old cleanup path.
+          if (remoteFormat !== "2" && existing && !localHasUnsyncedEdits && remoteUpdatedAt > (existing.updatedAt || 0)) {
             try {
               const localPortable = await inlinePhotosForPortableCopy(existing);
               const localSig = (localPortable.title || "") + "\u0000" + mapContentFingerprint(localPortable);
               const remoteSig = (data.title || "") + "\u0000" + mapContentFingerprint(data);
               purgeStaleDeviceCache = localSig !== remoteSig;
             } catch (e) {
-              // Comparison failure is never a reason to delete local cache.
               purgeStaleDeviceCache = false;
               console.warn("Skipped stale cache cleanup because map comparison failed", e);
             }
@@ -2223,10 +2511,10 @@
           ensureFavorite(data);
           ensureTrash(data);
           ensureSidesRepaired(data);
-          // Drive files carry inline photo bytes. Bulk migration now stores
-          // all of a map's photos in one IndexedDB transaction instead of one
-          // transaction per photo.
-          await ensurePhotosMigrated(data);
+          // Legacy v1 Drive maps carry inline bytes. v2 manifests already
+          // contain stable photo ids and their Blobs are fetched separately.
+          if (remoteFormat === "2") data._photosMigrated = true;
+          else await ensurePhotosMigrated(data);
 
           let storedMap = data;
           if (existing && !purgeStaleDeviceCache) {
@@ -2297,8 +2585,17 @@
       } else {
         this.conflictDetected = true;
       }
-      if (targets.length) this.setSyncProgress("Drive download check complete", targets.length, targets.length, 70);
+      if (targets.length) this.setSyncProgress("Drive metadata check complete", targets.length, targets.length, 70);
       else this.setSyncProgress("Drive is already up to date", 0, 0, 70);
+
+      // Metadata sync is done. If its map is already open, fill missing
+      // photos in the background; other maps stay metadata-only until opened.
+      if (state.current) {
+        const knownOpen = this.fileIndex[state.current.id];
+        if (knownOpen && knownOpen.format === "2") {
+          this.hydratePhotosForMap(state.current).catch((e) => console.warn("Lazy Drive photo load failed", e));
+        }
+      }
       return changed;
     }
   };
@@ -3177,7 +3474,10 @@
           let kept = null;
           try {
             const other = await DriveDB.downloadFile(before.id);
-            if (other && other.root) kept = await saveConflictCopy(other, "other device");
+            if (other && other.root) {
+              const portableOther = await DriveDB.portableRemoteCopy(before, other);
+              kept = await saveConflictCopy(portableOther, "other device");
+            }
           } catch (e) { console.error("Couldn't fetch Drive's newer copy", e); }
           if (!kept) { showToast("Couldn't back up Drive's newer copy first \u2014 nothing was uploaded"); return; }
           renderSidebar();
@@ -3271,7 +3571,7 @@
       mode = "syncing";
       heading = DriveDB.syncPhase || "Syncing…";
       const elapsed = DriveDB.syncStartedAt ? Math.max(1, Math.round((Date.now() - DriveDB.syncStartedAt) / 1000)) : 0;
-      detail = "Comparing with Google Drive" + (elapsed ? (" · " + elapsed + "s elapsed") : "") + ". Large photo maps take longer because their Drive copy includes the photo bytes.";
+      detail = "Comparing map data with Google Drive" + (elapsed ? (" · " + elapsed + "s elapsed") : "") + ". Photos are stored separately and load only when their map is opened.";
     } else if (pendingCount > 0) {
       mode = "syncing";
       heading = "Waiting to upload " + pendingCount + (pendingCount === 1 ? " map" : " maps");
@@ -6469,6 +6769,16 @@
     renderSidebar();
     renderAll();
     applyTransform();
+
+    // Drive v2: the structure is already usable here. Missing photo Blobs
+    // arrive afterward, so a photo-heavy map shows its text immediately.
+    const driveKnown = DriveDB.fileIndex && DriveDB.fileIndex[id];
+    if (DriveDB.signedIn && driveKnown && driveKnown.format === "2") {
+      DriveDB.hydratePhotosForMap(m).catch((e) => {
+        console.warn("Couldn't lazy-load this map's Drive photos", e);
+        try { showToast("Map opened; some photos are still waiting for Drive"); } catch (e2) {}
+      });
+    }
     // Remembered across reloads so boot() can reopen whichever map you
     // were last looking at, rather than always the top of the sidebar
     // list (most recently *edited*, which isn't necessarily the same map).
