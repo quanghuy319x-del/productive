@@ -6047,3 +6047,24 @@ kbd{
   padding:8px 11px!important;
   text-align:left!important;
 }
+
+/* v284 Phone Note/DRC/Brainstorm: use the same near-fullscreen size/position as Tasks */
+@media (max-width:640px){
+  #note-modal,
+  #brainstorm-modal{
+    align-items:flex-start!important;
+    padding-top:6px!important;
+    padding-bottom:6px!important;
+  }
+
+  #note-modal .note-modal-card,
+  #brainstorm-modal .note-modal-card{
+    width:94vw!important;
+    max-width:94vw!important;
+    min-width:0!important;
+    height:calc(100% - 12px)!important;
+    max-height:calc(100% - 12px)!important;
+    min-height:0!important;
+    padding-top:10px!important;
+  }
+}
