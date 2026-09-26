@@ -2041,18 +2041,272 @@
       throw lastError || new Error("Couldn't upload photo to Drive");
     },
 
+    // Emergency repair for an interrupted v1 -> v2 migration.
+    //
+    // During the split-storage migration the local tree is converted from
+    // inline data: URLs to short photo ids BEFORE every binary photo has made
+    // it to Drive. If the browser/IndexedDB loses one of those Blob rows, the
+    // tree still knows the id but neither PhotoDB nor the new Drive photo
+    // folder has the bytes. The old v1 Drive JSON is deliberately not replaced
+    // until ALL photos upload, so use it as a recovery source.
+    //
+    // We match by stable node/task/note ids and by photo position inside each
+    // owner. If the current Drive file is already v2, we also inspect a few
+    // large previous Drive revisions; that gives us a second chance even if a
+    // partially-completed migration managed to publish a small manifest.
+    async recoverMissingLocalPhotos(map, missingIds) {
+      const wanted = new Set((missingIds || []).filter(Boolean));
+      if (!map || !map.root || !wanted.size) return { recovered: 0, remaining: Array.from(wanted) };
+
+      const recovered = new Map(); // local photo id -> Blob
+      const isDataUrl = (v) => typeof v === "string" && v.startsWith("data:");
+
+      const pairLists = (localList, remoteList) => {
+        const a = Array.isArray(localList) ? localList : [];
+        const b = Array.isArray(remoteList) ? remoteList : [];
+        const n = Math.min(a.length, b.length);
+        for (let i = 0; i < n; i++) {
+          const localId = a[i];
+          const remoteValue = b[i];
+          if (!wanted.has(localId) || recovered.has(localId) || !isDataUrl(remoteValue)) continue;
+          try { recovered.set(localId, dataUrlToBlob(remoteValue)); } catch (e) {}
+        }
+      };
+
+      const imageList = (owner) => {
+        if (!owner) return [];
+        if (Array.isArray(owner.images)) return owner.images;
+        return owner.image ? [owner.image] : [];
+      };
+
+      const dataUrlsFromNoteHtml = (html) => {
+        const out = [];
+        if (!html || html.indexOf("data:") === -1) return out;
+        const re = /<img\b[^>]*\bsrc=(["'])(data:[\s\S]*?)\1[^>]*>/gi;
+        let m;
+        while ((m = re.exec(html))) out.push(m[2]);
+        return out;
+      };
+
+      const pairNotes = (localOwner, remoteOwner) => {
+        const locals = (localOwner && Array.isArray(localOwner.notes)) ? localOwner.notes : [];
+        const remotes = (remoteOwner && Array.isArray(remoteOwner.notes)) ? remoteOwner.notes : [];
+        const byId = new Map(remotes.filter(Boolean).map((n) => [n.id, n]));
+        locals.forEach((ln, i) => {
+          if (!ln) return;
+          const rn = (ln.id && byId.get(ln.id)) || remotes[i];
+          if (!rn) return;
+          pairLists(extractNotePhotoIds(ln.html || ""), dataUrlsFromNoteHtml(rn.html || ""));
+        });
+      };
+
+      const pairLinkPhotos = (localOwner, remoteOwner) => {
+        const a = localOwner && localOwner.linkPhotos;
+        const b = remoteOwner && remoteOwner.linkPhotos;
+        if (!a || !b) return;
+        Object.keys(a).forEach((k) => {
+          if (Object.prototype.hasOwnProperty.call(b, k)) pairLists(a[k], b[k]);
+        });
+      };
+
+      const pairTaskList = (localTasks, remoteTasks) => {
+        const locals = Array.isArray(localTasks) ? localTasks : [];
+        const remotes = Array.isArray(remoteTasks) ? remoteTasks : [];
+        const byId = new Map(remotes.filter(Boolean).map((t) => [t.id, t]));
+        locals.forEach((lt, i) => {
+          if (!lt) return;
+          const rt = (lt.id && byId.get(lt.id)) || remotes[i];
+          if (!rt) return;
+          pairNotes(lt, rt);
+
+          const ls = Array.isArray(lt.subtasks) ? lt.subtasks : [];
+          const rs = Array.isArray(rt.subtasks) ? rt.subtasks : [];
+          const subById = new Map(rs.filter(Boolean).map((s) => [s.id, s]));
+          ls.forEach((lsub, j) => {
+            if (!lsub) return;
+            const rsub = (lsub.id && subById.get(lsub.id)) || rs[j];
+            if (rsub) pairNotes(lsub, rsub);
+          });
+        });
+      };
+
+      const pairAttach = (localNode, remoteNode) => {
+        const la = localNode && localNode.table && Array.isArray(localNode.table.attach)
+          ? localNode.table.attach : [];
+        const ra = remoteNode && remoteNode.table && Array.isArray(remoteNode.table.attach)
+          ? remoteNode.table.attach : [];
+        for (let r = 0; r < Math.min(la.length, ra.length); r++) {
+          const lrow = la[r] || [], rrow = ra[r] || [];
+          for (let col = 0; col < Math.min(lrow.length, rrow.length); col++) {
+            const lc = lrow[col], rc = rrow[col];
+            if (!lc || !rc) continue;
+            pairLists(imageList(lc), imageList(rc));
+            pairLinkPhotos(lc, rc);
+            pairNotes(lc, rc);
+            pairTaskList(lc.tasks, rc.tasks);
+          }
+        }
+      };
+
+      const recoverFromRemoteMap = (remoteMap) => {
+        if (!remoteMap || !remoteMap.root) return 0;
+        const before = recovered.size;
+        const remoteNodes = new Map();
+        (function index(n) {
+          if (!n) return;
+          if (n.id) remoteNodes.set(n.id, n);
+          (n.children || []).forEach(index);
+        })(remoteMap.root);
+
+        (function walk(localNode) {
+          if (!localNode) return;
+          const remoteNode = localNode.id ? remoteNodes.get(localNode.id) : null;
+          if (remoteNode) {
+            pairLists(imageList(localNode), imageList(remoteNode));
+            pairLinkPhotos(localNode, remoteNode);
+            pairNotes(localNode, remoteNode);
+            pairTaskList(localNode.tasks, remoteNode.tasks);
+            pairAttach(localNode, remoteNode);
+          }
+          (localNode.children || []).forEach(walk);
+        })(map.root);
+        return recovered.size - before;
+      };
+
+      const tryDownloadMap = async (fileId) => {
+        try {
+          const legacy = await this.downloadFile(fileId);
+          return recoverFromRemoteMap(legacy);
+        } catch (e) {
+          console.warn("Couldn't inspect Drive map for photo recovery", e);
+          return 0;
+        }
+      };
+
+      this.setSyncProgress(
+        `Repairing ${wanted.size} missing photo${wanted.size === 1 ? "" : "s"} from old Drive copy…`,
+        0, wanted.size, Math.max(2, Math.min(10, this.syncProgressPercent || 2))
+      );
+
+      // 1) Search every Drive map file carrying this map id. Older builds could
+      // leave a duplicate; one of those may still be the big inline-photo v1.
+      let matchingFiles = [];
+      try {
+        matchingFiles = (await this.listRemote()).filter((f) =>
+          f && f.appProperties && f.appProperties.branchlineId === map.id
+        );
+      } catch (e) {}
+
+      // Put the file currently indexed for this map first.
+      const known = this.fileIndex[map.id];
+      if (known && known.fileId) {
+        matchingFiles.sort((a, b) => (a.id === known.fileId ? -1 : (b.id === known.fileId ? 1 : 0)));
+      }
+
+      const inspected = new Set();
+      for (const f of matchingFiles) {
+        if (!f || !f.id || inspected.has(f.id)) continue;
+        inspected.add(f.id);
+        const format = String((f.appProperties && f.appProperties.branchlineFormat) || "1");
+        if (format !== "2") await tryDownloadMap(f.id);
+        if (Array.from(wanted).every((id) => recovered.has(id))) break;
+      }
+
+      // 2) If the current file is already v2 (or the v1 body did not contain
+      // everything), inspect the biggest recent revisions. The old monolithic
+      // JSON is normally dramatically larger than the new manifest, so sorting
+      // by size finds it without downloading every revision.
+      if (known && known.fileId && !Array.from(wanted).every((id) => recovered.has(id))) {
+        try {
+          const fields = encodeURIComponent("revisions(id,modifiedTime,size)");
+          const res = await this.api(
+            `https://www.googleapis.com/drive/v3/files/${known.fileId}/revisions?fields=${fields}&pageSize=20`,
+            { timeoutMs: 60000 }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const revisions = (data.revisions || []).slice()
+              .sort((a, b) => Number(b.size || 0) - Number(a.size || 0))
+              .slice(0, 6);
+            for (const rev of revisions) {
+              if (!rev || !rev.id) continue;
+              try {
+                const rr = await this.api(
+                  `https://www.googleapis.com/drive/v3/files/${known.fileId}/revisions/${rev.id}?alt=media`,
+                  { timeoutMs: 180000 }
+                );
+                if (!rr.ok) continue;
+                const oldMap = await rr.json();
+                recoverFromRemoteMap(oldMap);
+              } catch (e) {
+                console.warn("Couldn't inspect an older Drive revision", e);
+              }
+              if (Array.from(wanted).every((id) => recovered.has(id))) break;
+            }
+          }
+        } catch (e) {
+          console.warn("Drive revision recovery unavailable", e);
+        }
+      }
+
+      if (recovered.size) {
+        const records = Array.from(recovered.entries()).map(([id, blob]) => ({ id, mapId: map.id, blob }));
+        await PhotoDB.putMany(records);
+
+        // Restore the open map's in-memory display cache too, so recovered
+        // images immediately reappear instead of waiting for a reload.
+        if (state.current && state.current.id === map.id) {
+          for (const [id, blob] of recovered.entries()) {
+            const oldUrl = photoCache.get(id);
+            if (oldUrl) { try { URL.revokeObjectURL(oldUrl); } catch (e) {} }
+            photoBlobCache.set(id, blob);
+            photoCache.set(id, URL.createObjectURL(blob));
+          }
+          photoFpGeneration++;
+          photoFpIndexPromise = indexPhotoFingerprints(photoFpGeneration);
+          try { if (!state.editingId && !unsavedEdits) renderAll(); } catch (e) {}
+        }
+      }
+
+      const remaining = Array.from(wanted).filter((id) => !recovered.has(id));
+      if (recovered.size) {
+        this.setSyncProgress(
+          `Recovered ${recovered.size} missing photo${recovered.size === 1 ? "" : "s"} — continuing upload…`,
+          recovered.size, wanted.size,
+          Math.max(5, Math.min(15, Math.round((recovered.size / wanted.size) * 15)))
+        );
+      }
+      return { recovered: recovered.size, remaining };
+    },
+
     async syncPhotosForMap(map, opts) {
       const options = opts || {};
       const referenced = collectReferencedPhotoIds(map.root);
 
       // An explicit Retry Drive always re-lists the files Google actually
-      // has. That makes Drive itself the checkpoint: if 30/342 photos made it
-      // up before a phone/network interruption, the next retry starts at 31
-      // even after a reload or a stale in-memory cache.
+      // has. Drive itself is the upload checkpoint, so already-confirmed
+      // photos are never sent again after an interruption/reload.
       const remote = await this.listRemotePhotos(map.id, !!options.forceRemote);
       const missing = Array.from(referenced).filter((id) => !remote[id]);
       const alreadyUploaded = referenced.size - missing.length;
+
+      // Before uploading, verify that every not-yet-on-Drive photo still has
+      // bytes on this device. If IndexedDB lost a row during the old v1 -> v2
+      // conversion, recover it from the still-intact legacy Drive JSON (or an
+      // older Drive revision) instead of declaring the picture lost.
+      let localRows = [];
+      try { localRows = await PhotoDB.getAllForMap(map.id); } catch (e) {}
+      const localIds = new Set(localRows.map((r) => r && r.id).filter(Boolean));
+      if (state.current && state.current.id === map.id) {
+        for (const id of photoBlobCache.keys()) localIds.add(id);
+      }
+      const locallyMissing = missing.filter((id) => !localIds.has(id));
+      if (locallyMissing.length) {
+        await this.recoverMissingLocalPhotos(map, locallyMissing);
+      }
+
       let folderId = null;
+      const unavailable = [];
       for (let i = 0; i < missing.length; i++) {
         const photoId = missing[i];
         const photoNumber = alreadyUploaded + i + 1;
@@ -2062,12 +2316,25 @@
         if (!photoBlob && rec && rec.data) {
           try { photoBlob = dataUrlToBlob(rec.data); } catch (e) {}
         }
-        if (!photoBlob && state.current && state.current.id === map.id) photoBlob = photoBlobCache.get(photoId) || null;
-        if (!photoBlob) {
-          throw new Error(
-            `Photo ${photoNumber}/${referenced.size} is missing from this device and has not reached Drive yet (${photoId}).`
-          );
+        if (!photoBlob && state.current && state.current.id === map.id) {
+          photoBlob = photoBlobCache.get(photoId) || null;
         }
+
+        // One corrupt/missing local row must not stop the other 295 photos
+        // from reaching Drive. Record it, continue the rest, and only refuse
+        // to publish the new manifest at the end (so the old v1 Drive map
+        // remains intact as a safety copy).
+        if (!photoBlob) {
+          unavailable.push({ id: photoId, number: photoNumber });
+          this.setSyncProgress(
+            `Photo ${photoNumber}/${referenced.size} unavailable — continuing the others…`,
+            alreadyUploaded + i,
+            referenced.size,
+            referenced.size ? Math.max(5, Math.min(88, Math.round((photoNumber / referenced.size) * 88))) : 88
+          );
+          continue;
+        }
+
         if (!folderId) folderId = await this.ensurePhotoFolder(map);
         const overallDone = alreadyUploaded + i;
         this.setSyncProgress(
@@ -2091,15 +2358,26 @@
           mimeType: photoBlob.type || "application/octet-stream",
           appProperties: { branchlineMapId: map.id, branchlinePhoto: "1", branchlinePhotoId: photoId }
         };
-        // Keep the successful photo as an in-memory checkpoint immediately;
-        // don't wait for all 342 to finish before remembering it.
+        // Checkpoint every successful photo immediately.
         this.photoFileIndex[map.id] = remote;
 
-        // Give mobile browsers a tiny scheduling gap during huge migrations.
-        // This keeps UI/auth timers responsive without materially slowing it.
+        // Yield occasionally so mobile Chrome can run auth/UI timers during a
+        // several-hundred-photo migration.
         if ((i + 1) % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 40));
       }
+
       this.photoFileIndex[map.id] = remote;
+
+      if (unavailable.length) {
+        const first = unavailable[0];
+        const more = unavailable.length > 1 ? ` (+${unavailable.length - 1} more)` : "";
+        throw new Error(
+          `${unavailable.length} photo${unavailable.length === 1 ? "" : "s"} could not be recovered locally. ` +
+          `Every other available photo was uploaded and the old Drive map was kept intact. ` +
+          `First missing: photo ${first.number}/${referenced.size} (${first.id})${more}.`
+        );
+      }
+
       return { referenced, remote };
     },
 
