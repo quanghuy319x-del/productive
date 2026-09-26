@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=280">
+<link rel="manifest" href="manifest.webmanifest?v=281">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=280" count as
+     by their exact URL, so "style.css" and "style.css?v=281" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=280">
+<link rel="stylesheet" href="style.css?v=281">
 </head>
 <body>
 <div id="app">
@@ -829,7 +829,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "280";
+  const APP_VERSION = "281";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -857,12 +857,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "267"') && !document.documentElement.dataset.v280Reloaded) {
+      if (fresh.includes('const APP_VERSION = "267"') && !document.documentElement.dataset.v281Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v280Reloaded = "1";
+          document.documentElement.dataset.v281Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -876,7 +876,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=280"></script>
+<script src="app.js?v=281"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -937,66 +937,147 @@ if ("serviceWorker" in navigator) {
       editor.focus();
     });
 
-    function lineBeforeCaret(range) {
-      const pre = range.cloneRange();
-      pre.selectNodeContents(editor);
-      pre.setEnd(range.startContainer, range.startOffset);
-      return (pre.toString().split("\n").pop() || "").replace(/\u200B/g, "");
+    function directLineForRange(range) {
+      let node = range.startContainer;
+      if (node === editor) {
+        const i = Math.max(0, Math.min(range.startOffset - 1, editor.childNodes.length - 1));
+        node = editor.childNodes[i] || editor;
+      }
+      while (node && node !== editor && node.parentNode !== editor) node = node.parentNode;
+      return node || editor;
+    }
+
+    function textBeforeCaretInLine(range, line) {
+      if (!line || line === editor) {
+        // This is the brand-new first line before Chrome has wrapped it in a
+        // <div>. There cannot be an older sibling line in this state.
+        const r = range.cloneRange();
+        r.selectNodeContents(editor);
+        try { r.setEnd(range.startContainer, range.startOffset); } catch (_) {}
+        return r.toString().replace(/\u200B/g, "");
+      }
+      const r = document.createRange();
+      try {
+        r.selectNodeContents(line);
+        r.setEnd(range.startContainer, range.startOffset);
+        return r.toString().replace(/\u200B/g, "");
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function headingAncestor(node) {
+      if (!node) return null;
+      const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      const h = el?.closest?.(".title-mode-heading");
+      return h && editor.contains(h) ? h : null;
+    }
+
+    function putCaretInsideHeading(range) {
+      const selection = window.getSelection();
+      const existing = headingAncestor(range.startContainer);
+      if (existing) return;
+
+      const line = directLineForRange(range);
+      if (textBeforeCaretInLine(range, line).includes(".")) return;
+
+      // Empty lines normally contain <br>. Remove only that placeholder;
+      // all real text/formatting remains untouched.
+      if (line && line !== editor && line.childNodes.length === 1 &&
+          line.firstChild && line.firstChild.nodeName === "BR") {
+        line.removeChild(line.firstChild);
+        range.selectNodeContents(line);
+        range.collapse(true);
+      }
+
+      const span = document.createElement("span");
+      span.className = "title-mode-heading";
+      const anchor = document.createTextNode("\u200B");
+      span.appendChild(anchor);
+      range.insertNode(span);
+      range.setStart(anchor, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    function finishTitleAtDot(range) {
+      const selection = window.getSelection();
+      const heading = headingAncestor(range.startContainer);
+      range.deleteContents();
+
+      // Remove our zero-width caret anchor before leaving the title.
+      if (heading) {
+        heading.querySelectorAll("*").forEach(() => {});
+        heading.textContent = heading.textContent.replace(/\u200B/g, "");
+      }
+
+      const normal = document.createElement("span");
+      normal.className = "title-mode-normal";
+      const text = document.createTextNode(".\u200B");
+      normal.appendChild(text);
+
+      if (heading && heading.parentNode) {
+        heading.parentNode.insertBefore(normal, heading.nextSibling);
+      } else {
+        range.insertNode(normal);
+      }
+      range.setStart(text, 1); // after the dot, before the normal caret anchor
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
     }
 
     editor.addEventListener("beforeinput", (e) => {
       if (!enabled) return;
-
-      // Enter starts a fresh Title Mode line. Strip inherited inline formatting
-      // after the browser creates the line so the first typed character is handled
-      // by Title Mode again (bold + uppercase until the first dot).
-      if (e.inputType === "insertParagraph" || e.inputType === "insertLineBreak") {
-        setTimeout(() => {
-          const sel = window.getSelection();
-          if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
-          document.dispatchEvent(new Event("selectionchange"));
-        }, 0);
-        return;
-      }
-
-      if (e.inputType !== "insertText" || !e.data) return;
       const sel = window.getSelection();
       if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
       const range = sel.getRangeAt(0);
-      if (lineBeforeCaret(range).includes(".")) return;
+      if (!range.collapsed) return;
 
-      e.preventDefault();
-      range.deleteContents();
+      const line = directLineForRange(range);
+      const before = textBeforeCaretInLine(range, line);
+      if (before.includes(".")) return;
 
-      if (e.data === ".") {
-        // Keep the caret INSIDE a persistent normal span. This is important on
-        // Android: a caret merely placed after a bold span can inherit bold.
-        const normal = document.createElement("span");
-        normal.className = "title-mode-normal";
-        const text = document.createTextNode(".\u200B");
-        normal.appendChild(text);
-        range.insertNode(normal);
-        range.setStart(text, 1); // after dot, before zero-width caret anchor
-        range.collapse(true);
-      } else {
-        // Title chars are explicit formatting only; never toggle execCommand bold.
-        const heading = document.createElement("span");
-        heading.className = "title-mode-heading";
-        heading.textContent = e.data.toUpperCase();
-        range.insertNode(heading);
-        const caret = document.createTextNode("\u200B");
-        heading.parentNode.insertBefore(caret, heading.nextSibling);
-        range.setStart(caret, 1);
-        range.collapse(true);
+      // A literal dot ends Title Mode for THIS line. T. itself stays ON,
+      // so the next line starts a fresh bold title automatically.
+      if (e.inputType === "insertText" && e.data === ".") {
+        e.preventDefault();
+        finishTitleAtDot(range);
+        editor.dispatchEvent(new InputEvent("input", {
+          bubbles: true, inputType: "insertText", data: "."
+        }));
+        return;
       }
-      sel.removeAllRanges();
-      sel.addRange(range);
-      editor.dispatchEvent(new InputEvent("input", {
-        bubbles:true,inputType:"insertText",
-        data:e.data === "." ? "." : e.data.toUpperCase()
-      }));
-      // Force toolbar state refresh without changing B/AA commands.
-      document.dispatchEvent(new Event("selectionchange"));
+
+      // Do not rewrite typed characters. In particular, Vietnamese IMEs use
+      // insertCompositionText; changing their data mid-composition corrupts
+      // accents. We only place the caret in a CSS-formatted span and let the
+      // browser/IME insert the original text normally.
+      if (e.inputType === "insertText" || e.inputType === "insertCompositionText") {
+        putCaretInsideHeading(range);
+      }
+    });
+
+    // Some Android/Windows IMEs establish composition before beforeinput.
+    // Prepare the title span at composition start without touching the IME text.
+    editor.addEventListener("compositionstart", () => {
+      if (!enabled) return;
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return;
+      const line = directLineForRange(range);
+      if (!textBeforeCaretInLine(range, line).includes(".")) putCaretInsideHeading(range);
+    });
+
+    // Clean only our invisible anchors after composition is finished.
+    editor.addEventListener("compositionend", () => {
+      editor.querySelectorAll(".title-mode-heading").forEach((el) => {
+        if ((el.textContent || "").includes("\u200B") && (el.textContent || "").replace(/\u200B/g, "")) {
+          el.textContent = el.textContent.replace(/\u200B/g, "");
+        }
+      });
     });
   }
   setupTitleMode("note-tool-title-mode", "note-textarea");
