@@ -11259,6 +11259,10 @@
     if (!parent) return null;
     pushUndo();
     const n = newNode("");
+    // A branch-level font color is a style for the whole subtree, not only
+    // the nodes that happened to exist when the color was chosen. New
+    // descendants therefore inherit the parent's explicit fontColor too.
+    n.fontColor = parent.fontColor || null;
     parent.children.push(n);
     parent.collapsed = false;
     return n;
@@ -11273,6 +11277,7 @@
     if (!parent) return null;
     pushUndo();
     const n = newNode("");
+    n.fontColor = parent.fontColor || null;
     n.table = { cells: defaultTableCells() };
     parent.children.push(n);
     parent.collapsed = false;
@@ -11301,6 +11306,10 @@
     if (!parent) return addChild(nodeId); // root has no siblings -> add child instead
     pushUndo();
     const n = newNode("");
+    // Siblings belong to the same branch level, so they inherit the common
+    // parent's branch font color rather than falling back to the original
+    // automatic/default color.
+    n.fontColor = parent.fontColor || null;
     const idx = parent.children.findIndex(c => c.id === nodeId);
     parent.children.splice(idx + 1, 0, n);
     return n;
