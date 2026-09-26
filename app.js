@@ -18364,6 +18364,8 @@
       remaining: FOCUS_DURATION,
       duration: FOCUS_DURATION,
       paused: false,
+      ticksSincePersist: 0,
+      badgeRenderAttempted: false,
       intervalId: setInterval(focusTimerTick, 1000),
     };
     updateFocusTitle();
@@ -18373,6 +18375,26 @@
   function focusTimerTick() {
     if (!focusTimer || focusTimer.paused) return;
     focusTimer.remaining--;
+
+    // Task-list focus time counts toward the same saved "time played" total
+    // as the node timer. If the node timer is already running for this exact
+    // target, don't double-count the same second.
+    const nodeTimerAlreadyCounting =
+      nodeTimer && !nodeTimer.paused && sameTarget(nodeTimer.target, focusTimer.target);
+    if (!nodeTimerAlreadyCounting) {
+      const host = resolveHost(focusTimer.target.nodeId, focusTimer.target.r, focusTimer.target.c);
+      if (host) {
+        host.timePlayedSec = getNodeTimePlayed(host) + 1;
+        unsavedEdits = true;
+        focusTimer.ticksSincePersist++;
+        if (focusTimer.ticksSincePersist >= 10) {
+          focusTimer.ticksSincePersist = 0;
+          persist();
+        }
+        updateNodeTimerLiveUI(focusTimer.target);
+      }
+    }
+
     if (focusTimer.remaining <= 0) {
       focusTimerComplete();
       return;
@@ -18384,6 +18406,10 @@
   function toggleFocusPause() {
     if (!focusTimer) return;
     focusTimer.paused = !focusTimer.paused;
+    if (focusTimer.paused && focusTimer.ticksSincePersist) {
+      focusTimer.ticksSincePersist = 0;
+      persist();
+    }
     updateFocusTitle();
     refreshTasksModalIfOpen(focusTimer.target);
   }
@@ -18403,15 +18429,23 @@
     if (focusTimer && focusTimer.intervalId) clearInterval(focusTimer.intervalId);
     const prev = focusTimer;
     focusTimer = null;
+    if (prev && prev.ticksSincePersist) persist();
     updateFocusTitle();
-    if (prev) refreshTasksModalIfOpen(prev.target);
+    if (prev) {
+      updateNodeTimerLiveUI(prev.target);
+      refreshTasksModalIfOpen(prev.target);
+    }
   }
 
   function focusTimerComplete() {
     const finished = focusTimer;
     if (finished && finished.intervalId) clearInterval(finished.intervalId);
     focusTimer = null;
-    if (finished) lastFocusTaskText = finished.taskText;
+    if (finished) {
+      lastFocusTaskText = finished.taskText;
+      if (finished.ticksSincePersist) persist();
+      updateNodeTimerLiveUI(finished.target);
+    }
     startFocusChime();
     updateFocusTitle();
     if (finished) {
@@ -21123,18 +21157,17 @@
     if (badgeLabel) {
       badgeLabel.textContent = formatTimePlayed(total);
       badgeLabel.parentElement.title = `${formatTimePlayed(total)} logged — click to add more`;
-    } else if (total && target.nodeId !== state.editingId && nodeTimer && sameTarget(nodeTimer.target, target) && !nodeTimer.badgeRenderAttempted) {
-      // The badge doesn't exist yet in the DOM — either this target had
-      // no logged time before the countdown started, or it isn't
-      // currently rendered at all (e.g. inside a collapsed branch, or
-      // off in a part of the tree not mounted). A one-time full render
-      // will create it if it's visible; badgeRenderAttempted makes sure
-      // this only ever fires once per session instead of on every tick
-      // forever when the target simply isn't on screen (a collapsed
-      // branch, for instance, never gets a DOM node to find, and
-      // calling renderAll() every second was crashing the tab).
-      nodeTimer.badgeRenderAttempted = true;
-      renderAll();
+    } else {
+      const activeCounter =
+        (nodeTimer && sameTarget(nodeTimer.target, target)) ? nodeTimer :
+        (focusTimer && sameTarget(focusTimer.target, target)) ? focusTimer : null;
+      if (total && target.nodeId !== state.editingId && activeCounter && !activeCounter.badgeRenderAttempted) {
+        // The badge doesn't exist yet because this target previously had no
+        // logged time. Create it once for either the node timer OR Task List
+        // focus timer, never once per second.
+        activeCounter.badgeRenderAttempted = true;
+        renderAll();
+      }
     }
     if (timerEditingId && sameTarget(timerEditingId, target) && !timerModal.classList.contains("hidden")) {
       timerTotalDisplay.textContent = formatTimePlayed(total);
