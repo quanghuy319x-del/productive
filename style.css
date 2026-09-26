@@ -5878,3 +5878,18 @@ kbd{
     padding:7px 14px!important;
   }
 }
+
+/* v273 phone Task List: one dropdown for the 4 secondary actions */
+@media (max-width:640px){
+  #tasks-modal .tasks-compact-menu{display:block!important;position:relative!important;flex:none!important}
+  #tasks-modal .tasks-compact-menu-toggle{display:flex!important;align-items:center;justify-content:center}
+  #tasks-modal .tasks-compact-menu-actions{display:none!important}
+  #tasks-modal .tasks-compact-menu[open] .tasks-compact-menu-actions{
+    display:flex!important;flex-direction:column!important;width:190px!important;
+    top:40px!important;right:0!important;padding:7px!important;gap:5px!important;
+  }
+  #tasks-modal .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    display:flex!important;width:100%!important;min-height:40px!important;
+    justify-content:flex-start!important;padding:8px 11px!important;text-align:left!important;
+  }
+}
