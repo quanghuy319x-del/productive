@@ -5938,3 +5938,22 @@ kbd{
     display:inline-flex!important;
   }
 }
+
+/* v278 Desktop Task List: secondary actions appear only while hovering/focusing the toolbar.
+   Phone behavior remains the compact dropdown. */
+@media (min-width:641px){
+  #tasks-modal .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    opacity:0!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
+    transition:opacity .14s ease, visibility .14s ease!important;
+  }
+  #tasks-modal .tasks-toolbar:hover .tasks-compact-menu-actions .tasks-sort-stars-btn,
+  #tasks-modal .tasks-toolbar:focus-within .tasks-compact-menu-actions .tasks-sort-stars-btn,
+  #tasks-modal .tasks-modal-toolbar:hover .tasks-compact-menu-actions .tasks-sort-stars-btn,
+  #tasks-modal .tasks-modal-toolbar:focus-within .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    opacity:1!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+  }
+}
