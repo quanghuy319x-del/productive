@@ -5910,3 +5910,13 @@ kbd{
   border:none!important;
   box-shadow:none!important;
 }
+
+/* v276 Queue Tasks: hide the header row completely; subtasks only */
+#tasks-modal .shared-queue-task-row{
+  display:none!important;
+}
+#tasks-modal .shared-queue-subtask-panel{
+  margin-top:0!important;
+  padding-top:6px!important;
+  border-radius:10px!important;
+}
