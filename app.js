@@ -1695,7 +1695,25 @@
         this.setSyncProgress("", 0, 0);
       } catch (e) {
         console.error("Drive sync failed", e);
-        if (!silent) alert("Signed in, but syncing with Drive failed: " + (e.message || e) + "\n\nYour maps are still safe locally — try signing in again, or check the browser console for details.");
+        // A successful OAuth token does NOT mean Drive sync succeeded.
+        // Keep editing locked and keep a recovery button visible until a
+        // real Drive read/upload completes. Previously a failed retry could
+        // leave status="ok", which hid Retry Drive even though nothing had
+        // actually recovered.
+        const tokenStillValid = !!this.accessToken && Date.now() < this.tokenExpiresAt - 5000;
+        if (!tokenStillValid || this.needsReauth) {
+          this.requireReconnect();
+        } else {
+          this.status = "broken";
+          this.lastLocalPushTryAt = Date.now() - 10000;
+          this.setSyncProgress(
+            "Drive sync failed — tap Retry Drive",
+            0, 0,
+            Math.max(1, this.syncProgressPercent || 1)
+          );
+          try { updateDriveUI(); } catch (e2) {}
+        }
+        if (!silent) alert("Signed in, but syncing with Drive failed: " + (e.message || e) + "\n\nYour maps are still safe locally — tap Retry Drive after checking the connection.");
       }
       renderSidebar();
       // See the matching comment in restore() above — repaint the open
@@ -1712,37 +1730,74 @@
       if (!this.configured()) throw new Error("Google Drive sync is not configured.");
       if (!isOnline) throw new Error("No internet connection.");
 
-      // "broken" usually means an upload/network failure, not an expired
-      // Google login. If this access token is still valid, asking Google to
-      // sign in again is both unnecessary and fragile on mobile popup rules.
-      // Resume the existing session and continue from photos already on Drive.
+      // "Retry Drive" must stay a recovery operation until Drive really
+      // answers. Do NOT flip status to "ok" before the read/upload succeeds:
+      // doing that hid the retry button after another failed request.
       const tokenStillValid = !!this.accessToken && Date.now() < this.tokenExpiresAt - 5000;
       if (this.needsReauth || !tokenStillValid) {
         await this.signIn(false);
+        if (this.needsReauth) throw new Error("Google reconnect is still required.");
+        if (this.driveBroken() || this.status !== "ok") {
+          throw new Error("Google connected, but Drive sync is still not complete.");
+        }
         return true;
       }
 
-      this.status = "ok";
       this.consecutivePollFailures = 0;
       this.lastLocalPushTryAt = 0;
-      this.setSyncProgress("Resuming Drive upload…", 0, 0, Math.max(1, this.syncProgressPercent || 1));
+      this.setSyncProgress("Retrying Google Drive…", 0, 0, Math.max(1, this.syncProgressPercent || 1));
       try { updateDriveUI(); } catch (e) {}
 
-      // If another retry is already finishing, don't start a competing upload.
-      // The status change above is enough to let it continue normally.
-      if (this.pushingLocal || this.busy) return true;
-
-      // Refresh metadata first so the same conflict guard remains intact,
-      // then continue only maps/referenced photos that Drive has not confirmed.
-      this.busy = true;
-      try {
-        await this.syncFromDrive();
-      } finally {
-        this.busy = false;
+      // If an automatic retry/poll is already using Drive, wait briefly for
+      // it instead of treating this tap as a successful no-op.
+      const waitStarted = Date.now();
+      while ((this.pushingLocal || this.busy) && Date.now() - waitStarted < 20000) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
       }
-      await this.pushLocalNewer({ force: true, includeNew: true });
-      this.scheduleRefresh();
-      return !this.driveBroken() && !this.needsReauth;
+      if (this.pushingLocal || this.busy) {
+        throw new Error("Drive is still finishing another sync. Tap Retry Drive again in a moment.");
+      }
+
+      try {
+        // Keep status="broken" while this read is in flight. syncFromDrive()
+        // changes it back to "ok" only after Drive actually responds.
+        this.busy = true;
+        try {
+          await this.syncFromDrive();
+        } finally {
+          this.busy = false;
+        }
+
+        // Resume only maps/photos Drive has not confirmed. save() reuses the
+        // photos already uploaded before an interruption.
+        await this.pushLocalNewer({ force: true, includeNew: true });
+
+        if (this.needsReauth) throw new Error("Google session expired during the retry.");
+        if (this.driveBroken() || this.status !== "ok") {
+          throw new Error("Google Drive is still not accepting the upload.");
+        }
+
+        this.setSyncProgress("", 0, 0);
+        this.scheduleRefresh();
+        startDriveSyncPolling();
+        try { updateDriveUI(); } catch (e) {}
+        return true;
+      } catch (e) {
+        // Authentication errors own the "reauth" state. Every other retry
+        // failure stays "broken" so Retry Drive remains visible and editing
+        // remains locked rather than pretending the device is synced.
+        if (!this.needsReauth) {
+          this.status = "broken";
+          this.lastLocalPushTryAt = Date.now() - 10000;
+          this.setSyncProgress(
+            "Drive retry failed — tap Retry Drive",
+            0, 0,
+            Math.max(1, this.syncProgressPercent || 1)
+          );
+        }
+        try { updateDriveUI(); } catch (e2) {}
+        throw e;
+      }
     },
 
     signOut() {
@@ -24807,12 +24862,34 @@
   }
 
   $("#btn-connect-folder").addEventListener("click", () => FolderDB.pick());
-  $("#btn-google-signin").addEventListener("click", () => {
+
+  // One recovery runner for every Retry/Reconnect button. Disable the tapped
+  // button until the attempt settles so a double-tap cannot launch two Drive
+  // reads/uploads or two OAuth requests at the same time.
+  let driveReconnectClickRunning = false;
+  async function runDriveReconnectClick(button) {
+    if (driveReconnectClickRunning) return;
+    driveReconnectClickRunning = true;
+    if (button) button.disabled = true;
+    try {
+      await DriveDB.reconnectAndResume();
+      showToast("✅ Google Drive reconnected");
+    } catch (err) {
+      console.error("Google Drive reconnect failed", err);
+      alert((err && err.message) || "Google Drive reconnect failed.");
+    } finally {
+      driveReconnectClickRunning = false;
+      if (button) button.disabled = false;
+      try { updateDriveUI(); } catch (e) {}
+    }
+  }
+
+  const googleSigninBtn = $("#btn-google-signin");
+  googleSigninBtn.addEventListener("click", () => {
     if (DriveDB.needsReauth || DriveDB.driveBroken()) {
       // Auth expiry opens Google; a plain upload failure with a valid token
-      // simply resumes the existing Drive session (no popup/sign-out).
-      DriveDB.reconnectAndResume()
-        .catch(err => alert(err.message || "Google Drive reconnect failed."));
+      // resumes the existing Drive session and already-uploaded photos.
+      runDriveReconnectClick(googleSigninBtn);
     } else if (DriveDB.signedIn) {
       DriveDB.signOut();
     } else {
@@ -24822,8 +24899,7 @@
   const btnDriveLostReconnect = $("#drive-lost-reconnect");
   if (btnDriveLostReconnect) {
     btnDriveLostReconnect.addEventListener("click", () => {
-      DriveDB.reconnectAndResume()
-        .catch(err => alert(err.message || "Google Drive reconnect failed."));
+      runDriveReconnectClick(btnDriveLostReconnect);
     });
   }
 
