@@ -4368,10 +4368,10 @@
       total += commentPoints;
       done += commentPoints;
     }
-    // Every 2 non-empty lines jotted in the node's Brainstorm scratchpad
+    // Every non-empty line jotted in the node's Brainstorm scratchpad
     // (node.brainstorm.text — see getNodeBrainstorm/brainstormPoints) is
-    // worth 1 more point toward the same tally, same "always fully done"
-    // treatment as the above: 2 lines = 1, 4 lines = 2, 6 lines = 3, etc.
+    // worth 1 point toward the same tally, same "always fully done"
+    // treatment as the above: 1 line = 1 point, 4 lines = 4 points, etc.
     const brainstormPts = brainstormPoints(node);
     if (brainstormPts > 0) {
       total += brainstormPts;
@@ -4945,7 +4945,7 @@
   // scratchpad (host.brainstorm = {text}) that autosaves as you type.
   // Follows the same host-based {nodeId, r, c} pattern as the timer/game
   // above (see resolveHost) so it works identically on a whole node or a
-  // single table cell. Every 2 non-empty lines written is worth 1 point
+  // single table cell. Every non-empty line written is worth 1 point
   // toward the node's task score (see nodeTaskProgress above).
   function getNodeBrainstorm(host) {
     return (host && host.brainstorm) ? host.brainstorm : null;
@@ -4958,7 +4958,7 @@
     return getBrainstormText(host).split("\n").filter(l => l.trim().length > 0).length;
   }
   function brainstormPoints(host) {
-    return Math.floor(brainstormLineCount(host) / 2);
+    return brainstormLineCount(host);
   }
 
   // A "DRC" note (see getDRCTemplateText / the drc flag set on it above) is
@@ -21309,7 +21309,7 @@
   // the same right-click menu as the Timer and Affirmation game, but far
   // simpler than either: a contenteditable scratchpad (host.brainstorm =
   // {text, html}) that autosaves as you type, no quote to match and
-  // nothing to start or stop. Every 2 non-empty lines written is worth 1
+  // nothing to start or stop. Every non-empty line written is worth 1
   // point toward the task score (see nodeTaskProgress/brainstormPoints
   // above) and shows as a small brain badge on the node/cell itself
   // (see renderNode). Uses the same host-based {nodeId, r, c} target
@@ -21651,7 +21651,7 @@
       badge.title = `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(host)} lines). Click to keep writing.`;
     } else if (pts > 0 && target.nodeId !== state.editingId) {
       // The badge doesn't exist in the DOM yet (this is the first line
-      // pair that's earned a point) — a one-time full render creates it
+      // that's earned a point) — a one-time full render creates it
       // if it's actually visible right now, same fallback
       // updateNodeTimerLiveUI uses above.
       renderAll();
