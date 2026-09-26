@@ -6068,3 +6068,23 @@ kbd{
     padding-top:10px!important;
   }
 }
+
+/* v286 Note/DRC close button: larger, easier touch target */
+#note-nav-close{
+  width:34px!important;
+  min-width:34px!important;
+  height:34px!important;
+  padding:0!important;
+  font-size:18px!important;
+  border-radius:8px!important;
+  line-height:1!important;
+}
+@media (max-width:640px){
+  #note-nav-close{
+    width:40px!important;
+    min-width:40px!important;
+    height:40px!important;
+    font-size:20px!important;
+    border-radius:10px!important;
+  }
+}
