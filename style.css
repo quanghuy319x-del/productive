@@ -6109,11 +6109,11 @@ kbd{
   }
 }
 
-/* v288: make starred tasks visibly marked in the task text itself */
-#tasks-modal .task-row.starred .task-text::before{
+/* v290: starred-task marker appears after the task text */
+#tasks-modal .task-row.starred .task-text::after{
   content:"★";
   display:inline-block;
-  margin-right:6px;
+  margin-left:6px;
   color:#d39a12;
   font-size:.92em;
   font-weight:900;
