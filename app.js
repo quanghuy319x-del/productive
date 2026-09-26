@@ -1302,6 +1302,10 @@
     // message for it.
     pushingLocal: false,
     lastLocalPushTryAt: 0,
+    // Preserve the exact last Drive failure so an explicit Retry button can
+    // report the real problem instead of replacing it with a generic message.
+    lastDriveError: null,
+    lastDriveErrorAt: 0,
 
     // Timestamp (ms) of the last time this device successfully talked to
     // Drive — purely a UI value (see updateDriveUI's "Synced Xm ago"),
@@ -1770,11 +1774,16 @@
 
         // Resume only maps/photos Drive has not confirmed. save() reuses the
         // photos already uploaded before an interruption.
-        await this.pushLocalNewer({ force: true, includeNew: true });
+        await this.pushLocalNewer({
+          force: true,
+          includeNew: true,
+          forceRemotePhotos: true,
+          throwOnFailure: true
+        });
 
         if (this.needsReauth) throw new Error("Google session expired during the retry.");
         if (this.driveBroken() || this.status !== "ok") {
-          throw new Error("Google Drive is still not accepting the upload.");
+          throw (this.lastDriveError || new Error("Google Drive retry did not complete."));
         }
 
         this.setSyncProgress("", 0, 0);
@@ -1789,8 +1798,9 @@
         if (!this.needsReauth) {
           this.status = "broken";
           this.lastLocalPushTryAt = Date.now() - 10000;
+          const detail = (e && e.message) ? e.message : "Drive retry failed";
           this.setSyncProgress(
-            "Drive retry failed — tap Retry Drive",
+            detail.length > 96 ? (detail.slice(0, 93) + "…") : detail,
             0, 0,
             Math.max(1, this.syncProgressPercent || 1)
           );
@@ -2031,14 +2041,21 @@
       throw lastError || new Error("Couldn't upload photo to Drive");
     },
 
-    async syncPhotosForMap(map) {
+    async syncPhotosForMap(map, opts) {
+      const options = opts || {};
       const referenced = collectReferencedPhotoIds(map.root);
-      const remote = await this.listRemotePhotos(map.id, false);
+
+      // An explicit Retry Drive always re-lists the files Google actually
+      // has. That makes Drive itself the checkpoint: if 30/342 photos made it
+      // up before a phone/network interruption, the next retry starts at 31
+      // even after a reload or a stale in-memory cache.
+      const remote = await this.listRemotePhotos(map.id, !!options.forceRemote);
       const missing = Array.from(referenced).filter((id) => !remote[id]);
       const alreadyUploaded = referenced.size - missing.length;
       let folderId = null;
       for (let i = 0; i < missing.length; i++) {
         const photoId = missing[i];
+        const photoNumber = alreadyUploaded + i + 1;
         let rec = null;
         try { rec = await PhotoDB.get(photoId); } catch (e) {}
         let photoBlob = rec && rec.blob;
@@ -2047,23 +2064,40 @@
         }
         if (!photoBlob && state.current && state.current.id === map.id) photoBlob = photoBlobCache.get(photoId) || null;
         if (!photoBlob) {
-          throw new Error("A photo referenced by this map is missing locally and is not on Drive yet (" + photoId + ")");
+          throw new Error(
+            `Photo ${photoNumber}/${referenced.size} is missing from this device and has not reached Drive yet (${photoId}).`
+          );
         }
         if (!folderId) folderId = await this.ensurePhotoFolder(map);
         const overallDone = alreadyUploaded + i;
         this.setSyncProgress(
-          `Uploading photos ${overallDone + 1}/${referenced.size}…`,
+          `Uploading photos ${photoNumber}/${referenced.size}…`,
           overallDone,
           referenced.size,
-          referenced.size ? Math.max(5, Math.min(88, Math.round(((overallDone + 1) / referenced.size) * 88))) : 88
+          referenced.size ? Math.max(5, Math.min(88, Math.round((photoNumber / referenced.size) * 88))) : 88
         );
-        const fileId = await this.uploadPhotoFile(map, photoId, photoBlob, folderId);
+
+        let fileId;
+        try {
+          fileId = await this.uploadPhotoFile(map, photoId, photoBlob, folderId);
+        } catch (e) {
+          const detail = (e && e.message) ? e.message : String(e);
+          throw new Error(`Photo ${photoNumber}/${referenced.size} failed: ${detail}`);
+        }
+
         remote[photoId] = {
           id: fileId,
           name: this.photoFilename(map.id, photoId, photoBlob.type),
           mimeType: photoBlob.type || "application/octet-stream",
           appProperties: { branchlineMapId: map.id, branchlinePhoto: "1", branchlinePhotoId: photoId }
         };
+        // Keep the successful photo as an in-memory checkpoint immediately;
+        // don't wait for all 342 to finish before remembering it.
+        this.photoFileIndex[map.id] = remote;
+
+        // Give mobile browsers a tiny scheduling gap during huge migrations.
+        // This keeps UI/auth timers responsive without materially slowing it.
+        if ((i + 1) % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 40));
       }
       this.photoFileIndex[map.id] = remote;
       return { referenced, remote };
@@ -2242,6 +2276,7 @@
     async save(map, opts) {
       if (!this.signedIn || !map) return false;
       const skipRemoteGuard = !!(opts && opts.skipRemoteGuard);
+      const forceRemotePhotos = !!(opts && opts.forceRemotePhotos);
       try {
         const knownBefore = this.fileIndex[map.id];
         if (knownBefore && !skipRemoteGuard) {
@@ -2260,7 +2295,7 @@
         // Upload missing binary photos before publishing the new metadata
         // revision. A second device can therefore never see a manifest that
         // points at photo files which have not finished uploading yet.
-        const photoSync = await this.syncPhotosForMap(map);
+        const photoSync = await this.syncPhotosForMap(map, { forceRemote: forceRemotePhotos });
         const uploadedStamp = map.updatedAt || 0;
         const known = this.fileIndex[map.id];
         let fileId;
@@ -2280,6 +2315,8 @@
         await setSyncSnapshot(map.id, map);
         this.lastSyncedAt = Date.now();
         this.consecutivePollFailures = 0;
+        this.lastDriveError = null;
+        this.lastDriveErrorAt = 0;
         if (this.status === "broken") this.status = "ok";
         updateDriveUI();
 
@@ -2289,6 +2326,8 @@
         return true;
       } catch (e) {
         console.error("Drive save failed", e);
+        this.lastDriveError = e instanceof Error ? e : new Error(String(e));
+        this.lastDriveErrorAt = Date.now();
         const tokenLooksExpired = !this.accessToken || Date.now() >= this.tokenExpiresAt;
         if (tokenLooksExpired || this.needsReauth) {
           this.status = "reauth";
@@ -2377,7 +2416,12 @@
     // being typed or saved — runPersistNow() uploads those itself, and a
     // second overlapping upload of the same map could land out of order.
     async pushLocalNewer(opts) {
-      const { force = false, includeNew = false } = opts || {};
+      const {
+        force = false,
+        includeNew = false,
+        forceRemotePhotos = false,
+        throwOnFailure = false
+      } = opts || {};
       if (this.status !== "ok" && this.status !== "broken") return false;
       if (this.pushingLocal) return false;
       // Retry a failing push at most every 15s, but always let an explicit
@@ -2406,7 +2450,12 @@
           if (busy()) break; // an edit started mid-pass — its own save takes over
           const beforePct = uploadStartPct + Math.round((95 - uploadStartPct) * (i / stale.length));
           this.setSyncProgress(`Uploading map ${i + 1}/${stale.length}…`, i, stale.length, beforePct);
-          await this.save(m);
+          const saved = await this.save(m, { forceRemotePhotos });
+          if (!saved) {
+            const err = this.lastDriveError || new Error("Google Drive did not accept this map upload.");
+            if (throwOnFailure) throw err;
+            break;
+          }
           const afterPct = uploadStartPct + Math.round((95 - uploadStartPct) * ((i + 1) / stale.length));
           this.setSyncProgress(`Uploading map ${i + 1}/${stale.length}…`, i + 1, stale.length, afterPct);
         }
