@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=308">
+<link rel="stylesheet" href="style.css?v=309">
 </head>
 <body>
 <div id="app">
@@ -97,6 +97,7 @@
       </div>
       <span id="save-status" class="save-status">Saved</span>
       <button id="cloud-sync-pill" class="cloud-sync-pill" type="button" title="Google Drive sync status">☁ Cloud: checking…</button>
+      <button id="btn-refresh-app" class="btn-ghost" type="button" title="Reload Branchline">↻ Refresh</button>
       <button id="btn-load-latest" class="btn-ghost" title="Pull the newest version of your maps from Google Drive right now">⟳ Load latest</button>
       <button id="btn-upload-now" class="btn-ghost" title="Upload the map you have open to Google Drive right now — for when you want to be sure it went up">⬆ Upload</button>
       <div class="undo-controls">
@@ -876,7 +877,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=308"></script>
+<script src="app.js?v=309"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -1132,6 +1133,9 @@ if ("serviceWorker" in navigator) {
 document.querySelector(".tasks-compact-menu-actions")?.addEventListener("click", (e) => {
   if (e.target.closest("button")) e.currentTarget.closest("details")?.removeAttribute("open");
 });
+</script>
+<script>
+document.getElementById("btn-refresh-app")?.addEventListener("click", () => location.reload());
 </script>
 </body>
 </html>
