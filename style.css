@@ -6157,15 +6157,19 @@ kbd{
   }
 }
 
-/* v292 Task List: align the first subtask text with its parent task text.
-   Desktop task text starts after drag + checkbox + fail slots; phone only
-   keeps the checkbox slot, so the subtask panel uses a smaller indent there. */
+/* v293 Task List: parent task text and subtask text start on the same vertical line.
+   Current task rows are handle + text + add-subtask. On desktop the handle
+   creates the offset; on phone it is hidden, so the task text gets a matching
+   small inset while the subtask panel keeps its compact pill spacing. */
 #tasks-modal .task-row + .subtask-panel{
-  padding-left:69px!important;
+  padding-left:17px!important;
   box-sizing:border-box;
 }
 @media (max-width:640px){
   #tasks-modal .task-row + .subtask-panel{
+    padding-left:9px!important;
+  }
+  #tasks-modal .task-row > .task-text{
     padding-left:19px!important;
   }
 }
