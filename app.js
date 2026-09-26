@@ -1708,6 +1708,43 @@
       syncTaskTemplatesWithDrive();
     },
 
+    async reconnectAndResume() {
+      if (!this.configured()) throw new Error("Google Drive sync is not configured.");
+      if (!isOnline) throw new Error("No internet connection.");
+
+      // "broken" usually means an upload/network failure, not an expired
+      // Google login. If this access token is still valid, asking Google to
+      // sign in again is both unnecessary and fragile on mobile popup rules.
+      // Resume the existing session and continue from photos already on Drive.
+      const tokenStillValid = !!this.accessToken && Date.now() < this.tokenExpiresAt - 5000;
+      if (this.needsReauth || !tokenStillValid) {
+        await this.signIn(false);
+        return true;
+      }
+
+      this.status = "ok";
+      this.consecutivePollFailures = 0;
+      this.lastLocalPushTryAt = 0;
+      this.setSyncProgress("Resuming Drive upload…", 0, 0, Math.max(1, this.syncProgressPercent || 1));
+      try { updateDriveUI(); } catch (e) {}
+
+      // If another retry is already finishing, don't start a competing upload.
+      // The status change above is enough to let it continue normally.
+      if (this.pushingLocal || this.busy) return true;
+
+      // Refresh metadata first so the same conflict guard remains intact,
+      // then continue only maps/referenced photos that Drive has not confirmed.
+      this.busy = true;
+      try {
+        await this.syncFromDrive();
+      } finally {
+        this.busy = false;
+      }
+      await this.pushLocalNewer({ force: true, includeNew: true });
+      this.scheduleRefresh();
+      return !this.driveBroken() && !this.needsReauth;
+    },
+
     signOut() {
       if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
       // Deliberately NOT calling google.accounts.oauth2.revoke() here.
@@ -2970,7 +3007,10 @@
         ? "\u26a0\ufe0f Your Google session has expired \u2014 editing is locked until you reconnect. Nothing you've already typed is lost."
         : "\u26a0\ufe0f Changes aren't reaching Google Drive \u2014 editing is locked until the connection is back. Nothing you've already typed is lost.";
     }
-    if (btn) btn.classList.toggle("hidden", reason === "offline");
+    if (btn) {
+      btn.classList.toggle("hidden", reason === "offline");
+      btn.textContent = reason === "broken" ? "Retry Drive" : "Reconnect Google";
+    }
   }
 
   function updateCloudSyncPill() {
@@ -3034,7 +3074,7 @@
     // just waiting on the initial Drive sync to finish.
     const stillSyncing = DriveDB.signedIn && !DriveDB.dataSynced && isOnline;
     if (DriveDB.needsReauth || (DriveDB.driveBroken() && isOnline)) {
-      btn.textContent = "Reconnect Google";
+      btn.textContent = DriveDB.driveBroken() && !DriveDB.needsReauth ? "Retry Drive" : "Reconnect Google";
       btn.classList.remove("hidden");
     } else if (stillSyncing) {
       // Signed in, sync in flight: no action to take yet, so don't
@@ -3181,7 +3221,9 @@
       ? "Hang on \u2014 making sure this device has your latest saved changes before you start editing, so a newer version from another device can't get overwritten. This only takes a moment."
       : "This map is read-only until you sign in with Google. Editing, undo/redo, and adding tasks, notes, or photos all need a signed-in session.";
     if (signinRequiredSigninBtn) {
-      signinRequiredSigninBtn.textContent = disconnected ? "Reconnect Google" : "Sign in with Google";
+      signinRequiredSigninBtn.textContent = DriveDB.driveBroken()
+        ? "Retry Drive"
+        : (disconnected ? "Reconnect Google" : "Sign in with Google");
       signinRequiredSigninBtn.classList.toggle("hidden", stillSyncing || offline || checkingNewer);
     }
     zoomModalOpen(signinRequiredModalEl);
@@ -24766,14 +24808,11 @@
 
   $("#btn-connect-folder").addEventListener("click", () => FolderDB.pick());
   $("#btn-google-signin").addEventListener("click", () => {
-    if (DriveDB.needsReauth) {
-      // A real tap gives Chrome a genuine user gesture, which is exactly
-      // what the failing silent path above can't rely on — so this uses
-      // the normal (non-silent) consent flow rather than another silent
-      // attempt.
-      DriveDB.signIn(false)
-        .then(() => DriveDB.scheduleRefresh())
-        .catch(err => alert(err.message || "Google sign-in failed."));
+    if (DriveDB.needsReauth || DriveDB.driveBroken()) {
+      // Auth expiry opens Google; a plain upload failure with a valid token
+      // simply resumes the existing Drive session (no popup/sign-out).
+      DriveDB.reconnectAndResume()
+        .catch(err => alert(err.message || "Google Drive reconnect failed."));
     } else if (DriveDB.signedIn) {
       DriveDB.signOut();
     } else {
@@ -24783,9 +24822,8 @@
   const btnDriveLostReconnect = $("#drive-lost-reconnect");
   if (btnDriveLostReconnect) {
     btnDriveLostReconnect.addEventListener("click", () => {
-      DriveDB.signIn(false)
-        .then(() => DriveDB.scheduleRefresh())
-        .catch(err => alert(err.message || "Google sign-in failed."));
+      DriveDB.reconnectAndResume()
+        .catch(err => alert(err.message || "Google Drive reconnect failed."));
     });
   }
 
