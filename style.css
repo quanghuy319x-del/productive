@@ -6144,3 +6144,15 @@ kbd{
     font-size:11px!important;
   }
 }
+
+/* v291 Task List: task text uses the same font size as subtask text */
+#tasks-modal .task-text,
+#tasks-modal .subtask-text{
+  font-size:12px!important;
+}
+@media (max-width:640px){
+  #tasks-modal .task-text,
+  #tasks-modal .subtask-text{
+    font-size:11px!important;
+  }
+}
