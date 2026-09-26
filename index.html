@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=294">
+<link rel="manifest" href="manifest.webmanifest?v=295">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=294" count as
+     by their exact URL, so "style.css" and "style.css?v=295" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=294">
+<link rel="stylesheet" href="style.css?v=295">
 </head>
 <body>
 <div id="app">
@@ -829,7 +829,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "294";
+  const APP_VERSION = "295";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -857,12 +857,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "267"') && !document.documentElement.dataset.v294Reloaded) {
+      if (fresh.includes('const APP_VERSION = "267"') && !document.documentElement.dataset.v295Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v294Reloaded = "1";
+          document.documentElement.dataset.v295Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -876,7 +876,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=294"></script>
+<script src="app.js?v=295"></script>
 <script>
 (() => {
   function insertTab(editor) {
