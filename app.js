@@ -1511,6 +1511,7 @@
     photoFileIndex: {},
     photoFolderIndex: {},
     photoHydrationByMap: {},
+    photoHydrationById: {},
     photoHydratedMaps: new Set(),
 
     configured() {
@@ -1931,6 +1932,7 @@
       this.photoFileIndex = {};
       this.photoFolderIndex = {};
       this.photoHydrationByMap = {};
+      this.photoHydrationById = {};
       this.photoHydratedMaps.clear();
       this.lastSyncedAt = 0;
       this.setSyncProgress("", 0, 0);
@@ -1981,6 +1983,69 @@
       const res = await this.api(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { timeoutMs: 180000 });
       if (!res.ok) throw new Error("Couldn't download a photo from Drive (" + res.status + ")");
       return res.blob();
+    },
+
+    // Fetch ONE photo on demand. This is important for a phone that already
+    // has the small v2 map manifest but not every binary photo yet: opening a
+    // missing slot should repair that slot immediately instead of showing a
+    // permanently blank viewer until the whole map is re-hydrated.
+    async hydratePhotoById(map, photoId, opts) {
+      if (!map || !photoId || !this.signedIn) return false;
+      if (photoBlobCache.has(photoId) && photoCache.get(photoId)) return true;
+
+      // Disk may already have it even if the in-memory cache was cold.
+      try {
+        const rec = await PhotoDB.get(photoId);
+        let blob = rec && rec.blob;
+        if (!blob && rec && rec.data) {
+          try { blob = dataUrlToBlob(rec.data); } catch (e) {}
+        }
+        if (blob) {
+          if (state.current && state.current.id === map.id) {
+            const old = photoCache.get(photoId);
+            if (old) { try { URL.revokeObjectURL(old); } catch (e) {} }
+            photoBlobCache.set(photoId, blob);
+            photoCache.set(photoId, URL.createObjectURL(blob));
+          }
+          return true;
+        }
+      } catch (e) {}
+
+      const key = map.id + "::" + photoId;
+      if (this.photoHydrationById[key]) return this.photoHydrationById[key];
+
+      const run = (async () => {
+        let remote = await this.listRemotePhotos(map.id, false);
+        let f = remote[photoId];
+
+        // Cached photo index can be stale right after another device rescued
+        // an old/quarantined photo, so re-list Drive once before giving up.
+        if (!f && (!opts || opts.forceIndex !== false)) {
+          remote = await this.listRemotePhotos(map.id, true);
+          f = remote[photoId];
+        }
+        if (!f) return false;
+
+        const blob = await this.downloadPhotoFile(f.id);
+        await PhotoDB.put({ id: photoId, mapId: map.id, blob });
+
+        if (state.current && state.current.id === map.id) {
+          const old = photoCache.get(photoId);
+          if (old) { try { URL.revokeObjectURL(old); } catch (e) {} }
+          photoBlobCache.set(photoId, blob);
+          photoCache.set(photoId, URL.createObjectURL(blob));
+          photoFpGeneration++;
+          photoFpIndexPromise = indexPhotoFingerprints(photoFpGeneration);
+        }
+        return true;
+      })();
+
+      this.photoHydrationById[key] = run;
+      try {
+        return await run;
+      } finally {
+        delete this.photoHydrationById[key];
+      }
     },
 
     filenameFor(map) {
@@ -2844,6 +2909,9 @@
       delete this.photoFileIndex[map.id];
       delete this.photoFolderIndex[map.id];
       delete this.photoHydrationByMap[map.id];
+      Object.keys(this.photoHydrationById).forEach((k) => {
+        if (k.startsWith(map.id + "::")) delete this.photoHydrationById[k];
+      });
       this.photoHydratedMaps.delete(map.id);
     },
 
@@ -2861,6 +2929,60 @@
     // Returns true if it pushed anything. Skipped while an edit is still
     // being typed or saved — runPersistNow() uploads those itself, and a
     // second overlapping upload of the same map could land out of order.
+    // v302 deliberately quarantined photo ids that one device could not
+    // recover, so the rest of the map could finish syncing. Another device
+    // (typically the PC) may still have those exact photo Blobs locally.
+    // When that happens, make the map dirty automatically so the normal save
+    // path un-quarantines and uploads those photos to Drive. No user edit or
+    // manual Upload click should be required to rescue them.
+    async prepareQuarantinedPhotoRecovery() {
+      let rescued = 0;
+      let madeDirty = 0;
+
+      for (const map of state.maps) {
+        const missing = map && map.root && Array.isArray(map.root._missingPhotoIds)
+          ? map.root._missingPhotoIds
+          : [];
+        if (!missing.length) continue;
+
+        const available = new Set();
+        try {
+          const rows = await PhotoDB.getAllForMap(map.id);
+          rows.forEach((r) => {
+            if (!r || !r.id) return;
+            if (r.blob || r.data) available.add(r.id);
+          });
+        } catch (e) {}
+
+        if (state.current && state.current.id === map.id) {
+          for (const id of photoBlobCache.keys()) available.add(id);
+        }
+
+        const recoverable = missing.filter((id) => available.has(id));
+        if (!recoverable.length) continue;
+        rescued += recoverable.length;
+
+        // If a normal edit already made this map newer than Drive, its next
+        // save will recover the photos anyway. Otherwise bump only the map
+        // revision stamp so pushLocalNewer() includes it.
+        const known = this.fileIndex[map.id];
+        if (!known || (map.updatedAt || 0) <= (known.updatedAt || 0)) {
+          map.updatedAt = nextUpdatedAt(map);
+          try { await DB.put(map); } catch (e) {}
+          madeDirty++;
+        }
+      }
+
+      if (madeDirty && rescued) {
+        try {
+          showToast(
+            `Recovering ${rescued} photo${rescued === 1 ? "" : "s"} this device still has…`
+          );
+        } catch (e) {}
+      }
+      return rescued;
+    },
+
     async pushLocalNewer(opts) {
       const {
         force = false,
@@ -2881,6 +3003,12 @@
         catch (e) { return false; }
       };
       if (busy()) return false;
+
+      // A verified/synced PC can still hold photo bytes that the phone lacks
+      // from the earlier quarantine migration. Detect those before deciding
+      // whether there is "nothing to upload".
+      await this.prepareQuarantinedPhotoRecovery();
+
       const stale = state.maps.filter(m => {
         const known = this.fileIndex[m.id];
         if (!known) return includeNew || this.status === "broken";
@@ -14831,12 +14959,34 @@
     if (!photoModalState) return;
     photoModalBack.title = viewerBackTitle(photoModalState.ret);
     photoModalBack.setAttribute("aria-label", photoModalBack.title);
+    const liveNode = photoModalState.noteMode ? null : findNode(photoModalState.nodeId);
     const images = photoModalState.noteMode
       ? photoModalState.images
-      : getNodeImages(findNode(photoModalState.nodeId));
+      : getNodeImages(liveNode);
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
-    photoModalImg.src = images[photoModalState.index];
+
+    const visibleSrc = images[photoModalState.index] || "";
+    photoModalImg.src = visibleSrc;
+
+    // If the map knows the photo id but this device has no bytes yet, fetch
+    // just that one Drive photo now. This also fixes a stale photo-index cache
+    // by forcing one fresh Drive listing before declaring the photo absent.
+    if (!visibleSrc && !photoModalState.noteMode && liveNode && state.current && DriveDB.signedIn) {
+      const visibleId = getNodeImageIds(liveNode)[photoModalState.index];
+      const expectedNodeId = photoModalState.nodeId;
+      const expectedIndex = photoModalState.index;
+      if (visibleId) {
+        DriveDB.hydratePhotoById(state.current, visibleId, { forceIndex: true })
+          .then((ok) => {
+            if (!ok || !photoModalState || photoModalState.noteMode) return;
+            if (photoModalState.nodeId !== expectedNodeId || photoModalState.index !== expectedIndex) return;
+            renderPhotoModal();
+            try { renderAll(); } catch (e) {}
+          })
+          .catch((e) => console.warn("On-demand Drive photo load failed", e));
+      }
+    }
     const group = photoModalState.tagGroup;
     photoModalGoto.classList.toggle("hidden", !group);
     if (group) {
