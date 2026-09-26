@@ -12134,45 +12134,25 @@
       ctxMenu.appendChild(sw);
     }
 
-    // Per-node text formatting. These are visual formatting flags rather
-    // than destructive text edits: ALL CAPS keeps the original text exactly
-    // as typed, so turning it off restores the original casing.
+    // Per-node text formatting — one combined toggle, as requested.
+    // Both flags are visual only: the node's stored text keeps its original
+    // casing, so switching the format off restores exactly what was typed.
     {
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
-      const label = document.createElement("div");
-      label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Text format";
-      ctxMenu.appendChild(label);
-
-      const row = document.createElement("div");
-      row.className = "ctx-style-row";
-
-      const boldBtn = document.createElement("div");
-      boldBtn.className = "ctx-style-btn" + (node.bold ? " active" : "");
-      boldBtn.innerHTML = "<b>Bold</b>";
-      boldBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
+      const combinedOn = !!node.bold && !!node.allCaps;
+      const formatItem = document.createElement("div");
+      formatItem.className = "ctx-item" + (combinedOn ? " active" : "");
+      formatItem.innerHTML = combinedOn ? "<b>𝐀𝐀 Bold + ALL CAPS ✓</b>" : "<b>𝐀𝐀 Bold + ALL CAPS</b>";
+      formatItem.addEventListener("click", () => {
+        closeContextMenu();
         pushUndo();
-        node.bold = !node.bold;
-        boldBtn.classList.toggle("active", !!node.bold);
+        const turnOn = !(node.bold && node.allCaps);
+        node.bold = turnOn;
+        node.allCaps = turnOn;
         renderAll();
         persist();
       });
-
-      const capsBtn = document.createElement("div");
-      capsBtn.className = "ctx-style-btn" + (node.allCaps ? " active" : "");
-      capsBtn.textContent = "ALL CAPS";
-      capsBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        pushUndo();
-        node.allCaps = !node.allCaps;
-        capsBtn.classList.toggle("active", !!node.allCaps);
-        renderAll();
-        persist();
-      });
-
-      row.append(boldBtn, capsBtn);
-      ctxMenu.appendChild(row);
+      ctxMenu.appendChild(formatItem);
     }
 
     // Font color is independent of branch/root fill color above.
