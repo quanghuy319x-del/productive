@@ -1739,11 +1739,13 @@
     // metadata we tagged them with — cheap compared to downloading every
     // file's content just to check whether it changed.
     async listRemote() {
-      // Query only map manifests. Photo files use branchlineMapId rather
-      // than branchlineId, so even a map with thousands of photos does not
-      // make the 10-second metadata poll enumerate every image.
+      // Google Drive's appProperties search syntax requires BOTH a key
+      // and a value inside the has{} clause; querying by key alone returns
+      // HTTP 400. List the app-created files with pagination, then filter
+      // map manifests client-side by branchlineId. Photo files use
+      // branchlineMapId (not branchlineId), so they are discarded below.
       const fields = encodeURIComponent("nextPageToken,files(id,name,mimeType,appProperties)");
-      const q = encodeURIComponent("trashed=false and appProperties has { key='branchlineId' }");
+      const q = encodeURIComponent("trashed=false");
       const out = [];
       let pageToken = "";
       do {
@@ -1751,7 +1753,9 @@
         const res = await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&spaces=drive&pageSize=1000${tokenPart}`);
         if (!res.ok) throw new Error("Couldn't list Drive maps (" + res.status + ")");
         const data = await res.json();
-        out.push(...(data.files || []));
+        (data.files || []).forEach((f) => {
+          if (f.appProperties && f.appProperties.branchlineId) out.push(f);
+        });
         pageToken = data.nextPageToken || "";
       } while (pageToken);
       return out;
@@ -2015,6 +2019,7 @@
           branchlineId: map.id,
           updatedAt: String(map.updatedAt || 0),
           branchlineFormat: "2",
+          branchlineManifest: "1",
           branchlinePhotoCount: String(refs.size)
         }
       };
@@ -2041,6 +2046,7 @@
           branchlineId: map.id,
           updatedAt: String(map.updatedAt || 0),
           branchlineFormat: "2",
+          branchlineManifest: "1",
           branchlinePhotoCount: String(refs.size)
         }
       };
