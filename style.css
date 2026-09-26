@@ -6156,3 +6156,16 @@ kbd{
     font-size:11px!important;
   }
 }
+
+/* v292 Task List: align the first subtask text with its parent task text.
+   Desktop task text starts after drag + checkbox + fail slots; phone only
+   keeps the checkbox slot, so the subtask panel uses a smaller indent there. */
+#tasks-modal .task-row + .subtask-panel{
+  padding-left:69px!important;
+  box-sizing:border-box;
+}
+@media (max-width:640px){
+  #tasks-modal .task-row + .subtask-panel{
+    padding-left:19px!important;
+  }
+}
