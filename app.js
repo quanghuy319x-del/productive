@@ -23560,9 +23560,23 @@
     $("#storage-empty-trash-btn").disabled = trashedMapsList().length === 0;
 
     const rows = await Promise.all(state.maps.map(async (m) => {
-      const photoBytes = await estimateMapPhotoBytes(m.id);
-      const treeBytes = JSON.stringify(m).length;
-      return { map: m, bytes: photoBytes + treeBytes };
+      let photoBytes = 0;
+      let photoCount = 0;
+      try {
+        const photoRows = await PhotoDB.getAllForMap(m.id);
+        photoCount = photoRows.length;
+        for (const r of photoRows) {
+          if (r.blob && typeof r.blob.size === "number") photoBytes += r.blob.size;
+          else if (typeof r.data === "string") {
+            const commaIdx = r.data.indexOf(",");
+            photoBytes += Math.floor((r.data.length - (commaIdx + 1)) * 0.75);
+          }
+        }
+      } catch (e) { /* best-effort estimate */ }
+      // Actual UTF-8 JSON payload size of nodes/text/settings only.
+      // Photo Blob bytes are counted separately above.
+      const treeBytes = new Blob([JSON.stringify(m)], { type: "application/json" }).size;
+      return { map: m, treeBytes, photoBytes, photoCount, bytes: photoBytes + treeBytes };
     }));
     rows.sort((a, b) => b.bytes - a.bytes);
 
@@ -23597,7 +23611,9 @@
       : "No unowned photos found";
 
     const trashedTotal = rows.filter(r => r.map.trashedAt).reduce((s, r) => s + r.bytes, 0);
-    const grandTotal = rows.reduce((s, r) => s + r.bytes, 0) + orphanBytes;
+    const mapDataTotal = rows.reduce((s, r) => s + r.treeBytes, 0);
+    const photoTotal = rows.reduce((s, r) => s + r.photoBytes, 0);
+    const grandTotal = mapDataTotal + photoTotal + orphanBytes;
 
     let quotaLine = "";
     if (navigator.storage && navigator.storage.estimate) {
@@ -23608,10 +23624,14 @@
         }
       } catch (e) { /* estimate() not available in this context */ }
     }
-    const parts = [`~${formatStorageBytes(grandTotal)} across ${rows.length} map${rows.length === 1 ? "" : "s"}`];
+    const parts = [
+      `Map data: ~${formatStorageBytes(mapDataTotal)}`,
+      `Photos: ~${formatStorageBytes(photoTotal)}`,
+      `Total: ~${formatStorageBytes(grandTotal)} across ${rows.length} map${rows.length === 1 ? "" : "s"}`
+    ];
     if (trashedTotal > 0) parts.push(`~${formatStorageBytes(trashedTotal)} of that is sitting in the trash`);
-    if (orphanBytes > 0) parts.push(`~${formatStorageBytes(orphanBytes)} more is photos left behind by maps that no longer exist at all — not shown in the trash, only below`);
-    storageTotalLine.textContent = parts.join(". ") + `.${quotaLine}`;
+    if (orphanBytes > 0) parts.push(`~${formatStorageBytes(orphanBytes)} more is unowned photo data`);
+    storageTotalLine.textContent = parts.join(" · ") + `.${quotaLine}`;
 
     if (!rows.length) {
       const empty = document.createElement("li");
@@ -23621,7 +23641,7 @@
       return;
     }
 
-    rows.forEach(({ map: m, bytes }) => {
+    rows.forEach(({ map: m, treeBytes, photoBytes, photoCount, bytes }) => {
       const li = document.createElement("li");
       li.className = "trash-row" + (m.trashedAt ? " storage-row-trashed" : "");
 
@@ -23632,7 +23652,10 @@
       name.textContent = m.title || "Untitled map";
       const meta = document.createElement("span");
       meta.className = "trash-row-meta";
-      meta.textContent = formatStorageBytes(bytes);
+      meta.textContent =
+        `Map data: ${formatStorageBytes(treeBytes)} · ` +
+        `Photos: ${formatStorageBytes(photoBytes)} (${photoCount}) · ` +
+        `Total: ${formatStorageBytes(bytes)}`;
       text.append(name, meta);
 
       const actions = document.createElement("div");
