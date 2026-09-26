@@ -11993,12 +11993,12 @@
       ctxMenu.appendChild(sw);
     }
 
-    // Font color is independent of branch/root fill color above — it's a
-    // per-node text override (see the fontColor field on newNode) that
-    // wins over the branch tint, the map-wide theme font color, and the
-    // auto-contrast default, in that order (see renderNode). Offered on
-    // every node, not just branch tops/root, since any single node's text
-    // can be recolored regardless of what's coloring its box.
+    // Font color is independent of branch/root fill color above.
+    // Choosing it on a node applies to that node AND its whole descendant
+    // subtree. This makes a higher-level topic act as the style parent users
+    // expect: pick one color on the branch and every child below it matches.
+    // A child can still be recolored later; doing so recolors that child's
+    // own subtree from that point downward.
     {
       const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
       const label = document.createElement("div");
@@ -12009,13 +12009,33 @@
       const resetSwatch = document.createElement("span");
       resetSwatch.className = "ctx-swatch ctx-swatch-reset" + (!node.fontColor ? " active" : "");
       resetSwatch.title = "Default";
-      resetSwatch.addEventListener("click", () => { pushUndo(); node.fontColor = null; closeContextMenu(); renderAll(); persist(); });
+      resetSwatch.addEventListener("click", () => {
+        pushUndo();
+        (function apply(n) {
+          if (!n) return;
+          n.fontColor = null;
+          (n.children || []).forEach(apply);
+        })(node);
+        closeContextMenu();
+        renderAll();
+        persist();
+      });
       sw.appendChild(resetSwatch);
       PALETTE.forEach(c => {
         const s = document.createElement("span");
         s.className = "ctx-swatch" + (node.fontColor === c ? " active" : "");
         s.style.background = c;
-        s.addEventListener("click", () => { pushUndo(); node.fontColor = c; closeContextMenu(); renderAll(); persist(); });
+        s.addEventListener("click", () => {
+          pushUndo();
+          (function apply(n) {
+            if (!n) return;
+            n.fontColor = c;
+            (n.children || []).forEach(apply);
+          })(node);
+          closeContextMenu();
+          renderAll();
+          persist();
+        });
         sw.appendChild(s);
       });
       ctxMenu.appendChild(sw);
