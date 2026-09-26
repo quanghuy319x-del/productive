@@ -739,6 +739,16 @@
       }
       (node.children || []).forEach(walk);
     })(root);
+
+    // Keep confirmed-unrecoverable ids IN the map, but don't let them block
+    // every future Drive save. They remain preserved under the original node/
+    // note plus this explicit recovery list, so a later backup/recovery tool
+    // can still put bytes back under the same id.
+    const quarantined = Array.isArray(root && root._missingPhotoIds)
+      ? root._missingPhotoIds
+      : [];
+    quarantined.forEach((id) => ids.delete(id));
+
     return ids;
   }
   function photoIsReferenced(id) {
@@ -2388,6 +2398,19 @@
         for (const id of photoBlobCache.keys()) localIds.add(id);
       }
       const availableIds = new Set([...localIds, ...Object.keys(remote)]);
+
+      // A quarantined photo is not permanently discarded. If the exact id
+      // later reappears from another browser, a restored backup, or Drive,
+      // automatically put it back into normal sync.
+      if (Array.isArray(map.root && map.root._missingPhotoIds) && map.root._missingPhotoIds.length) {
+        const before = map.root._missingPhotoIds.length;
+        map.root._missingPhotoIds = map.root._missingPhotoIds.filter((id) => !availableIds.has(id));
+        if (!map.root._missingPhotoIds.length) delete map.root._missingPhotoIds;
+        if (before !== (map.root._missingPhotoIds ? map.root._missingPhotoIds.length : 0)) {
+          try { await DB.put(map); } catch (e) {}
+        }
+      }
+
       const aliasRepair = repairDuplicateNotePhotoAliases(map, availableIds);
       if (aliasRepair.changedTags) {
         // Data repair only: don't bump updatedAt. The normal manifest upload
@@ -2478,17 +2501,43 @@
 
       this.photoFileIndex[map.id] = remote;
 
+      let quarantined = [];
       if (unavailable.length) {
-        const first = unavailable[0];
-        const more = unavailable.length > 1 ? ` (+${unavailable.length - 1} more)` : "";
-        throw new Error(
-          `${unavailable.length} photo${unavailable.length === 1 ? "" : "s"} could not be recovered locally. ` +
-          `Every other available photo was uploaded and the old Drive map was kept intact. ` +
-          `First missing: photo ${first.number}/${referenced.size} (${first.id})${more}.`
+        quarantined = unavailable.map((x) => x.id);
+
+        // Recovery has now exhausted every source we have: local PhotoDB,
+        // the open-map Blob cache, already-uploaded Drive photos, the legacy
+        // monolithic Drive map, and older Drive revisions. Keeping these ids
+        // in the required-photo set would make one permanently-lost picture
+        // lock the user's entire mindmap forever.
+        //
+        // Preserve the ids instead of deleting them. They stay attached to
+        // their original node/note and are also recorded on the root as an
+        // explicit recovery list, but are excluded from Drive completeness
+        // checks so the healthy remainder of the map can finally sync.
+        const existing = new Set(Array.isArray(map.root._missingPhotoIds) ? map.root._missingPhotoIds : []);
+        quarantined.forEach((id) => existing.add(id));
+        map.root._missingPhotoIds = Array.from(existing);
+
+        // The referenced Set was calculated before quarantine. Remove only
+        // these confirmed-unavailable ids so create/update metadata and
+        // cleanup use the same final set in this save pass.
+        quarantined.forEach((id) => referenced.delete(id));
+
+        try { await DB.put(map); } catch (e) {}
+        this.setSyncProgress(
+          `Finalizing map — ${unavailable.length} unavailable photo${unavailable.length === 1 ? "" : "s"} preserved as recovery references…`,
+          referenced.size,
+          referenced.size,
+          90
+        );
+        console.warn(
+          "Drive migration quarantined unrecoverable photo ids",
+          quarantined
         );
       }
 
-      return { referenced, remote };
+      return { referenced, remote, quarantined };
     },
 
     async cleanupRemotePhotos(mapId, referenced, remoteIndex) {
@@ -2707,6 +2756,15 @@
         this.lastDriveErrorAt = 0;
         if (this.status === "broken") this.status = "ok";
         updateDriveUI();
+
+        if (photoSync.quarantined && photoSync.quarantined.length) {
+          const n = photoSync.quarantined.length;
+          try {
+            showToast(
+              `✅ Drive sync finished. ${n} unavailable photo${n === 1 ? "" : "s"} kept as recovery references.`
+            );
+          } catch (e) {}
+        }
 
         this.cleanupRemotePhotos(map.id, photoSync.referenced, photoSync.remote).catch((e) => {
           console.warn("Drive photo cleanup failed", e);
