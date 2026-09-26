@@ -5957,3 +5957,18 @@ kbd{
     pointer-events:auto!important;
   }
 }
+
+/* v280 Desktop Task List: reveal the four actions when hovering the actual progress/header row. */
+@media (min-width:641px){
+  #tasks-modal .tasks-progress-row .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    opacity:0!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+  #tasks-modal .tasks-progress-row:hover .tasks-compact-menu-actions .tasks-sort-stars-btn,
+  #tasks-modal .tasks-progress-row:focus-within .tasks-compact-menu-actions .tasks-sort-stars-btn{
+    opacity:1!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+  }
+}
