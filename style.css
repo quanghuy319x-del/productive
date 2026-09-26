@@ -6088,3 +6088,23 @@ kbd{
     border-radius:10px!important;
   }
 }
+
+/* v287 Brainstorm close button: match enlarged Note close button */
+#brainstorm-back{
+  width:34px!important;
+  min-width:34px!important;
+  height:34px!important;
+  padding:0!important;
+  font-size:18px!important;
+  border-radius:8px!important;
+  line-height:1!important;
+}
+@media (max-width:640px){
+  #brainstorm-back{
+    width:40px!important;
+    min-width:40px!important;
+    height:40px!important;
+    font-size:20px!important;
+    border-radius:10px!important;
+  }
+}
