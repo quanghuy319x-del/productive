@@ -630,10 +630,77 @@
   function extractNotePhotoIds(html) {
     const ids = [];
     if (!html || html.indexOf("data-photo-id") === -1) return ids;
-    const re = /data-photo-id="([^"]+)"/g;
-    let m;
-    while ((m = re.exec(html))) ids.push(m[1]);
+
+    // A browser only keeps ONE value when the same HTML attribute appears
+    // several times on one element. Older Branchline export/import cycles
+    // accidentally stacked a fresh data-photo-id onto the same <img> every
+    // time, so a single visible image could contain 7-10 historical ids.
+    // The old regex counted every one as a separate photo, which is how one
+    // real map ended up trying to migrate hundreds of phantom "photos".
+    const tagRe = /<img\b[^>]*>/gi;
+    let tagMatch;
+    while ((tagMatch = tagRe.exec(html))) {
+      const idMatch = /\bdata-photo-id=(["'])([^"']+)\1/i.exec(tagMatch[0]);
+      if (idMatch && idMatch[2]) ids.push(idMatch[2]);
+    }
     return ids;
+  }
+
+  // Collapses the historical duplicate data-photo-id chain on every note
+  // image to ONE id. If the newest/first id has already been lost, prefer an
+  // older alias that still exists in PhotoDB or Drive. Those aliases all came
+  // from repeated migrations of the very same <img>, so this is a repair, not
+  // an image substitution.
+  function repairDuplicateNotePhotoAliases(map, availableIds) {
+    if (!map || !map.root) return { changedTags: 0, removedAliases: 0, switchedToAvailable: 0 };
+    const available = availableIds || new Set();
+    let changedTags = 0;
+    let removedAliases = 0;
+    let switchedToAvailable = 0;
+
+    const repairOwner = (owner) => {
+      if (!owner || !Array.isArray(owner.notes)) return;
+      owner.notes.forEach((n) => {
+        if (!n || !n.html || n.html.indexOf("data-photo-id") === -1) return;
+        n.html = n.html.replace(/<img\b[^>]*>/gi, (tag) => {
+          const aliasRe = /\s+data-photo-id=(["'])([^"']+)\1/gi;
+          const aliases = [];
+          let m;
+          while ((m = aliasRe.exec(tag))) aliases.push(m[2]);
+          if (aliases.length <= 1) return tag;
+
+          const chosen = aliases.find((id) => available.has(id)) || aliases[0];
+          if (chosen !== aliases[0]) switchedToAvailable++;
+          removedAliases += aliases.length - 1;
+          changedTags++;
+
+          let clean = tag.replace(/\s+data-photo-id=(["'])[^"']+\1/gi, "");
+          clean = clean.replace(/<img\b/i, (open) => `${open} data-photo-id="${chosen}"`);
+          return clean;
+        });
+      });
+    };
+    const repairTasks = (tasks) => (tasks || []).forEach((t) => {
+      if (!t) return;
+      repairOwner(t);
+      (t.subtasks || []).forEach(repairOwner);
+    });
+
+    (function walk(node) {
+      if (!node) return;
+      repairOwner(node);
+      repairTasks(node.tasks);
+      if (node.table && Array.isArray(node.table.attach)) {
+        node.table.attach.forEach((row) => (row || []).forEach((a) => {
+          if (!a) return;
+          repairOwner(a);
+          repairTasks(a.tasks);
+        }));
+      }
+      (node.children || []).forEach(walk);
+    })(map.root);
+
+    return { changedTags, removedAliases, switchedToAvailable };
   }
   // Every note-bearing "owner" shape (a node, a table cell's attach record,
   // a task, a subtask) stores its notes the same way — see getNodeNotes/
@@ -885,9 +952,16 @@
           n.html = n.html.replace(/<img\b[^>]*\bsrc="(data:[^"]*)"[^>]*>/g, (tag, dataUrl) => {
             const id = uid();
             puts.push({ id, mapId: map.id, blob: dataUrlToBlob(dataUrl) });
-            return tag
-              .replace(`src="${dataUrl}"`, "")
-              .replace("<img", `<img data-photo-id="${id}"`);
+
+            // Portable copies used to keep the old data-photo-id while also
+            // adding src=data:; importing that file then prepended ANOTHER id.
+            // Strip all historical aliases before installing the new id so a
+            // round trip can never grow 1 image into 2, 3, ... fake photos.
+            let clean = tag
+              .replace(/\s+data-photo-id=(["'])[^"']+\1/gi, "")
+              .replace(`src="${dataUrl}"`, "");
+            clean = clean.replace(/<img\b/i, (open) => `${open} data-photo-id="${id}"`);
+            return clean;
           });
         });
       };
@@ -989,10 +1063,30 @@
         if (!owner || !Array.isArray(owner.notes)) return;
         owner.notes.forEach((n) => {
           if (!n || !n.html || n.html.indexOf("data-photo-id") === -1) return;
-          n.html = n.html.replace(/<img\b[^>]*\bdata-photo-id="([^"]+)"[^>]*>/g, (tag, id) => {
+          n.html = n.html.replace(/<img\b[^>]*>/gi, (tag) => {
+            const aliasRe = /\bdata-photo-id=(["'])([^"']+)\1/gi;
+            const aliases = [];
+            let m;
+            while ((m = aliasRe.exec(tag))) aliases.push(m[2]);
+            if (!aliases.length) return tag;
+
+            // If an old broken tag has several historical aliases, recover
+            // through whichever alias still has bytes instead of looking only
+            // at the first one and exporting a permanently broken image.
+            const id = aliases.find((candidate) => lookup.has(candidate));
+            if (!id) return tag;
             const dataUrl = lookup.get(id);
-            if (!dataUrl) return tag; // photo missing from PhotoDB — leave the tag as-is rather than break the note
-            return tag.includes("src=") ? tag.replace(/src="[^"]*"/, `src="${dataUrl}"`) : tag.replace("<img", `<img src="${dataUrl}"`);
+
+            // A portable file should contain the actual image bytes (src) and
+            // NO browser-local photo id. Keeping both was the root cause of
+            // the duplicate-id explosion in the user's 2709.json backup.
+            let clean = tag.replace(/\s+data-photo-id=(["'])[^"']+\1/gi, "");
+            if (/\bsrc=(["'])[^"']*\1/i.test(clean)) {
+              clean = clean.replace(/\bsrc=(["'])[^"']*\1/i, `src="${dataUrl}"`);
+            } else {
+              clean = clean.replace(/<img\b/i, (open) => `${open} src="${dataUrl}"`);
+            }
+            return clean;
           });
         });
       };
@@ -2281,25 +2375,41 @@
 
     async syncPhotosForMap(map, opts) {
       const options = opts || {};
-      const referenced = collectReferencedPhotoIds(map.root);
 
-      // An explicit Retry Drive always re-lists the files Google actually
-      // has. Drive itself is the upload checkpoint, so already-confirmed
-      // photos are never sent again after an interruption/reload.
+      // Re-list Drive first, then use BOTH local and remote ids to repair the
+      // duplicate note-image alias chains produced by old export/import code.
+      // This is intentionally before collectReferencedPhotoIds(): otherwise
+      // hundreds of stale aliases get counted as separate photos again.
       const remote = await this.listRemotePhotos(map.id, !!options.forceRemote);
-      const missing = Array.from(referenced).filter((id) => !remote[id]);
-      const alreadyUploaded = referenced.size - missing.length;
-
-      // Before uploading, verify that every not-yet-on-Drive photo still has
-      // bytes on this device. If IndexedDB lost a row during the old v1 -> v2
-      // conversion, recover it from the still-intact legacy Drive JSON (or an
-      // older Drive revision) instead of declaring the picture lost.
       let localRows = [];
       try { localRows = await PhotoDB.getAllForMap(map.id); } catch (e) {}
       const localIds = new Set(localRows.map((r) => r && r.id).filter(Boolean));
       if (state.current && state.current.id === map.id) {
         for (const id of photoBlobCache.keys()) localIds.add(id);
       }
+      const availableIds = new Set([...localIds, ...Object.keys(remote)]);
+      const aliasRepair = repairDuplicateNotePhotoAliases(map, availableIds);
+      if (aliasRepair.changedTags) {
+        // Data repair only: don't bump updatedAt. The normal manifest upload
+        // below publishes the cleaned HTML after its photos are safe.
+        try { await DB.put(map); } catch (e) {}
+        this.setSyncProgress(
+          `Repaired ${aliasRepair.removedAliases} duplicate photo links…`,
+          0, 0, 4
+        );
+        console.warn(
+          "Repaired duplicate note photo ids",
+          aliasRepair
+        );
+      }
+
+      const referenced = collectReferencedPhotoIds(map.root);
+      const missing = Array.from(referenced).filter((id) => !remote[id]);
+      const alreadyUploaded = referenced.size - missing.length;
+
+      // Before uploading, verify that every not-yet-on-Drive photo still has
+      // bytes on this device. If IndexedDB lost a REAL photo row, recover it
+      // from the still-intact legacy Drive JSON (or an older Drive revision).
       const locallyMissing = missing.filter((id) => !localIds.has(id));
       if (locallyMissing.length) {
         await this.recoverMissingLocalPhotos(map, locallyMissing);
