@@ -5893,3 +5893,20 @@ kbd{
     justify-content:flex-start!important;padding:8px 11px!important;text-align:left!important;
   }
 }
+
+/* v275 Queue Tasks: borderless container + strongly faded heading */
+#tasks-modal .shared-queue-task-row{
+  border:none!important;
+  box-shadow:none!important;
+  background:transparent!important;
+}
+#tasks-modal .shared-queue-task-row .task-text{
+  opacity:.28!important;
+}
+#tasks-modal .shared-queue-task-row::before{
+  opacity:.28!important;
+}
+#tasks-modal .shared-queue-subtask-panel{
+  border:none!important;
+  box-shadow:none!important;
+}
