@@ -4494,7 +4494,7 @@
     // cell gets the same override on its own attach record instead (see
     // getCellAttach) so a single cell's text can be recolored without
     // affecting the rest of the table.
-    return { id: uid(), text: text || "", children: [], collapsed: false, color: null, fontColor: null, struck: false, note: "", notes: [], image: null, images: [], url: null, urls: [], side: null, xGap: null, connectorStyle: null, connectorShape: null, table: null };
+    return { id: uid(), text: text || "", children: [], collapsed: false, color: null, fontColor: null, bold: false, allCaps: false, struck: false, note: "", notes: [], image: null, images: [], url: null, urls: [], side: null, xGap: null, connectorStyle: null, connectorShape: null, table: null };
   }
 
   // A "table" node swaps its normal text label for a small editable grid
@@ -8355,10 +8355,12 @@
       h = Math.max(tbox.tableH + vPad + 6, baseH);
       lines = [];
     } else {
-    const fontWeight = depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400;
+    const baseFontWeight = depth === 0 ? 800 : depth === 1 ? 600 : depth === 2 ? 500 : 400;
+    const fontWeight = node.bold ? (depth === 0 ? 900 : 800) : baseFontWeight;
     const fontSize = depth === 0 ? 21 : depth === 3 ? 12.5 : 13.5;
     measureCtx.font = `${fontWeight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
-    const text = node.text || "(untitled)";
+    const rawText = node.text || "(untitled)";
+    const text = node.allCaps ? rawText.toUpperCase() : rawText;
     // Small safety buffer so a slight mismatch between canvas-measured width
     // and actual rendered width never causes the CSS wrap to break a word
     // mid-letter (e.g. "Risk" -> "Ris"/"k").
@@ -10054,6 +10056,8 @@
       ? color
       : (theme.fontMode === "custom" ? theme.fontColor : caretColorFor(effectiveBg));
     div.style.caretColor = caretColorFor(effectiveBg);
+    div.style.fontWeight = node.bold ? (depth === 0 ? "900" : "800") : "";
+    div.style.textTransform = node.allCaps ? "uppercase" : "";
 
     // The root node's title used to scroll like a marquee when it ran
     // long, rather than wrapping/clipping — removed at the user's
@@ -12128,6 +12132,47 @@
         sw.appendChild(s);
       });
       ctxMenu.appendChild(sw);
+    }
+
+    // Per-node text formatting. These are visual formatting flags rather
+    // than destructive text edits: ALL CAPS keeps the original text exactly
+    // as typed, so turning it off restores the original casing.
+    {
+      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "Text format";
+      ctxMenu.appendChild(label);
+
+      const row = document.createElement("div");
+      row.className = "ctx-style-row";
+
+      const boldBtn = document.createElement("div");
+      boldBtn.className = "ctx-style-btn" + (node.bold ? " active" : "");
+      boldBtn.innerHTML = "<b>Bold</b>";
+      boldBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pushUndo();
+        node.bold = !node.bold;
+        boldBtn.classList.toggle("active", !!node.bold);
+        renderAll();
+        persist();
+      });
+
+      const capsBtn = document.createElement("div");
+      capsBtn.className = "ctx-style-btn" + (node.allCaps ? " active" : "");
+      capsBtn.textContent = "ALL CAPS";
+      capsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pushUndo();
+        node.allCaps = !node.allCaps;
+        capsBtn.classList.toggle("active", !!node.allCaps);
+        renderAll();
+        persist();
+      });
+
+      row.append(boldBtn, capsBtn);
+      ctxMenu.appendChild(row);
     }
 
     // Font color is independent of branch/root fill color above.
