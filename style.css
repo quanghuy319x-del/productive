@@ -5985,3 +5985,65 @@ kbd{
   text-transform:none!important;
   color:inherit!important;
 }
+
+/* v283 Task List actions: use the same single ••• dropdown on PC and phone */
+#tasks-modal .tasks-compact-menu{
+  display:block!important;
+  flex:none!important;
+  position:relative!important;
+}
+#tasks-modal .tasks-compact-menu-toggle{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-width:40px!important;
+  height:34px!important;
+  padding:0 10px!important;
+  border:1px solid #c9c9c9!important;
+  border-radius:8px!important;
+  background:#fff!important;
+  color:#444!important;
+  font-size:18px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  cursor:pointer!important;
+  list-style:none!important;
+  user-select:none!important;
+  -webkit-user-select:none!important;
+}
+#tasks-modal .tasks-compact-menu-toggle::-webkit-details-marker{
+  display:none!important;
+}
+#tasks-modal .tasks-compact-menu[open] .tasks-compact-menu-toggle{
+  background:#f0f0f0!important;
+  border-color:#8f8f8f!important;
+}
+#tasks-modal .tasks-compact-menu-actions{
+  display:none!important;
+  position:absolute!important;
+  z-index:30!important;
+  top:40px!important;
+  right:0!important;
+  width:190px!important;
+  padding:7px!important;
+  flex-direction:column!important;
+  gap:5px!important;
+  background:#fff!important;
+  border:1px solid #c9c9c9!important;
+  border-radius:10px!important;
+  box-shadow:0 7px 22px rgba(0,0,0,.18)!important;
+}
+#tasks-modal .tasks-compact-menu[open] .tasks-compact-menu-actions{
+  display:flex!important;
+}
+#tasks-modal .tasks-compact-menu-actions .tasks-sort-stars-btn{
+  display:flex!important;
+  opacity:1!important;
+  visibility:visible!important;
+  pointer-events:auto!important;
+  width:100%!important;
+  min-height:40px!important;
+  justify-content:flex-start!important;
+  padding:8px 11px!important;
+  text-align:left!important;
+}
