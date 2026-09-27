@@ -25991,6 +25991,10 @@
   function setSidebarHidden(hidden) {
     document.getElementById("app").classList.toggle("sidebar-hidden", hidden);
     try { localStorage.setItem(SIDEBAR_HIDDEN_KEY, hidden ? "1" : "0"); } catch (e) {}
+    // Sidebar width changes the map viewport without necessarily firing a
+    // window resize event. Reconcile after CSS layout settles so newly exposed
+    // canvas space is populated immediately.
+    requestAnimationFrame(() => scheduleVirtualViewportRefresh(true));
   }
   (function initSidebarToggle() {
     let hidden;
