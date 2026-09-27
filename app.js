@@ -8507,6 +8507,222 @@
 
   /* ---------------- rendering ---------------- */
 
+  // ================= viewport virtualization =================
+  // Layout stays complete in memory so all existing navigation, drag/drop,
+  // undo, sync and connector math keep the exact same model. Only DOM/SVG
+  // creation is virtualized: nodes and connectors well outside the camera are
+  // not materialized until the camera approaches them.
+  //
+  // The render window is deliberately much larger than the visible viewport.
+  // Panning/zooming therefore remains a cheap GPU transform for hundreds of
+  // pixels at a time; we only reconcile DOM when the camera nears the edge of
+  // that buffered window.
+  const VIRTUAL_BUFFER_SCREEN_PX = 1000;
+  const VIRTUAL_GUARD_SCREEN_PX = 320;
+  let virtualAllNodes = [];
+  let virtualRenderWindow = null;
+  let virtualRefreshRAF = null;
+
+  function virtualViewportRect(extraScreenPx) {
+    const scale = Math.max(0.001, state.scale || 1);
+    const extra = Math.max(0, extraScreenPx || 0);
+    const vw = viewportEl.clientWidth || 1;
+    const vh = viewportEl.clientHeight || 1;
+    return {
+      left: (-state.tx - extra) / scale,
+      top: (-state.ty - extra) / scale,
+      right: (vw - state.tx + extra) / scale,
+      bottom: (vh - state.ty + extra) / scale
+    };
+  }
+
+  function virtualRectIntersects(a, b) {
+    return !!a && !!b
+      && a.right >= b.left && a.left <= b.right
+      && a.bottom >= b.top && a.top <= b.bottom;
+  }
+
+  function virtualRectContains(outer, inner) {
+    return !!outer && !!inner
+      && inner.left >= outer.left && inner.right <= outer.right
+      && inner.top >= outer.top && inner.bottom <= outer.bottom;
+  }
+
+  function virtualNodeRect(node) {
+    const w = node._w || NODE_H;
+    const h = node._h || NODE_H;
+    const left = state.originX + nodeLeftX(node);
+    const top = state.originY + node._y + (node.oy || 0) - h / 2;
+    return { left, top, right: left + w, bottom: top + h };
+  }
+
+  // Curved connectors stay inside (or very close to) the union of their two
+  // endpoint boxes. A small cushion covers bezier bow/halo thickness without
+  // needing expensive SVG getBBox() calls.
+  function virtualConnectorRect(a, b) {
+    const ar = virtualNodeRect(a), br = virtualNodeRect(b);
+    const pad = 48;
+    return {
+      left: Math.min(ar.left, br.left) - pad,
+      top: Math.min(ar.top, br.top) - pad,
+      right: Math.max(ar.right, br.right) + pad,
+      bottom: Math.max(ar.bottom, br.bottom) + pad
+    };
+  }
+
+  function virtualPinnedIds() {
+    const ids = new Set();
+    if (state.selectedId) ids.add(state.selectedId);
+    if (state.editingId) ids.add(state.editingId);
+    if (state.linkFromId) ids.add(state.linkFromId);
+    if (state.moveSourceId) ids.add(state.moveSourceId);
+    if (dragCandidate && dragCandidate.id) ids.add(dragCandidate.id);
+    return ids;
+  }
+
+  function virtualTreeConnectorSpecs(win) {
+    const specs = [];
+    const layoutMode = state.current.layout || "mindmap";
+    const branches = state.current.root.children || [];
+
+    for (const n of virtualAllNodes) {
+      if (n.collapsed || !n.children || n.children.length === 0) continue;
+      for (const c of n.children) {
+        if (layoutMode === "timeline" && n === state.current.root) continue;
+        if (!virtualRectIntersects(virtualConnectorRect(n, c), win)) continue;
+        specs.push({
+          key: `tree:h:${n.id}:${c.id}`,
+          parent: n,
+          child: c,
+          opts: { virtualKey: `tree:h:${n.id}:${c.id}` }
+        });
+      }
+    }
+
+    if (layoutMode === "timeline" && branches.length) {
+      const below = branches.filter(b => b.vSide !== "above");
+      const above = branches.filter(b => b.vSide === "above");
+      const addV = (a, b, colorNode, depth) => {
+        if (!a || !b || !virtualRectIntersects(virtualConnectorRect(a, b), win)) return;
+        const key = `tree:v:${a.id}:${b.id}`;
+        specs.push({
+          key,
+          parent: a,
+          child: b,
+          opts: { orientation: "v", colorNode, depth, virtualKey: key }
+        });
+      };
+      if (below.length) {
+        addV(state.current.root, below[0], undefined, undefined);
+        for (let i = 0; i < below.length - 1; i++) addV(below[i], below[i + 1], below[i + 1], 1);
+      }
+      if (above.length) {
+        const last = above.length - 1;
+        addV(state.current.root, above[last], undefined, undefined);
+        for (let i = last; i > 0; i--) addV(above[i], above[i - 1], above[i - 1], 1);
+      }
+    }
+    return specs;
+  }
+
+  function virtualLinkSpecs(win) {
+    const specs = [];
+    if (!state.current.links || !state.current.links.length) return specs;
+    const byId = new Map(virtualAllNodes.map(n => [n.id, n]));
+    for (const link of state.current.links) {
+      const a = byId.get(link.a), b = byId.get(link.b);
+      if (!a || !b || !virtualRectIntersects(virtualConnectorRect(a, b), win)) continue;
+      specs.push({ key: `link:${link.id}`, link, a, b });
+    }
+    return specs;
+  }
+
+  function reconcileVirtualScene(force) {
+    if (!state.current || state.originX == null || state.originY == null) return;
+    const win = virtualViewportRect(VIRTUAL_BUFFER_SCREEN_PX);
+    const pinned = virtualPinnedIds();
+    const desiredNodes = new Map();
+
+    for (const node of virtualAllNodes) {
+      if (pinned.has(node.id) || virtualRectIntersects(virtualNodeRect(node), win)) {
+        desiredNodes.set(node.id, node);
+      }
+    }
+
+    if (force) {
+      nodesLayer.innerHTML = "";
+      svgEl.innerHTML = svgDefs();
+    } else {
+      nodesLayer.querySelectorAll(".node[data-id]").forEach((el) => {
+        if (!desiredNodes.has(el.dataset.id)) el.remove();
+      });
+    }
+
+    const existingNodeIds = new Set(
+      Array.from(nodesLayer.querySelectorAll(".node[data-id]")).map(el => el.dataset.id)
+    );
+    for (const [id, node] of desiredNodes) {
+      if (!existingNodeIds.has(id)) renderNode(node, state.originX, state.originY);
+    }
+
+    const treeSpecs = virtualTreeConnectorSpecs(win);
+    const linkSpecs = virtualLinkSpecs(win);
+    const desiredConnectorKeys = new Set([
+      ...treeSpecs.map(x => x.key),
+      ...linkSpecs.map(x => x.key)
+    ]);
+
+    if (!force) {
+      svgEl.querySelectorAll("g.connector[data-virtual-key]").forEach((g) => {
+        if (!desiredConnectorKeys.has(g.dataset.virtualKey)) g.remove();
+      });
+    }
+
+    const existingConnectorKeys = new Set(
+      Array.from(svgEl.querySelectorAll("g.connector[data-virtual-key]")).map(g => g.dataset.virtualKey)
+    );
+    for (const spec of treeSpecs) {
+      if (!existingConnectorKeys.has(spec.key)) drawConnector(spec.parent, spec.child, state.originX, state.originY, spec.opts);
+    }
+    for (const spec of linkSpecs) {
+      if (!existingConnectorKeys.has(spec.key)) drawLink(spec.a, spec.b, state.originX, state.originY, spec.link, spec.key);
+    }
+
+    // Re-apply transient visual state to newly materialized nodes.
+    nodesLayer.querySelectorAll(".node").forEach((div) => {
+      div.classList.toggle("link-source", !!state.linkFromId && div.dataset.id === state.linkFromId);
+      div.classList.toggle("move-source", !!state.moveSourceId && div.dataset.id === state.moveSourceId);
+    });
+
+    virtualRenderWindow = win;
+    applyHighlight();
+  }
+
+  function virtualWindowNeedsRefresh() {
+    if (!state.current || !virtualRenderWindow) return true;
+    return !virtualRectContains(virtualRenderWindow, virtualViewportRect(VIRTUAL_GUARD_SCREEN_PX));
+  }
+
+  function scheduleVirtualViewportRefresh(force) {
+    if (!state.current) return;
+    if (!force && !virtualWindowNeedsRefresh()) return;
+    if (virtualRefreshRAF != null) {
+      if (force) virtualRefreshRAF.force = true;
+      return;
+    }
+    const token = { force: !!force };
+    virtualRefreshRAF = token;
+    requestAnimationFrame(() => {
+      const shouldForce = token.force;
+      if (virtualRefreshRAF !== token) return;
+      virtualRefreshRAF = null;
+      // Do not tear down a live node drag. The 1000px render buffer easily
+      // covers the gesture; a forced reconciliation runs on drop instead.
+      if (dragCandidate && dragCandidate.moved) return;
+      if (shouldForce || virtualWindowNeedsRefresh()) reconcileVirtualScene(shouldForce);
+    });
+  }
+
   // Fast path for edits that only change one node's visible content.
   // Re-measure that node first. If its box size changed, connector endpoints
   // and sibling layout may also need to move, so fall back to renderAll().
@@ -8516,7 +8732,7 @@
     if (!state.current || !nodeId || state.editingId) { renderAll(); return; }
     const node = findNode(nodeId);
     const oldEl = nodesLayer.querySelector(`.node[data-id="${nodeId}"]`);
-    if (!node || !oldEl || state.originX == null || state.originY == null) { renderAll(); return; }
+    if (!node) return;
 
     const oldW = node._w;
     const oldH = node._h;
@@ -8526,19 +8742,34 @@
       return;
     }
 
+    // If this node is virtualized out, its data is already current; there is
+    // nothing to paint until the camera reaches it.
+    if (!oldEl) {
+      if (virtualRenderWindow && virtualRectIntersects(virtualNodeRect(node), virtualRenderWindow)) {
+        renderNode(node, state.originX, state.originY);
+        applyHighlight();
+      }
+      return;
+    }
+
     const next = oldEl.nextSibling;
     oldEl.remove();
     renderNode(node, state.originX, state.originY);
 
-    // renderNode appends the replacement. Put it back at the old DOM position
-    // so overlapping nodes retain exactly the same stacking order.
     const fresh = nodesLayer.querySelector(`.node[data-id="${nodeId}"]`);
     if (fresh && next && next.parentNode === nodesLayer) nodesLayer.insertBefore(fresh, next);
     if (fresh && state.linkFromId === nodeId) fresh.classList.add("link-source");
+    if (fresh && state.moveSourceId === nodeId) fresh.classList.add("move-source");
+    applyHighlight();
   }
 
   function renderAll() {
-    if (!state.current) { clearCanvas(); return; }
+    if (!state.current) {
+      virtualAllNodes = [];
+      virtualRenderWindow = null;
+      clearCanvas();
+      return;
+    }
     updateUndoRedoButtons();
     emptyState.classList.add("hidden");
     nodeFabs.classList.remove("hidden");
@@ -8550,12 +8781,7 @@
     const height = (bbox.maxY - bbox.minY) + pad * 2;
     const originX = -bbox.minX + pad;
     const originY = -bbox.minY + pad;
-    // The world's coordinate origin shifts whenever the tree's bounding box
-    // changes (e.g. collapsing/expanding a branch shrinks or grows it), even
-    // though the camera (tx/ty) itself didn't change. Left alone, that
-    // origin shift reads as the whole map sliding on screen. Counteract it
-    // by nudging tx/ty the opposite way, so whatever was on screen stays on
-    // screen.
+
     if (state.originX !== undefined && state.originY !== undefined) {
       state.tx -= (originX - state.originX) * state.scale;
       state.ty -= (originY - state.originY) * state.scale;
@@ -8569,83 +8795,18 @@
     svgEl.setAttribute("height", height);
     svgEl.setAttribute("viewBox", `0 0 ${width} ${height}`);
 
-    nodesLayer.innerHTML = "";
-    svgEl.innerHTML = svgDefs();
+    virtualAllNodes = [];
+    (function collect(n) {
+      virtualAllNodes.push(n);
+      if (!n.collapsed) (n.children || []).forEach(collect);
+    })(state.current.root);
 
-    const nodes = [];
-    (function collect(n) { nodes.push(n); if (!n.collapsed) (n.children || []).forEach(collect); })(state.current.root);
-
-    // lines first (under nodes)
-    const layoutMode = state.current.layout || "mindmap";
-    const branches = state.current.root.children || [];
-    for (const n of nodes) {
-      if (n.collapsed || !n.children || n.children.length === 0) continue;
-      for (const c of n.children) {
-        // In Timeline mode the root only visually connects to the first
-        // branch; the rest chain branch-to-branch down the spine (drawn below).
-        if (layoutMode === "timeline" && n === state.current.root) continue;
-        drawConnector(n, c, originX, originY);
-      }
-    }
-    if (layoutMode === "timeline" && branches.length) {
-      // The root chains to each half of the spine separately — branches
-      // below it (the default) chain downward as before, and any branch
-      // dragged above the root (vSide === "above") chains upward instead.
-      const belowBranches = branches.filter(b => b.vSide !== "above");
-      const aboveBranches = branches.filter(b => b.vSide === "above");
-      if (belowBranches.length) {
-        drawConnector(state.current.root, belowBranches[0], originX, originY, { orientation: "v" });
-        for (let i = 0; i < belowBranches.length - 1; i++) {
-          drawConnector(belowBranches[i], belowBranches[i + 1], originX, originY, { orientation: "v", colorNode: belowBranches[i + 1], depth: 1 });
-        }
-      }
-      if (aboveBranches.length) {
-        // aboveBranches is in array order, but on screen the LAST one sits
-        // closest to the root (see layoutTimeline) — so the chain runs
-        // root -> last -> ... -> first, the mirror of the downward chain.
-        const last = aboveBranches.length - 1;
-        drawConnector(state.current.root, aboveBranches[last], originX, originY, { orientation: "v" });
-        for (let i = last; i > 0; i--) {
-          drawConnector(aboveBranches[i], aboveBranches[i - 1], originX, originY, { orientation: "v", colorNode: aboveBranches[i - 1], depth: 1 });
-        }
-      }
-    }
-
-    if (state.current.links && state.current.links.length) {
-      const byId = new Map(nodes.map(n => [n.id, n]));
-      for (const link of state.current.links) {
-        const a = byId.get(link.a), b = byId.get(link.b);
-        if (a && b) drawLink(a, b, originX, originY, link);
-      }
-    }
-
-    for (const n of nodes) {
-      renderNode(n, originX, originY);
-    }
-
-    if (state.linkFromId) {
-      const from = nodes.find(n => n.id === state.linkFromId);
-      if (from) {
-        const div = nodesLayer.querySelector(`.node[data-id="${from.id}"]`);
-        if (div) div.classList.add("link-source");
-      } else {
-        state.linkFromId = null;
-      }
-    }
-
-    if (state.moveSourceId) {
-      const from = nodes.find(n => n.id === state.moveSourceId);
-      if (from) {
-        const div = nodesLayer.querySelector(`.node[data-id="${from.id}"]`);
-        if (div) div.classList.add("move-source");
-      } else {
-        state.moveSourceId = null;
-      }
-    }
+    // Full model/layout refresh, but only the buffered viewport is materialized.
+    virtualRenderWindow = null;
+    reconcileVirtualScene(true);
 
     titleInput.value = state.current.title || "";
     updateLinkHint();
-    applyHighlight();
     applyTransform();
   }
 
@@ -8701,7 +8862,7 @@
     return `M ${x1} ${y1} Q ${cx} ${cy}, ${x2} ${y2}`;
   }
 
-  function drawLink(a, b, ox, oy, link) {
+  function drawLink(a, b, ox, oy, link, virtualKey) {
     const path = linkPath(a, b, ox, oy);
     const bg = (state.current.theme && state.current.theme.background) || defaultBg();
     const color = "#e0b04a";
@@ -8709,6 +8870,7 @@
     const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.setAttribute("class", "connector link-connector");
     g.dataset.link = link.id;
+    g.dataset.virtualKey = virtualKey || `link:${link.id}`;
 
     const halo = document.createElementNS("http://www.w3.org/2000/svg", "path");
     halo.setAttribute("d", path);
@@ -8857,6 +9019,7 @@
     g.dataset.parent = parent.id;
     g.dataset.child = child.id;
     g.dataset.orientation = orientation;
+    if (opts.virtualKey) g.dataset.virtualKey = opts.virtualKey;
 
     // halo underneath, so the line always reads clearly against whatever
     // background color is chosen
@@ -12455,6 +12618,7 @@
 
   function applyTransform() {
     worldEl.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+    scheduleVirtualViewportRefresh(false);
     // Only promote #world to its own composited GPU layer *while* pan/zoom
     // is actually moving. Chromium (and others) render a composited layer
     // by scaling a cached bitmap rather than re-rasterizing text/lines at
@@ -12788,7 +12952,11 @@
         repositionAll(false);
       }
       dragCandidate = null;
-      if (moved) { suppressNextNodeClick = true; persist(); }
+      if (moved) {
+        suppressNextNodeClick = true;
+        scheduleVirtualViewportRefresh(true);
+        persist();
+      }
     }
   }
   window.addEventListener("mouseup", finishInteraction);
@@ -12844,6 +13012,7 @@
   $("#zoom-in").addEventListener("click", () => { state.scale = clamp(state.scale * 1.15, 0.25, 2.5); applyTransform(); persistViewOnly(); });
   $("#zoom-out").addEventListener("click", () => { state.scale = clamp(state.scale / 1.15, 0.25, 2.5); applyTransform(); persistViewOnly(); });
   $("#zoom-reset").addEventListener("click", () => { state.scale = 1; state.tx = 60; state.ty = 60; applyTransform(); persistViewOnly(); });
+  window.addEventListener("resize", debounce(() => scheduleVirtualViewportRefresh(true), 120));
 
   // Floating add-child / add-sibling buttons — same effect as the Tab/Enter
   // shortcuts, for anyone who'd rather click (or has no keyboard handy).
