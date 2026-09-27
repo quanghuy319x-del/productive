@@ -3312,7 +3312,10 @@
             // cannot survive the cleanup.
             const mapIndex = state.maps.findIndex(m => m.id === id);
             if (mapIndex >= 0) state.maps[mapIndex] = data;
-            if (state.current && state.current.id === id) state.current = data;
+            if (state.current && state.current.id === id) {
+              state.current = data;
+              refreshPhoneEditorFontControls();
+            }
             await DB.put(data);
             if (replacingOpenMap) await loadPhotoCacheForMap(id);
           } else {
@@ -7542,6 +7545,7 @@
     commitEditIfActive();
     cancelAutoPhotoCleanup(); // leaving the map it was scheduled for — never let it fire against the next one
     state.current = m;
+    refreshPhoneEditorFontControls();
     ensureTheme(state.current);
     ensureLinks(state.current);
     ensureLayout(state.current);
@@ -16579,15 +16583,20 @@
   const EDITOR_FONT_MIN = 10;
   const EDITOR_FONT_MAX = 22;
   const EDITOR_FONT_DEFAULT = 13;
-  const NOTE_EDITOR_FONT_KEY = "branchline_note_editor_font_px_v1";
-  const BRAINSTORM_EDITOR_FONT_KEY = "branchline_brainstorm_editor_font_px_v1";
+  // Synced with the mindmap itself, so the preference follows Drive.
+  const NOTE_EDITOR_FONT_KEY = "noteFontPx";
+  const BRAINSTORM_EDITOR_FONT_KEY = "brainstormFontPx";
+  const phoneEditorFontRefreshers = [];
 
   function storedEditorFontPx(key) {
-    try {
-      const n = parseInt(localStorage.getItem(key), 10);
-      if (Number.isFinite(n)) return clamp(n, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
-    } catch (e) {}
+    const prefs = state.current && state.current.editorView;
+    const n = prefs ? parseInt(prefs[key], 10) : NaN;
+    if (Number.isFinite(n)) return clamp(n, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
     return EDITOR_FONT_DEFAULT;
+  }
+
+  function refreshPhoneEditorFontControls() {
+    phoneEditorFontRefreshers.forEach((refresh) => refresh(true));
   }
 
   function applyEditorFontPx(editor, px) {
@@ -16601,7 +16610,8 @@
     if (!editor || !smaller || !bigger) return;
     let px = storedEditorFontPx(key);
 
-    const refresh = () => {
+    const refresh = (reloadFromMap = false) => {
+      if (reloadFromMap) px = storedEditorFontPx(key);
       applyEditorFontPx(editor, px);
       smaller.disabled = px <= EDITOR_FONT_MIN;
       bigger.disabled = px >= EDITOR_FONT_MAX;
@@ -16610,7 +16620,10 @@
     };
     const change = (delta) => {
       px = clamp(px + delta, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
-      try { localStorage.setItem(key, String(px)); } catch (e) {}
+      if (!state.current) return;
+      if (!state.current.editorView || typeof state.current.editorView !== "object") state.current.editorView = {};
+      state.current.editorView[key] = px;
+      persist();
       refresh();
     };
 
@@ -16619,6 +16632,7 @@
     bigger.addEventListener("mousedown", (e) => e.preventDefault());
     smaller.addEventListener("click", () => change(-1));
     bigger.addEventListener("click", () => change(1));
+    phoneEditorFontRefreshers.push(refresh);
     refresh();
   }
 
