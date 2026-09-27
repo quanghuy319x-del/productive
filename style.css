@@ -6476,3 +6476,34 @@ kbd{
   color:#3b6ef0!important;
   box-shadow:inset 0 2px 3px rgba(59,110,240,.28)!important;
 }
+
+
+/* v365 — one and only persistent pressed visual for every stateful Note
+   toolbar control: same blue border + same pale-blue fill, no exceptions. */
+#note-tool-title-mode.active,
+#note-tool-bold.active,
+#note-tool-upper.active,
+#note-tool-strike.active,
+#note-tool-ol.active,
+#note-tool-check.active,
+#note-tool-autocolor.active{
+  border:1px solid #3b6ef0!important;
+  background:#eaf0ff!important;
+  color:#3b6ef0!important;
+  box-shadow:none!important;
+  transform:none!important;
+  filter:none!important;
+}
+#note-tool-title-mode.active:hover,
+#note-tool-bold.active:hover,
+#note-tool-upper.active:hover,
+#note-tool-strike.active:hover,
+#note-tool-ol.active:hover,
+#note-tool-check.active:hover,
+#note-tool-autocolor.active:hover{
+  border:1px solid #3b6ef0!important;
+  background:#eaf0ff!important;
+  color:#3b6ef0!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
