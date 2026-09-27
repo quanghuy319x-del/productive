@@ -16608,6 +16608,57 @@
 
   const noteModal = $("#note-modal");
   const noteTextarea = $("#note-textarea");
+
+  // Phone-only display zoom for Note/DRC/Brainstorm text. This never writes
+  // font-size markup into the note itself: it only changes the editor element,
+  // so saved HTML, Drive sync and rich-text formatting stay untouched.
+  const EDITOR_FONT_MIN = 10;
+  const EDITOR_FONT_MAX = 22;
+  const EDITOR_FONT_DEFAULT = 13;
+  const NOTE_EDITOR_FONT_KEY = "branchline_note_editor_font_px_v1";
+  const BRAINSTORM_EDITOR_FONT_KEY = "branchline_brainstorm_editor_font_px_v1";
+
+  function storedEditorFontPx(key) {
+    try {
+      const n = parseInt(localStorage.getItem(key), 10);
+      if (Number.isFinite(n)) return clamp(n, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
+    } catch (e) {}
+    return EDITOR_FONT_DEFAULT;
+  }
+
+  function applyEditorFontPx(editor, px) {
+    if (!editor) return;
+    editor.style.fontSize = clamp(px, EDITOR_FONT_MIN, EDITOR_FONT_MAX) + "px";
+  }
+
+  function setupPhoneEditorFontControls(editor, key, smallerId, biggerId) {
+    const smaller = $(smallerId);
+    const bigger = $(biggerId);
+    if (!editor || !smaller || !bigger) return;
+    let px = storedEditorFontPx(key);
+
+    const refresh = () => {
+      applyEditorFontPx(editor, px);
+      smaller.disabled = px <= EDITOR_FONT_MIN;
+      bigger.disabled = px >= EDITOR_FONT_MAX;
+      smaller.title = `Smaller text (current ${px}px)`;
+      bigger.title = `Bigger text (current ${px}px)`;
+    };
+    const change = (delta) => {
+      px = clamp(px + delta, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
+      try { localStorage.setItem(key, String(px)); } catch (e) {}
+      refresh();
+    };
+
+    // Keep the caret/selection in the contenteditable when tapping the tool.
+    smaller.addEventListener("mousedown", (e) => e.preventDefault());
+    bigger.addEventListener("mousedown", (e) => e.preventDefault());
+    smaller.addEventListener("click", () => change(-1));
+    bigger.addEventListener("click", () => change(1));
+    refresh();
+  }
+
+  setupPhoneEditorFontControls(noteTextarea, NOTE_EDITOR_FONT_KEY, "#note-font-smaller", "#note-font-bigger");
   const noteTitleInput = $("#note-title-input");
   const noteCard = $(".note-modal-card");
   const noteResizeHandle = $("#note-resize-handle");
@@ -22966,6 +23017,12 @@
   const brainstormModal = $("#brainstorm-modal");
   const brainstormNodeLabel = $("#brainstorm-node-label");
   const brainstormTextarea = $("#brainstorm-textarea");
+  setupPhoneEditorFontControls(
+    brainstormTextarea,
+    BRAINSTORM_EDITOR_FONT_KEY,
+    "#brainstorm-font-smaller",
+    "#brainstorm-font-bigger"
+  );
   const brainstormProgressLabel = $("#brainstorm-progress-label");
   const brainstormClearBtn = $("#brainstorm-clear-btn");
   const brainstormCard = $(".brainstorm-modal-card");
