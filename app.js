@@ -6091,6 +6091,28 @@
     const b = getNodeBrainstorm(host);
     return !!(b && ((b.text || "").trim() || (b.html || "").trim()));
   }
+  function subtaskHasBrainstormMarker(s) {
+    return !!(s && (isBrainstormPrefixText(s.text) || hasBrainstormContent(s)));
+  }
+  function nodeTaskNoteMarkerCount(node) {
+    let count = 0;
+    getNodeTasks(node).forEach((t) => {
+      if (taskHasNotes(t)) count++;
+      getTaskSubtasks(t).forEach((sub) => {
+        if (taskHasNotes(sub)) count++;
+      });
+    });
+    return count;
+  }
+  function nodeSubtaskBrainstormMarkerCount(node) {
+    let count = 0;
+    getNodeTasks(node).forEach((t) => {
+      getTaskSubtasks(t).forEach((sub) => {
+        if (subtaskHasBrainstormMarker(sub)) count++;
+      });
+    });
+    return count;
+  }
   function isPlanNote(note) {
     return !!(note && isPlanText(note.title));
   }
@@ -8408,7 +8430,14 @@
     // Notes and links each collapse to a single stand-in cell past
     // STRIP_OVERFLOW_CAP too (see stripBucketCount/renderNode), so the
     // box reserves exactly as much room as actually gets drawn either way.
-    const stripIconCountForBox = stripBucketCount(getNodeNotes(node).length) + stripBucketCount(getNodeUrls(node).length) + (nodeAffirmationWins(node) ? 1 : 0) + (getNodeTimePlayed(node) ? 1 : 0) + (brainstormPoints(node) > 0 ? 1 : 0);
+    const stripIconCountForBox =
+      stripBucketCount(getNodeNotes(node).length)
+      + stripBucketCount(getNodeUrls(node).length)
+      + nodeTaskNoteMarkerCount(node)
+      + nodeSubtaskBrainstormMarkerCount(node)
+      + (nodeAffirmationWins(node) ? 1 : 0)
+      + (getNodeTimePlayed(node) ? 1 : 0)
+      + (brainstormPoints(node) > 0 ? 1 : 0);
     let stripW = 0, stripH = 0;
     if (stripIconCountForBox || nodeImages.length) {
       // Past STRIP_OVERFLOW_CAP photos, collapse down to a single cover
@@ -10387,6 +10416,12 @@
     const subtasksWithNotes = getNodeTasks(node).flatMap((t) =>
       getTaskSubtasks(t).filter(taskHasNotes).map((s) => ({ t, s }))
     );
+    // Brainstorm is stored separately from rich notes (s.brainstorm), so it
+    // needs its own node-strip bucket. Prefix alone is enough to surface the
+    // icon, matching the "brainstorm..." affordance inside the Tasks modal.
+    const subtasksWithBrainstorm = getNodeTasks(node).flatMap((t) =>
+      getTaskSubtasks(t).filter(subtaskHasBrainstormMarker).map((s) => ({ t, s }))
+    );
     const affirmationWins = nodeAffirmationWins(node);
     const taskProg = nodeTaskProgress(node);
 
@@ -10400,7 +10435,15 @@
     // attachment/status indicator for a node lives in one place, all at
     // the same cell size. Only the task-progress bar stays separate,
     // since it's a full-width row rather than a small cell.
-    const stripIconCount = stripBucketCount(nodeNotes.length) + stripBucketCount(nodeUrls.length) + tasksWithNotes.length + subtasksWithNotes.length + (affirmationWins ? 1 : 0) + (timePlayed ? 1 : 0) + (brainstormPts > 0 ? 1 : 0);
+    const stripIconCount =
+      stripBucketCount(nodeNotes.length)
+      + stripBucketCount(nodeUrls.length)
+      + tasksWithNotes.length
+      + subtasksWithNotes.length
+      + subtasksWithBrainstorm.length
+      + (affirmationWins ? 1 : 0)
+      + (timePlayed ? 1 : 0)
+      + (brainstormPts > 0 ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
@@ -10570,6 +10613,29 @@
           openTasksModal(node.id);
         });
         strip.appendChild(subtaskNoteIcon);
+      });
+
+      // Brainstorm scratchpad marker for each qualifying subtask. This is
+      // intentionally separate from the rich-note marker above because a
+      // subtask may legitimately have both a normal note and a Brainstorm.
+      subtasksWithBrainstorm.forEach(({ t, s }) => {
+        const bIcon = document.createElement("span");
+        bIcon.className = "node-photo-thumb node-brainstorm-marker node-subtask-brainstorm-marker";
+        bIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+        const pts = brainstormPoints(s);
+        bIcon.title = pts
+          ? `Subtask "${s.text || "(untitled subtask)"}" — Brainstorm, ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
+          : `Subtask "${s.text || "(untitled subtask)"}" — Brainstorm, tap to start`;
+        bIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openBrainstormModal(node.id, null, null, t.id, s.id);
+        });
+        bIcon.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openTasksModal(node.id);
+        });
+        strip.appendChild(bIcon);
       });
 
       // One icon per link (instead of a single icon plus a count/chooser
@@ -21227,7 +21293,7 @@
       // the icon exists before there is any content. Unlike DRC, Brainstorm
       // is its own scratchpad type (host.brainstorm), not a rich note, so this
       // icon opens the existing Brainstorm editor directly on this subtask.
-      const subtaskIsBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
+      const subtaskIsBrainstorm = subtaskHasBrainstormMarker(s);
       let brainstormIcon = null;
       if (subtaskIsBrainstorm) {
         brainstormIcon = document.createElement("span");
@@ -22339,7 +22405,7 @@
       // Brainstorm-prefixed subtasks get the same always-visible brain icon
       // in Calendar's expanded task view. Existing Brainstorm content keeps
       // the icon visible even if the subtask is later renamed.
-      const calSubtaskIsBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
+      const calSubtaskIsBrainstorm = subtaskHasBrainstormMarker(s);
       let calBrainstormIcon = null;
       if (calSubtaskIsBrainstorm) {
         calBrainstormIcon = document.createElement("span");
@@ -23208,6 +23274,7 @@
         renderCalDayModal();
         renderCalendar();
       }
+      refreshNodeOrRenderAll(target.nodeId);
     } else {
       renderAll();
     }
