@@ -17506,11 +17506,8 @@
   // `container` defaults to the per-node rich note editor but also serves
   // the per-task note editor.
   let noteAutoColorEnabled = true;
-  // Shared by the toggle button below and by loadNoteIntoEditor (which
-  // defaults it off specifically for DRC notes — see isDRCNote — since a
-  // Daily Report Card reads better as plain, uniform text rather than a
-  // cycling rainbow of line colors). `btn` is passed in lazily since this
-  // runs before the button element itself is declared further down.
+  // v368: one shared Auto Color state for the single Note editor.
+  // Note, DRC and Brainstorm use this exact same path; no type-specific default.
   function setNoteAutoColorEnabled(enabled) {
     noteAutoColorEnabled = enabled;
     const btn = $("#note-tool-autocolor");
@@ -17539,10 +17536,7 @@
   // the color if the line isn't numbered. Applied at the div level (not
   // wrapped in a span), so it never collides with a manual foreColor
   // selection made via the color picker inside the line's text.
-  // Follows the 🎨 auto-color toggle like every other auto color: while
-  // it's off (the default for DRC notes) numbered lines are left exactly
-  // as they are — every caller (the 1. button, Enter continuing a list,
-  // loading/undoing a note) goes through here, so this is the one gate.
+  // One shared 🎨 Auto Color gate for Note, DRC and Brainstorm.
   function noteSetOrderedLineColor(el) {
     if (!el || !noteAutoColorEnabled) return;
     const match = (el.textContent || "").match(/^(\d+)\.\s/);
@@ -18436,25 +18430,11 @@
   // 6 separate swatch buttons always taking up space in the toolbar.
   const noteAutoColorBtn = $("#note-tool-autocolor");
   noteAutoColorBtn.addEventListener("mousedown", (e) => {
-    e.preventDefault(); // keep focus off this button, same as the other toolbar buttons
+    e.preventDefault();
     setNoteAutoColorEnabled(!noteAutoColorEnabled);
-    // DRC cards' own section coloring now follows this same toggle (see
-    // drcTemplateCards) — refresh immediately so an open DRC note updates
-    // right away instead of waiting for the next edit/reopen.
-    refreshDRCCards();
-    if (!noteAutoColorEnabled) {
-      // Once lines stop getting auto-colored, plain default-color typing
-      // would be hard to tell apart from a still-active line — default
-      // to gray instead, same as picking it from the color popover, so
-      // new typing is visibly "auto-color is off" rather than looking
-      // like nothing happened.
-      noteTextarea.focus();
-      document.execCommand("foreColor", false, "#7c7c76");
-      setNoteColorTrigger("#7c7c76");
-    } else {
-      // Turned back on: numbered lines (and paragraphs) only ever get
-      // colored while this is on, so bring the whole note up to date now
-      // instead of leaving them plain until the note is reopened.
+    // v368: no DRC/Brainstorm branch and no forced gray typing.
+    // ON applies the same shared Note auto-color engine; OFF simply stops it.
+    if (noteAutoColorEnabled) {
       notePushUndo();
       noteSyncAllOrderedColors();
       noteAutoColorParagraphs();
