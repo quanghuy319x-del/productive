@@ -6586,7 +6586,7 @@
       view: { scale: 1, tx: 0, ty: 0 },
       editorPrefs: {
         phone: { noteFontSize: 13, brainstormFontSize: 13 },
-        desktop: { noteFontSize: 13, brainstormFontSize: 13 }
+        desktop: { noteFontSize: 15, brainstormFontSize: 15 }
       },
       theme: defaultTheme(),
       layout: "mindmap"   // "mindmap" | "righty" | "timeline" (legacy "logic" is migrated to "righty" by ensureLayout)
@@ -7292,19 +7292,25 @@
     persistTimer = setTimeout(kickPersist, 500);
   }
 
-  /* v338: Note / DRC / Brainstorm font size is still stored in the
+  /* v339: Note / DRC / Brainstorm font size is still stored in the
      mindmap/Drive, but phone and desktop now have independent values.
      A v337 map with the old shared fields is treated as the starting value
      for both device classes until each side is changed. */
   const NOTE_EDITOR_FONT_MIN = 10;
   const NOTE_EDITOR_FONT_MAX = 30;
-  const NOTE_EDITOR_FONT_DEFAULT = 13;
+  const NOTE_EDITOR_PHONE_DEFAULT = 13;
+  const NOTE_EDITOR_DESKTOP_DEFAULT = 15;
+  const NOTE_EDITOR_OLD_SHARED_DEFAULT = 13;
 
-  function clampNoteEditorFontSize(value) {
+  function editorFontDefault(device) {
+    return device === "desktop" ? NOTE_EDITOR_DESKTOP_DEFAULT : NOTE_EDITOR_PHONE_DEFAULT;
+  }
+
+  function clampNoteEditorFontSize(value, fallback = NOTE_EDITOR_PHONE_DEFAULT) {
     const n = Number(value);
     return Number.isFinite(n)
       ? Math.max(NOTE_EDITOR_FONT_MIN, Math.min(NOTE_EDITOR_FONT_MAX, n))
-      : NOTE_EDITOR_FONT_DEFAULT;
+      : fallback;
   }
 
   function editorFontDeviceKey() {
@@ -7313,32 +7319,60 @@
     return Math.min(sw, sh) <= 640 ? "phone" : "desktop";
   }
 
-  function legacyEditorFontPrefs(map) {
+  function legacyEditorFontPrefs(map, device) {
     const p = map && map.editorPrefs && typeof map.editorPrefs === "object"
       ? map.editorPrefs
       : null;
     const hasNote = p && Number.isFinite(Number(p.noteFontSize));
     const hasBrainstorm = p && Number.isFinite(Number(p.brainstormFontSize));
+    const oldPairIsDefault = hasNote && hasBrainstorm
+      && Number(p.noteFontSize) === NOTE_EDITOR_OLD_SHARED_DEFAULT
+      && Number(p.brainstormFontSize) === NOTE_EDITOR_OLD_SHARED_DEFAULT;
+    const fallback = editorFontDefault(device);
+    if (device === "desktop" && oldPairIsDefault) {
+      return {
+        noteFontSize: NOTE_EDITOR_DESKTOP_DEFAULT,
+        brainstormFontSize: NOTE_EDITOR_DESKTOP_DEFAULT
+      };
+    }
     return {
-      noteFontSize: hasNote ? clampNoteEditorFontSize(p.noteFontSize) : NOTE_EDITOR_FONT_DEFAULT,
-      brainstormFontSize: hasBrainstorm ? clampNoteEditorFontSize(p.brainstormFontSize) : NOTE_EDITOR_FONT_DEFAULT
+      noteFontSize: hasNote ? clampNoteEditorFontSize(p.noteFontSize, fallback) : fallback,
+      brainstormFontSize: hasBrainstorm ? clampNoteEditorFontSize(p.brainstormFontSize, fallback) : fallback
     };
   }
 
   function readEditorFontPrefs(map = state.current, device = editorFontDeviceKey()) {
-    const legacy = legacyEditorFontPrefs(map);
+    const legacy = legacyEditorFontPrefs(map, device);
     const root = map && map.editorPrefs && typeof map.editorPrefs === "object"
       ? map.editorPrefs
       : null;
     const p = root && root[device] && typeof root[device] === "object"
       ? root[device]
       : null;
+    const nestedHasNote = p && Number.isFinite(Number(p.noteFontSize));
+    const nestedHasBrainstorm = p && Number.isFinite(Number(p.brainstormFontSize));
+    const nestedPairIsOldDefault = device === "desktop"
+      && nestedHasNote && nestedHasBrainstorm
+      && Number(p.noteFontSize) === NOTE_EDITOR_OLD_SHARED_DEFAULT
+      && Number(p.brainstormFontSize) === NOTE_EDITOR_OLD_SHARED_DEFAULT;
+
+    // v338 wrote desktop 13/13 as its default. Treat exactly that untouched
+    // pair as the old default and raise it to the new PC default. If either
+    // value differs, assume the user customized it and preserve both values.
+    if (nestedPairIsOldDefault) {
+      return {
+        noteFontSize: NOTE_EDITOR_DESKTOP_DEFAULT,
+        brainstormFontSize: NOTE_EDITOR_DESKTOP_DEFAULT
+      };
+    }
+
+    const fallback = editorFontDefault(device);
     return {
-      noteFontSize: p && Number.isFinite(Number(p.noteFontSize))
-        ? clampNoteEditorFontSize(p.noteFontSize)
+      noteFontSize: nestedHasNote
+        ? clampNoteEditorFontSize(p.noteFontSize, fallback)
         : legacy.noteFontSize,
-      brainstormFontSize: p && Number.isFinite(Number(p.brainstormFontSize))
-        ? clampNoteEditorFontSize(p.brainstormFontSize)
+      brainstormFontSize: nestedHasBrainstorm
+        ? clampNoteEditorFontSize(p.brainstormFontSize, fallback)
         : legacy.brainstormFontSize
     };
   }
