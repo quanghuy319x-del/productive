@@ -2347,7 +2347,7 @@ kbd{
   border: none;
   border-radius: 0;
   color: var(--paper-text);
-  font-family: inherit;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
   font-size: 13px;
   line-height: 1.7;
   padding: 4px 2px;
