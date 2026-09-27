@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=317">
+<link rel="stylesheet" href="style.css?v=318">
 </head>
 <body>
 <div id="app">
@@ -832,7 +832,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "317";
+  const APP_VERSION = "318";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -860,12 +860,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "317"') && !document.documentElement.dataset.v317Reloaded) {
+      if (fresh.includes('const APP_VERSION = "318"') && !document.documentElement.dataset.v318Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v317Reloaded = "1";
+          document.documentElement.dataset.v318Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -879,7 +879,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=317"></script>
+<script src="app.js?v=318"></script>
 <script>
 (() => {
   function insertTab(editor) {
