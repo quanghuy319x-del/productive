@@ -17725,13 +17725,13 @@
     tasksListEl.appendChild(wrap);
   }
 
-  // Shows the open note as cards when its title is "DRC", or when it has
-  // any card added with the 🗂 button — see decorateDRCCards. Cheap and idempotent, so it's simply
-  // re-run after every load/edit/undo and whenever the title changes.
+  // v334: the old multi-line Card presentation is retired. Existing notes
+  // keep all of their text/HTML, but any runtime card decoration is removed
+  // so DRC/Note content renders as normal lines unless the user inserts a
+  // new 1-cell table.
   function refreshDRCCards() {
-    const mode = isDRCNote({ title: noteTitleInput.value }) ? "note"
-      : (noteTextarea.querySelector(":scope > [data-card]") ? "cards" : null);
-    decorateDRCCards(noteTextarea, mode);
+    noteTextarea.classList.remove("drc-cards");
+    Array.from(noteTextarea.children).forEach((el) => drcSetCardState(el, null));
   }
   let drcNoteCardsRaf = 0;
   function refreshDRCCardsSoon() {
@@ -17978,10 +17978,13 @@
       const idx = Math.min(Math.max(range.startOffset - 1, 0), node.childNodes.length - 1);
       node = node.childNodes[idx];
     }
-    while (node && node !== container && node.parentNode !== container) {
+    const originEl = node && node.nodeType === 1 ? node : node && node.parentElement;
+    const nestedCell = originEl && originEl.closest ? originEl.closest("[data-note-table-cell]") : null;
+    const lineRoot = nestedCell && container.contains(nestedCell) ? nestedCell : container;
+    while (node && node !== lineRoot && node.parentNode !== lineRoot) {
       node = node.parentNode;
     }
-    return node === container ? null : node;
+    return node === lineRoot ? (lineRoot === container ? null : lineRoot) : node;
   }
 
   // True when the caret sits at the very start of lineDiv's text (nothing
@@ -18081,6 +18084,7 @@
       // them a paragraph color too.
       if (/^(\d+\.\s|[☐☑])\s?/.test(text)) return;
       if (el.querySelector && el.querySelector("img")) return;
+      if (el.matches && el.matches("[data-note-table]")) return;
       if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
       idx++;
     });
@@ -18794,47 +18798,73 @@
     e.preventDefault();
     noteToggleOrderedList();
   });
-  // "🗂 Add card": starts a new colored section card — a heading line
-  // (marked data-card, with its own color) that the lines typed under it
-  // belong to, until the next card. Goes on the caret's blank line if it's
-  // on one; otherwise after the current card (if the caret is inside one)
-  // or after the current line; with no caret in the note, at the end.
-  function noteAddCard() {
-    notePushUndo();
-    const count = noteTextarea.querySelectorAll(":scope > .drc-card-head, :scope > [data-card]").length;
-    const color = DRC_CARD_COLORS[count % DRC_CARD_COLORS.length];
-    const sel = window.getSelection();
-    let line = (sel.rangeCount && noteTextarea.contains(sel.anchorNode)) ? noteCurrentLine() : null;
-    if (line && line.nodeType !== 1) line = null; // bare first-line text node: add at the end instead
-    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img");
-    let card;
-    if (line && !line.hasAttribute("data-card") && isBlank(line)) {
-      card = line; // the empty line the caret is on becomes the heading
+  // v334: one-cell table block shared by Note / DRC / Brainstorm.
+  // The outer table is non-editable so the browser cannot accidentally
+  // split its structure; the single TD is explicitly editable and can hold
+  // multiple lines. A normal blank line is always kept after the table so
+  // the user can continue typing outside it.
+  function buildEditorOneCellTable() {
+    const table = document.createElement("table");
+    table.className = "note-one-cell-table";
+    table.setAttribute("data-note-table", "1");
+    table.setAttribute("contenteditable", "false");
+
+    const tbody = document.createElement("tbody");
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.setAttribute("data-note-table-cell", "1");
+    td.setAttribute("contenteditable", "true");
+    td.setAttribute("spellcheck", "false");
+    td.appendChild(document.createElement("br"));
+
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    table.appendChild(tbody);
+    return { table, cell: td };
+  }
+
+  function insertEditorOneCellTable(editor, getCurrentLine, pushEditorUndo, scheduleAutosave) {
+    pushEditorUndo();
+    const { table, cell } = buildEditorOneCellTable();
+    let line = getCurrentLine();
+    if (line && line.nodeType !== 1) line = null;
+
+    const isBlankPlainBlock = (el) => !!el &&
+      el.nodeType === 1 &&
+      !el.matches("[data-note-table], table") &&
+      !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() &&
+      !el.querySelector("img, [data-note-table]");
+
+    if (line && line.parentNode === editor && isBlankPlainBlock(line)) {
+      line.replaceWith(table);
+    } else if (line && line.parentNode === editor) {
+      line.after(table);
     } else {
-      if (line && line.classList.contains("drc-card-line")) {
-        // Inside a card: the new one goes right after that card's last line.
-        while (!line.classList.contains("drc-card-last") && line.nextElementSibling) line = line.nextElementSibling;
-      }
-      card = document.createElement("div");
-      card.appendChild(document.createElement("br"));
-      if (line) line.parentNode.insertBefore(card, line.nextSibling);
-      else noteTextarea.appendChild(card);
+      editor.appendChild(table);
     }
-    card.setAttribute("data-card", "1");
-    card.setAttribute("data-card-color", color);
-    noteTextarea.focus();
+
+    let tail = table.nextElementSibling;
+    if (!isBlankPlainBlock(tail)) {
+      tail = document.createElement("div");
+      tail.appendChild(document.createElement("br"));
+      table.after(tail);
+    }
+
+    editor.focus();
+    cell.focus();
     const range = document.createRange();
-    range.selectNodeContents(card);
+    range.selectNodeContents(cell);
     range.collapse(true);
+    const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
-    refreshDRCCards();
-    scheduleNoteAutosave();
-    scrollCaretIntoView(card);
+    scheduleAutosave();
+    scrollCaretIntoView(table);
   }
-  $("#note-tool-card").addEventListener("mousedown", (e) => {
+
+  $("#note-tool-table").addEventListener("mousedown", (e) => {
     e.preventDefault();
-    noteAddCard();
+    insertEditorOneCellTable(noteTextarea, () => noteCurrentLine(), notePushUndo, scheduleNoteAutosave);
   });
 
   // ---- "😊 Mood To Day" block ----
@@ -19214,6 +19244,7 @@
     }
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (e.target && e.target.closest && e.target.closest("[data-note-table-cell]")) return;
       if (noteHandleEnter()) {
         e.preventDefault();
         // noteHandleEnter builds the new line itself (no `input` event
@@ -23086,58 +23117,28 @@
       const text = el.textContent || "";
       if (/^(\d+\.\s|[☐☑])\s?/.test(text)) return;
       if (el.querySelector && el.querySelector("img")) return;
+      if (el.matches && el.matches("[data-note-table]")) return;
       if (el.classList && el.classList.contains("note-mood")) return; // the Mood To Day block has its own colors
       if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
       idx++;
     });
   }
 
-  // ---- "🗂 Add card" — brainstorm version ----
-  // Same card mechanics as the note editor's noteAddCard/refreshDRCCards
-  // (decorateDRCCards and bindDRCCardColorDot are shared, generic helpers
-  // that already take any container as their root); duplicated against
-  // this editor's own undo/current-line/autosave helpers for the same
-  // reason the mood block is. Brainstorm has no "DRC" template, so cards
-  // here only ever come from this button — refreshBrainstormCards' mode
-  // is "cards" or nothing, never "note".
+  // v334: legacy Brainstorm cards are retired; remove only runtime
+  // decoration from old content and leave the user's text untouched.
   function refreshBrainstormCards() {
-    const mode = brainstormTextarea.querySelector(":scope > [data-card]") ? "cards" : null;
-    decorateDRCCards(brainstormTextarea, mode);
+    brainstormTextarea.classList.remove("drc-cards");
+    Array.from(brainstormTextarea.children).forEach((el) => drcSetCardState(el, null));
   }
-  function brainstormAddCard() {
-    brainstormPushUndo();
-    const count = brainstormTextarea.querySelectorAll(":scope > .drc-card-head, :scope > [data-card]").length;
-    const color = DRC_CARD_COLORS[count % DRC_CARD_COLORS.length];
-    const sel = window.getSelection();
-    let line = (sel.rangeCount && brainstormTextarea.contains(sel.anchorNode)) ? brainstormCurrentLine() : null;
-    if (line && line.nodeType !== 1) line = null;
-    const isBlank = (el) => !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() && !el.querySelector("img");
-    let card;
-    if (line && !line.hasAttribute("data-card") && isBlank(line)) {
-      card = line;
-    } else {
-      if (line && line.classList.contains("drc-card-line")) {
-        while (!line.classList.contains("drc-card-last") && line.nextElementSibling) line = line.nextElementSibling;
-      }
-      card = document.createElement("div");
-      card.appendChild(document.createElement("br"));
-      if (line) line.parentNode.insertBefore(card, line.nextSibling);
-      else brainstormTextarea.appendChild(card);
-    }
-    card.setAttribute("data-card", "1");
-    card.setAttribute("data-card-color", color);
-    brainstormTextarea.focus();
-    const range = document.createRange();
-    range.selectNodeContents(card);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    refreshBrainstormCards();
-    scheduleBrainstormAutosave();
-  }
-  $("#brainstorm-tool-card").addEventListener("mousedown", (e) => {
+
+  $("#brainstorm-tool-table").addEventListener("mousedown", (e) => {
     e.preventDefault();
-    brainstormAddCard();
+    insertEditorOneCellTable(
+      brainstormTextarea,
+      () => brainstormCurrentLine(),
+      brainstormPushUndo,
+      scheduleBrainstormAutosave
+    );
   });
   // Same recolor ring as the note editor's cards (see the note editor's
   // bindDRCCardColorDot call for the DRC-note version of this comment).
@@ -23515,10 +23516,13 @@
       const idx = Math.min(Math.max(range.startOffset - 1, 0), node.childNodes.length - 1);
       node = node.childNodes[idx];
     }
-    while (node && node !== container && node.parentNode !== container) {
+    const originEl = node && node.nodeType === 1 ? node : node && node.parentElement;
+    const nestedCell = originEl && originEl.closest ? originEl.closest("[data-note-table-cell]") : null;
+    const lineRoot = nestedCell && container.contains(nestedCell) ? nestedCell : container;
+    while (node && node !== lineRoot && node.parentNode !== lineRoot) {
       node = node.parentNode;
     }
-    return node === container ? null : node;
+    return node === lineRoot ? (lineRoot === container ? null : lineRoot) : node;
   }
 
   function brainstormCaretIsAtLineStart(lineDiv) {
@@ -24095,6 +24099,7 @@
     }
     if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
+      if (e.target && e.target.closest && e.target.closest("[data-note-table-cell]")) return;
       if (brainstormHandleEnter()) {
         e.preventDefault();
         refreshBrainstormCards();

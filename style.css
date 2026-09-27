@@ -4440,59 +4440,39 @@ kbd{
 }
 .quote-banner-actions .btn-ghost, .quote-banner-actions .btn-primary{ flex:1; }
 
-/* ---- DRC cards: each section heading + the lines under it drawn as one
-   tinted, rounded card (like a colored task row), recolored from the ring
-   at the heading's right edge. See decorateDRCCards in app.js — the
-   classes/variables here are added to the editor's existing line <div>s and
-   are never saved. ---- */
-.note-textarea.drc-cards{ padding: 6px 8px; }
-.drc-cards > .drc-card-line{
-  background: var(--dc-tint);
-  border-left: 4px solid var(--dc-accent);
-  padding: 1px 14px;
-  margin: 0;
+/* ---- v334: 1-cell editor table (replaces the retired Card UI) ---- */
+.note-one-cell-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  margin:8px 0;
+  border:1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius:10px;
+  overflow:hidden;
+  background:color-mix(in srgb, var(--accent) 11%, var(--panel));
+  box-shadow:0 1px 0 rgba(0,0,0,.03);
 }
-.drc-cards > .drc-card-head{
-  position: relative;
-  margin-top: 8px;
-  padding-top: 6px;
-  padding-bottom: 4px;
-  padding-right: 46px; /* room for the recolor ring */
-  background: var(--dc-strong);
-  border-radius: 8px 8px 0 0;
+.note-one-cell-table td{
+  min-height:38px;
+  padding:9px 11px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:var(--text);
+  line-height:1.45;
+  vertical-align:top;
+  outline:none;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
 }
-.drc-cards > .drc-card-head:first-child{ margin-top: 0; }
-.drc-cards > .drc-card-head::after{
-  content: "";
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  margin-top: -8px;
-  box-sizing: border-box;
-  border-radius: 50%;
-  border: 2px solid var(--dc-accent);
-  background: var(--dc-tint);
-  pointer-events: none;
+.note-one-cell-table td:focus{
+  box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-/* The recolor ring only shows while the pointer is over its card's
-   heading (mouse devices); touch screens have no hover, so it stays
-   visible there. It is still clickable while hidden, but you can't reach
-   it without hovering the heading first. */
-@media (any-hover: hover) and (any-pointer: fine) {
-  .drc-cards > .drc-card-head::after{ opacity: 0; transition: opacity .12s ease; }
-  .drc-cards > .drc-card-head:hover::after{ opacity: 1; }
+@media (max-width: 700px){
+  .note-one-cell-table{ margin:6px 0; border-radius:9px; }
+  .note-one-cell-table td{ min-height:42px; padding:10px; border-radius:8px; }
 }
-.drc-cards > .drc-card-last{
-  border-radius: 0 0 8px 8px;
-  padding-bottom: 6px;
-}
-.drc-cards > .drc-card-head.drc-card-last{ border-radius: 8px; }
-/* Blank lines under a card's last filled line stay INSIDE that card (they
-   used to be a card-less ".drc-card-gap" spacer, which left the caret
-   outside every card). The space between cards comes from the heading's
-   margin-top above. .drc-card-gap is no longer produced by app.js. */
+
 
 .theme-note{
   font-size: 11.5px;
