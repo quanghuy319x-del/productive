@@ -5065,7 +5065,9 @@
       it.className = "ctx-item";
       const labelSpan = document.createElement("span");
       labelSpan.className = "ctx-item-label";
-      if (isDRCNote(n)) {
+      if (isBrainstormNote(n)) {
+        labelSpan.textContent = "🧠 " + notePreviewText(n);
+      } else if (isDRCNote(n)) {
         // DRC notes get the same notebook+pencil image as everywhere else.
         labelSpan.textContent = notePreviewText(n);
         labelSpan.prepend(drcIconEl(16));
