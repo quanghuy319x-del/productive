@@ -6088,6 +6088,20 @@
   function isDRCNote(note) {
     return window.BranchlineEditors.drc.isNote(note);
   }
+  // v359: Note is the single editor/data model. Brainstorm is a Note
+  // variant; only its icon differs.
+  function isBrainstormNote(note) {
+    return !!(note && (note.kind === "brainstorm" || (note.title || "").trim().toLowerCase() === "brainstorm"));
+  }
+  function syncBrainstormMirrorFromNotes(node) {
+    if (!node) return;
+    const n = getNodeNotes(node).find(isBrainstormNote);
+    if (!n) { node.brainstorm = null; return; }
+    const html = n.html || "";
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    node.brainstorm = { text: tmp.innerText || tmp.textContent || "", html };
+  }
   // "Plan" gets its own icon too (the green-checklist PLAN sheet — see
   // NODE_PLAN_ICON_IMG). It applies when the note's own title is "plan",
   // or — for a task's/subtask's note, where the owner's name doubles as
@@ -9896,7 +9910,9 @@
     // v324: Brainstorm is node-scoped. A node gets at most one pink brain
     // marker, whether Brainstorm is opened directly or surfaced by one or
     // more "brainstorm..." subtasks.
-    const nodeHasBrainstormMarker = brainstormPoints(node) > 0 || subtasksWithBrainstorm.length > 0;
+    const nodeHasBrainstormMarker =
+      (brainstormPoints(node) > 0 || subtasksWithBrainstorm.length > 0) &&
+      !nodeNotes.some(isBrainstormNote);
     const affirmationWins = nodeAffirmationWins(node);
     const taskProg = nodeTaskProgress(node);
 
@@ -9983,8 +9999,11 @@
       const notesOverflow = nodeNotes.length > STRIP_OVERFLOW_CAP;
       (notesOverflow ? nodeNotes.slice(0, 1) : nodeNotes).forEach((n, i) => {
         const noteIcon = document.createElement("span");
-        noteIcon.className = "node-photo-thumb node-note-marker" + (isDRCNote(n) ? " node-drc-marker" : "");
-        noteIcon.innerHTML = isDRCNote(n) ? NODE_DRC_ICON_IMG : (isPlanNote(n) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG);
+        noteIcon.className = "node-photo-thumb node-note-marker" +
+          (isDRCNote(n) ? " node-drc-marker" : "") +
+          (isBrainstormNote(n) ? " node-brainstorm-marker" : "");
+        noteIcon.innerHTML = isBrainstormNote(n) ? "🧠" :
+          (isDRCNote(n) ? NODE_DRC_ICON_IMG : (isPlanNote(n) ? NODE_PLAN_ICON_IMG : NODE_NOTE_ICON_SVG));
         noteIcon.draggable = true;
         noteIcon.addEventListener("dragend", endMarkerDrag);
         if (notesOverflow) {
@@ -9999,9 +10018,10 @@
           // DRC notes get a status-aware tooltip (filled-in or not)
           // instead of the plain content preview, so hovering tells you
           // at a glance whether today's report still needs filling out.
-          noteIcon.title = isDRCNote(n)
-            ? (drcNoteIsFilled(n) ? "DRC — filled in" : "DRC — not filled in yet")
-            : notePreviewText(n);
+          noteIcon.title = isBrainstormNote(n) ? "Brainstorm" :
+            (isDRCNote(n)
+              ? (drcNoteIsFilled(n) ? "DRC — filled in" : "DRC — not filled in yet")
+              : notePreviewText(n));
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
           noteIcon.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -16625,7 +16645,7 @@
       : noteEditingCellPos
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
-    noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, favorite: !!n.favorite, createdAt: n.createdAt, updatedAt: n.updatedAt }));
+    noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, kind: n.kind || null, favorite: !!n.favorite, createdAt: n.createdAt, updatedAt: n.updatedAt }));
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
     // group below). Only one DRC note is allowed per node: if one
     // already exists among this node's notes (title "DRC" — see
@@ -16714,7 +16734,8 @@
     const migratedPhotos = hydrateNotePhotoImages();
     const linkedUrls = noteLinkifyUrls(noteTextarea, false);
     if (migratedMood || migratedPhotos || linkedUrls) scheduleNoteAutosave();
-    setNoteAutoColorEnabled(!isDRCNote(current));
+    // v359: DRC and Brainstorm use Note's exact editor behavior.
+    setNoteAutoColorEnabled(true);
     refreshDRCCards();
     noteSyncAllCheckedLines();
     noteSyncAllOrderedColors();
@@ -17325,7 +17346,7 @@
     const node = findNode(noteEditingId);
     if (!node) return;
     captureActiveNote();
-    const cleaned = noteWorkingList.filter(n => (n.title && n.title.trim()) || (n.html && n.html.trim()));
+    const cleaned = noteWorkingList.filter(n => n.kind || (n.title && n.title.trim()) || (n.html && n.html.trim()));
 
     // Rich-note editing already has its own fine-grained undo stack. At map
     // level, treat the whole open-editor session as one edit: capture the map
@@ -17381,6 +17402,7 @@
       beginMutation();
       node.notes = cleaned;
       node.note = "";
+      syncBrainstormMirrorFromNotes(node);
       persist();
     }
   }
@@ -22629,48 +22651,27 @@
   }
 
   function openBrainstormModal(nodeId, r, c, taskId, subtaskId) {
-    const target = {
-      nodeId,
-      r: r == null ? null : r,
-      c: c == null ? null : c,
-      taskId: taskId || null,
-      subtaskId: subtaskId || null
-    };
-    let host = resolveBrainstormTarget(target);
-    if (!host) return;
+    // v359: Brainstorm no longer owns an editor/toolbar. Migrate legacy
+    // content once, then open the ordinary Note editor.
     const node = findNode(nodeId);
+    if (!node) return;
     const owner = nodeBrainstormOwner(node);
-
-    // v323: Brainstorm icons are entry points to the node's single shared
-    // scratchpad. If this node already owns a Brainstorm anywhere, redirect
-    // every Brainstorm opener (including prefixed subtasks) to that owner.
-    if (owner && owner !== host) {
-      target.r = null;
-      target.c = null;
-      target.taskId = null;
-      target.subtaskId = null;
-      // Keep the single shared Brainstorm on the node from now on. Migrate
-      // legacy owner content once, so all future icons resolve identically.
-      if (!hasBrainstormContent(node)) {
-        node.brainstorm = JSON.parse(JSON.stringify(getNodeBrainstorm(owner) || { text: "", html: "" }));
-      }
-      host = node;
+    if (owner && owner !== node && !hasBrainstormContent(node)) {
+      node.brainstorm = JSON.parse(JSON.stringify(getNodeBrainstorm(owner) || { text: "", html: "" }));
     }
-    commitEditIfActive();
-    closeContextMenu();
-    brainstormEditingId = target;
-    renderBrainstormModal();
-    // Same width-reset-on-open behavior as the note editor (see
-    // openNoteModal/noteCard.style.width above) — a previous manual
-    // resize shouldn't leak its width into the next brainstorm session,
-    // though height is deliberately left alone, matching notes.
-    brainstormCard.style.width = "";
-    zoomModalOpen(brainstormModal);
-    // Phone: keep Brainstorm passive on first open; tapping the editor
-    // explicitly is what should bring up the on-screen keyboard.
-    if (!window.matchMedia("(max-width: 640px)").matches) {
-      requestAnimationFrame(() => brainstormTextarea.focus());
+    const notes = getNodeNotes(node).slice();
+    let index = notes.findIndex(isBrainstormNote);
+    if (index < 0) {
+      const legacyHtml = hasBrainstormContent(node) ? getBrainstormHtml(node) : "";
+      pushUndo();
+      notes.push({ id: uid(), title: "", html: legacyHtml, kind: "brainstorm", createdAt: Date.now(), updatedAt: Date.now() });
+      node.notes = notes;
+      node.note = "";
+      syncBrainstormMirrorFromNotes(node);
+      persist();
+      index = notes.length - 1;
     }
+    openNoteModal(nodeId, index);
   }
 
   function closeBrainstormModal() {
