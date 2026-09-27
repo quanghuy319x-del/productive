@@ -2156,9 +2156,14 @@ kbd{
    Mood-To-Day widget, these are just insertion choices: tapping a face
    writes ordinary emoji text at the caret. */
 .note-emoji-popover{
+  /* v362: keep all five emoji inside one compact floating row. */
   flex-direction: row;
+  flex-wrap: nowrap;
+  width: max-content;
+  max-width: calc(100vw - 16px);
   gap: 6px;
   padding: 6px;
+  box-sizing: border-box;
 }
 .note-emoji-swatch{
   width: 32px;
@@ -2167,11 +2172,19 @@ kbd{
   line-height: 1;
 }
 @media (pointer: coarse){
-  .note-emoji-popover{ gap: 8px; padding: 8px; }
+  .note-emoji-popover{
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: max-content;
+    max-width: calc(100vw - 16px);
+    gap: 6px;
+    padding: 6px;
+  }
   .note-emoji-popover .note-tool-btn{
-    width: 42px;
-    height: 42px;
-    font-size: 21px;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
     border-radius: 9px;
   }
 }
