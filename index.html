@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=330">
+<link rel="stylesheet" href="style.css?v=331">
 </head>
 <body>
 <div id="app">
@@ -586,13 +586,13 @@
       <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
       <button type="button" id="note-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
+      <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="note-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="note-tool-divider" class="note-tool-btn" title="Insert -----">-----</button>
       <button type="button" id="note-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
       <button type="button" id="note-tool-shift-divider" class="note-tool-btn" title="Shift+Enter + -----">↵ -----</button>
       <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color while 🎨 is on">1.</button>
       <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
-      <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
       <input type="file" id="note-image-input" accept="image/*" multiple hidden>
@@ -788,13 +788,13 @@
       <button type="button" id="brainstorm-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="brainstorm-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
       <button type="button" id="brainstorm-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
+      <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="brainstorm-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="brainstorm-tool-divider" class="note-tool-btn" title="Insert -----">-----</button>
       <button type="button" id="brainstorm-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
       <button type="button" id="brainstorm-tool-shift-divider" class="note-tool-btn" title="Shift+Enter + -----">↵ -----</button>
       <button type="button" id="brainstorm-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
       <button type="button" id="brainstorm-tool-check" class="note-tool-btn" title="Checklist">☑</button>
-      <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <span class="note-tool-sep"></span>
       <button type="button" id="brainstorm-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
       <input type="file" id="brainstorm-image-input" accept="image/*" multiple hidden>
@@ -842,7 +842,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "330";
+  const APP_VERSION = "331";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -870,12 +870,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "330"') && !document.documentElement.dataset.v330Reloaded) {
+      if (fresh.includes('const APP_VERSION = "331"') && !document.documentElement.dataset.v331Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v330Reloaded = "1";
+          document.documentElement.dataset.v331Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -889,7 +889,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=330"></script>\n<script src="app.js?v=330"></script>
+<script src="phase1-editors.js?v=331"></script>\n<script src="app.js?v=331"></script>
 <script>
 (() => {
   function insertTab(editor) {
