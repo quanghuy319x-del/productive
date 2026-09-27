@@ -16185,9 +16185,22 @@
 
   function updateNoteToolActiveStates() {
     let boldOn = false;
-    try { boldOn = document.queryCommandState("bold"); } catch (_) { /* ignore */ }
+    let strikeOn = false;
+    try {
+      boldOn = document.queryCommandState("bold");
+      strikeOn = document.queryCommandState("strikeThrough");
+    } catch (_) { /* ignore */ }
+
+    const line = noteCurrentLine();
+    const lineText = line ? (line.textContent || "") : "";
+    const orderedOn = /^\d+\.\s/.test(lineText);
+    const checklistOn = /^[☐☑]\s/.test(lineText);
+
     $("#note-tool-bold").classList.toggle("active", !!boldOn);
     $("#note-tool-upper").classList.toggle("active", noteUppercasePending);
+    $("#note-tool-strike").classList.toggle("active", !!strikeOn);
+    $("#note-tool-ol").classList.toggle("active", orderedOn);
+    $("#note-tool-check").classList.toggle("active", checklistOn);
   }
 
   function noteRestoreSnapshot(html) {
@@ -17461,6 +17474,7 @@
     noteSyncLineChecked(el);
     placeCaretAtEnd(el);
     scheduleNoteAutosave();
+    updateNoteToolActiveStates();
   }
 
   // Each numbered line gets its own color, cycling through this palette by
@@ -17568,6 +17582,7 @@
     noteSyncLineChecked(el);
     placeCaretAtEnd(el);
     scheduleNoteAutosave();
+    updateNoteToolActiveStates();
   }
 
   function noteApplyForeColor(color) {
@@ -17599,6 +17614,7 @@
     }
     document.execCommand("strikeThrough");
     scheduleNoteAutosave();
+    updateNoteToolActiveStates();
   }
 
   function noteApplyBold() {
