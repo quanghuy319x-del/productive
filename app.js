@@ -6724,6 +6724,9 @@
   // right-click/long-press menu in the app).
   function resetContextMenu() {
     ctxMenu.innerHTML = "";
+    // The popup is shared by node/task/link/cell menus. Clear this marker
+    // first so the larger touch typography applies only to a node menu.
+    ctxMenu.classList.remove("node-context-menu");
     ctxMenu.classList.remove("hidden");
   }
 
@@ -11720,6 +11723,7 @@
 
   function openContextMenu(x, y, node) {
     resetContextMenu();
+    ctxMenu.classList.add("node-context-menu");
 
     // Renders a plain array of [label, fn, removeFn?] rows the same way
     // every "generic action" group below does — factored out once so
