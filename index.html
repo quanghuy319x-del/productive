@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=311">
+<link rel="manifest" href="manifest.webmanifest?v=312">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=311">
+<link rel="stylesheet" href="style.css?v=312">
 </head>
 <body>
 <div id="app">
@@ -70,9 +70,11 @@
       <button id="btn-trash" class="btn-ghost" title="Trashed maps">🗑 Trash<span id="trash-count-badge" class="trash-count-badge hidden"></span></button>
       <button id="btn-storage" class="btn-ghost" title="See what's using up browser storage">🗄 Storage</button>
       <button id="btn-commentbrowser" class="btn-ghost" title="Browse photo comments">💬 Comments</button>
-      <button id="btn-notesbrowser" class="btn-ghost" title="Browse all your notes">🗒 Notes</button>
-      <button id="btn-photosbrowser" class="btn-ghost" title="Browse every photo on this map">🖼 Photos</button>
-      <button id="btn-videosbrowser" class="btn-ghost" title="Browse every video on this map"><svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="5" width="22" height="14" rx="4" fill="#FF0000"/><path d="M10 8.6l6.5 3.4-6.5 3.4z" fill="#fff"/></svg> Videos</button>
+      <div class="sidebar-media-row">
+        <button id="btn-notesbrowser" class="btn-ghost" title="Browse all your notes">🗒 Notes</button>
+        <button id="btn-photosbrowser" class="btn-ghost" title="Browse every photo on this map">🖼 Photos</button>
+        <button id="btn-videosbrowser" class="btn-ghost" title="Browse every video on this map"><svg class="btn-icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="5" width="22" height="14" rx="4" fill="#FF0000"/><path d="M10 8.6l6.5 3.4-6.5 3.4z" fill="#fff"/></svg> Videos</button>
+      </div>
       <button id="btn-help" class="btn-ghost">Shortcuts ?</button>
     </div>
   </aside>
@@ -877,7 +879,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=311"></script>
+<script src="app.js?v=312"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -1191,6 +1193,30 @@ document.querySelector(".tasks-compact-menu-actions")?.addEventListener("click",
 </script>
 <script>
 document.getElementById("btn-refresh-app")?.addEventListener("click", () => location.reload());
+</script>
+<script>
+/* v312: sidebar media browsers on touch devices must open without summoning
+   the software keyboard. Their browser views may focus a search field as
+   part of desktop-friendly setup, so release that focus after opening. */
+(function () {
+  var ids = ["btn-notesbrowser", "btn-photosbrowser", "btn-videosbrowser"];
+  function isTouchPhone() {
+    return window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+  }
+  ids.forEach(function (id) {
+    var button = document.getElementById(id);
+    if (!button) return;
+    button.addEventListener("click", function () {
+      if (!isTouchPhone()) return;
+      [0, 60, 180].forEach(function (delay) {
+        setTimeout(function () {
+          var active = document.activeElement;
+          if (active && active !== document.body && typeof active.blur === "function") active.blur();
+        }, delay);
+      });
+    });
+  });
+})();
 </script>
 </body>
 </html>
