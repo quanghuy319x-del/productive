@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=328">
+<link rel="stylesheet" href="style.css?v=329">
 </head>
 <body>
 <div id="app">
@@ -572,14 +572,16 @@
       <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
       <button type="button" id="note-font-minus" class="note-nav-btn" title="Smaller text">−</button>
       <button type="button" id="note-font-plus" class="note-nav-btn" title="Bigger text">+</button>
+      <button type="button" id="note-tool-undo" class="note-nav-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
+      <button type="button" id="note-tool-redo" class="note-nav-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
       <button type="button" id="note-nav-close" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <input id="note-title-input" class="note-title-input" spellcheck="false">
     <div id="note-lock-banner" class="note-lock-banner hidden" role="alert">🔒 Read-only — not connected to Google Drive. Everything up to here is saved.</div>
     <div id="note-textarea" class="note-textarea" contenteditable="true" spellcheck="false" data-placeholder="Add a note for this node…"></div>
     <div class="note-toolbar">
-      <button type="button" id="note-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
-      <button type="button" id="note-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
+      
+      
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
@@ -774,12 +776,14 @@
       <button type="button" id="brainstorm-clear-btn" class="note-nav-btn note-nav-btn-danger" title="Clear this brainstorm" hidden>↺ Clear</button>
       <button type="button" id="brainstorm-font-minus" class="note-nav-btn" title="Smaller text">−</button>
       <button type="button" id="brainstorm-font-plus" class="note-nav-btn" title="Bigger text">+</button>
+      <button type="button" id="brainstorm-tool-undo" class="note-nav-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
+      <button type="button" id="brainstorm-tool-redo" class="note-nav-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
       <button type="button" id="brainstorm-back" class="note-nav-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <div id="brainstorm-textarea" class="note-textarea brainstorm-textarea" contenteditable="true" spellcheck="false" data-placeholder="Jot down ideas, one per line… (1 line = 1 pt)"></div>
     <div class="note-toolbar">
-      <button type="button" id="brainstorm-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
-      <button type="button" id="brainstorm-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
+      
+      
       <span class="note-tool-sep"></span>
       <button type="button" id="brainstorm-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="brainstorm-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
@@ -838,7 +842,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "328";
+  const APP_VERSION = "329";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -866,12 +870,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "328"') && !document.documentElement.dataset.v328Reloaded) {
+      if (fresh.includes('const APP_VERSION = "329"') && !document.documentElement.dataset.v329Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v328Reloaded = "1";
+          document.documentElement.dataset.v329Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -885,7 +889,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=328"></script>\n<script src="app.js?v=328"></script>
+<script src="phase1-editors.js?v=329"></script>\n<script src="app.js?v=329"></script>
 <script>
 (() => {
   function insertTab(editor) {
