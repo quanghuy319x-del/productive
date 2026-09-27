@@ -1,0 +1,25 @@
+name: Backup v340
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/backup-v340.yml"
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact v340 source
+        uses: actions/checkout@v4
+        with:
+          ref: e1a852adf37c4cad6a31cf8e3f207574e55a29a1
+          path: productive-v340
+
+      - name: Upload source backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: productive-v340-backup
+          path: productive-v340/
+          include-hidden-files: true
+          retention-days: 30
