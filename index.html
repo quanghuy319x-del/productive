@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=334">
+<link rel="stylesheet" href="style.css?v=335">
 </head>
 <body>
 <div id="app">
@@ -597,7 +597,6 @@
       <button type="button" id="note-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
       <input type="file" id="note-image-input" accept="image/*" multiple hidden>
       <span class="note-tool-sep"></span>
-      <button type="button" id="note-tool-table" class="note-tool-btn" title="Insert 1-cell table">▣</button>
       <button type="button" id="note-tool-emoji" class="note-tool-btn" title="Add emoji">😊</button>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-autocolor" class="note-tool-btn note-tool-btn-toggle active" title="Auto alternate line colors: on" aria-pressed="true">🎨</button>
@@ -799,7 +798,6 @@
       <button type="button" id="brainstorm-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
       <input type="file" id="brainstorm-image-input" accept="image/*" multiple hidden>
       <span class="note-tool-sep"></span>
-      <button type="button" id="brainstorm-tool-table" class="note-tool-btn" title="Insert 1-cell table">▣</button>
       <button type="button" id="brainstorm-tool-mood" class="note-tool-btn" title="Insert a “Mood To Day” block — tap a face to pick your mood">😊</button>
       <span class="note-tool-sep"></span>
       <div class="note-color-picker">
@@ -842,7 +840,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "334";
+  const APP_VERSION = "335";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -870,12 +868,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "334"') && !document.documentElement.dataset.v334Reloaded) {
+      if (fresh.includes('const APP_VERSION = "335"') && !document.documentElement.dataset.v335Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v334Reloaded = "1";
+          document.documentElement.dataset.v335Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -889,8 +887,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=334"></script>
-<script src="app.js?v=334"></script>
+<script src="phase1-editors.js?v=335"></script>
+<script src="app.js?v=335"></script>
 <script>
 (() => {
   function insertTab(editor) {

@@ -4440,39 +4440,6 @@ kbd{
 }
 .quote-banner-actions .btn-ghost, .quote-banner-actions .btn-primary{ flex:1; }
 
-/* ---- v334: 1-cell editor table (replaces the retired Card UI) ---- */
-.note-one-cell-table{
-  width:100%;
-  border-collapse:separate;
-  border-spacing:0;
-  margin:8px 0;
-  border:1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
-  border-radius:10px;
-  overflow:hidden;
-  background:color-mix(in srgb, var(--accent) 11%, var(--panel));
-  box-shadow:0 1px 0 rgba(0,0,0,.03);
-}
-.note-one-cell-table td{
-  min-height:38px;
-  padding:9px 11px;
-  border:0;
-  border-radius:9px;
-  background:transparent;
-  color:var(--text);
-  line-height:1.45;
-  vertical-align:top;
-  outline:none;
-  white-space:pre-wrap;
-  overflow-wrap:anywhere;
-}
-.note-one-cell-table td:focus{
-  box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent);
-}
-@media (max-width: 700px){
-  .note-one-cell-table{ margin:6px 0; border-radius:9px; }
-  .note-one-cell-table td{ min-height:42px; padding:10px; border-radius:8px; }
-}
-
 
 .theme-note{
   font-size: 11.5px;

@@ -17978,13 +17978,10 @@
       const idx = Math.min(Math.max(range.startOffset - 1, 0), node.childNodes.length - 1);
       node = node.childNodes[idx];
     }
-    const originEl = node && node.nodeType === 1 ? node : node && node.parentElement;
-    const nestedCell = originEl && originEl.closest ? originEl.closest("[data-note-table-cell]") : null;
-    const lineRoot = nestedCell && container.contains(nestedCell) ? nestedCell : container;
-    while (node && node !== lineRoot && node.parentNode !== lineRoot) {
+    while (node && node !== container && node.parentNode !== container) {
       node = node.parentNode;
     }
-    return node === lineRoot ? (lineRoot === container ? null : lineRoot) : node;
+    return node === container ? null : node;
   }
 
   // True when the caret sits at the very start of lineDiv's text (nothing
@@ -18084,7 +18081,6 @@
       // them a paragraph color too.
       if (/^(\d+\.\s|[☐☑])\s?/.test(text)) return;
       if (el.querySelector && el.querySelector("img")) return;
-      if (el.matches && el.matches("[data-note-table]")) return;
       if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
       idx++;
     });
@@ -18798,75 +18794,6 @@
     e.preventDefault();
     noteToggleOrderedList();
   });
-  // v334: one-cell table block shared by Note / DRC / Brainstorm.
-  // The outer table is non-editable so the browser cannot accidentally
-  // split its structure; the single TD is explicitly editable and can hold
-  // multiple lines. A normal blank line is always kept after the table so
-  // the user can continue typing outside it.
-  function buildEditorOneCellTable() {
-    const table = document.createElement("table");
-    table.className = "note-one-cell-table";
-    table.setAttribute("data-note-table", "1");
-    table.setAttribute("contenteditable", "false");
-
-    const tbody = document.createElement("tbody");
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.setAttribute("data-note-table-cell", "1");
-    td.setAttribute("contenteditable", "true");
-    td.setAttribute("spellcheck", "false");
-    td.appendChild(document.createElement("br"));
-
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    table.appendChild(tbody);
-    return { table, cell: td };
-  }
-
-  function insertEditorOneCellTable(editor, getCurrentLine, pushEditorUndo, scheduleAutosave) {
-    pushEditorUndo();
-    const { table, cell } = buildEditorOneCellTable();
-    let line = getCurrentLine();
-    if (line && line.nodeType !== 1) line = null;
-
-    const isBlankPlainBlock = (el) => !!el &&
-      el.nodeType === 1 &&
-      !el.matches("[data-note-table], table") &&
-      !(el.textContent || "").replace(/[\u200b\u00a0]/g, "").trim() &&
-      !el.querySelector("img, [data-note-table]");
-
-    if (line && line.parentNode === editor && isBlankPlainBlock(line)) {
-      line.replaceWith(table);
-    } else if (line && line.parentNode === editor) {
-      line.after(table);
-    } else {
-      editor.appendChild(table);
-    }
-
-    let tail = table.nextElementSibling;
-    if (!isBlankPlainBlock(tail)) {
-      tail = document.createElement("div");
-      tail.appendChild(document.createElement("br"));
-      table.after(tail);
-    }
-
-    editor.focus();
-    cell.focus();
-    const range = document.createRange();
-    range.selectNodeContents(cell);
-    range.collapse(true);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    scheduleAutosave();
-    scrollCaretIntoView(table);
-  }
-
-  $("#note-tool-table").addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    insertEditorOneCellTable(noteTextarea, () => noteCurrentLine(), notePushUndo, scheduleNoteAutosave);
-  });
-
   // ---- "😊 Mood To Day" block ----
   // A reusable, non-editable block dropped into the note from the toolbar:
   // a heading plus a row of five faces. Tapping a face marks it (tap it
@@ -19244,7 +19171,6 @@
     }
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
-      if (e.target && e.target.closest && e.target.closest("[data-note-table-cell]")) return;
       if (noteHandleEnter()) {
         e.preventDefault();
         // noteHandleEnter builds the new line itself (no `input` event
@@ -23117,7 +23043,6 @@
       const text = el.textContent || "";
       if (/^(\d+\.\s|[☐☑])\s?/.test(text)) return;
       if (el.querySelector && el.querySelector("img")) return;
-      if (el.matches && el.matches("[data-note-table]")) return;
       if (el.classList && el.classList.contains("note-mood")) return; // the Mood To Day block has its own colors
       if (!el.style.color) el.style.color = noteColorForOrdinal(idx + 1);
       idx++;
@@ -23131,15 +23056,6 @@
     Array.from(brainstormTextarea.children).forEach((el) => drcSetCardState(el, null));
   }
 
-  $("#brainstorm-tool-table").addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    insertEditorOneCellTable(
-      brainstormTextarea,
-      () => brainstormCurrentLine(),
-      brainstormPushUndo,
-      scheduleBrainstormAutosave
-    );
-  });
   // Same recolor ring as the note editor's cards (see the note editor's
   // bindDRCCardColorDot call for the DRC-note version of this comment).
   bindDRCCardColorDot(
@@ -23516,13 +23432,10 @@
       const idx = Math.min(Math.max(range.startOffset - 1, 0), node.childNodes.length - 1);
       node = node.childNodes[idx];
     }
-    const originEl = node && node.nodeType === 1 ? node : node && node.parentElement;
-    const nestedCell = originEl && originEl.closest ? originEl.closest("[data-note-table-cell]") : null;
-    const lineRoot = nestedCell && container.contains(nestedCell) ? nestedCell : container;
-    while (node && node !== lineRoot && node.parentNode !== lineRoot) {
+    while (node && node !== container && node.parentNode !== container) {
       node = node.parentNode;
     }
-    return node === lineRoot ? (lineRoot === container ? null : lineRoot) : node;
+    return node === container ? null : node;
   }
 
   function brainstormCaretIsAtLineStart(lineDiv) {
@@ -24099,7 +24012,6 @@
     }
     if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); return; }
     if (e.key === "Enter" && !e.shiftKey) {
-      if (e.target && e.target.closest && e.target.closest("[data-note-table-cell]")) return;
       if (brainstormHandleEnter()) {
         e.preventDefault();
         refreshBrainstormCards();
