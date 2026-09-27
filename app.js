@@ -23326,13 +23326,25 @@
       taskId: taskId || null,
       subtaskId: subtaskId || null
     };
-    const host = resolveBrainstormTarget(target);
+    let host = resolveBrainstormTarget(target);
     if (!host) return;
     const node = findNode(nodeId);
     const owner = nodeBrainstormOwner(node);
-    if (owner && owner !== host && !hasBrainstormContent(host)) {
-      alert("This node already has a Brainstorm.");
-      return;
+
+    // v323: Brainstorm icons are entry points to the node's single shared
+    // scratchpad. If this node already owns a Brainstorm anywhere, redirect
+    // every Brainstorm opener (including prefixed subtasks) to that owner.
+    if (owner && owner !== host) {
+      target.r = null;
+      target.c = null;
+      target.taskId = null;
+      target.subtaskId = null;
+      // Keep the single shared Brainstorm on the node from now on. Migrate
+      // legacy owner content once, so all future icons resolve identically.
+      if (!hasBrainstormContent(node)) {
+        node.brainstorm = JSON.parse(JSON.stringify(getNodeBrainstorm(owner) || { text: "", html: "" }));
+      }
+      host = node;
     }
     commitEditIfActive();
     closeContextMenu();
