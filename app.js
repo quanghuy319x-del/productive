@@ -6032,17 +6032,16 @@
   // single table cell. Every non-empty line written is worth 1 point
   // toward the node's task score (see nodeTaskProgress above).
   function getNodeBrainstorm(host) {
-    return (host && host.brainstorm) ? host.brainstorm : null;
+    return window.BranchlineEditors.brainstorm.get(host);
   }
   function getBrainstormText(host) {
-    const b = getNodeBrainstorm(host);
-    return (b && b.text) || "";
+    return window.BranchlineEditors.brainstorm.text(host);
   }
   function brainstormLineCount(host) {
-    return getBrainstormText(host).split("\n").filter(l => l.trim().length > 0).length;
+    return window.BranchlineEditors.brainstorm.lineCount(host);
   }
   function brainstormPoints(host) {
-    return brainstormLineCount(host);
+    return window.BranchlineEditors.brainstorm.points(host);
   }
 
   // A "DRC" note (see getDRCTemplateText / the drc flag set on it above) is
@@ -6053,15 +6052,7 @@
   // into plain-text lines, drops any line that's just one of the fixed
   // labels, then checks what's left.
   function noteLinesFromHtml(html) {
-    if (!html) return [];
-    const divChunks = html.match(/<div[^>]*>[\s\S]*?<\/div>/gi);
-    const chunks = (divChunks && divChunks.length) ? divChunks : [html];
-    return chunks.map(chunk => chunk
-      .replace(/^<div[^>]*>/i, "").replace(/<\/div>$/i, "")
-      .replace(/<br\s*\/?>/gi, "")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/gi, " ")
-      .trim());
+    return window.BranchlineEditors.note.linesFromHtml(html);
   }
   // A note counts as a "DRC" note purely by its title — typed manually,
   // left over from an older note, or set by the 📋 DRC… shortcut/the
@@ -6069,7 +6060,7 @@
   // regardless of how the note came to be. Same comparison the task-name
   // check above uses (trim + uppercase).
   function isDRCNote(note) {
-    return !!(note && (note.title || "").trim().toUpperCase() === "DRC");
+    return window.BranchlineEditors.drc.isNote(note);
   }
   // "Plan" gets its own icon too (the green-checklist PLAN sheet — see
   // NODE_PLAN_ICON_IMG). It applies when the note's own title is "plan",
@@ -6078,18 +6069,17 @@
   // Case-insensitive, trimmed, same comparison as DRC above. Unlike DRC
   // this is icon-only: no template, points, or single-note rule.
   function isPlanText(str) {
-    return (str || "").trim().toLowerCase() === "plan";
+    return window.BranchlineEditors.note.isPlanText(str);
   }
   // A subtask whose text STARTS with "brainstorm" gets an always-visible
   // Brainstorm scratchpad icon, even before anything has been typed into it.
   // Accepts natural separators: "brainstorm foo", "brainstorm: foo",
   // "brainstorm - foo", etc., case-insensitively.
   function isBrainstormPrefixText(str) {
-    return /^brainstorm(?:\s|[:\-–—]|$)/i.test((str || "").trim());
+    return window.BranchlineEditors.brainstorm.isPrefix(str);
   }
   function hasBrainstormContent(host) {
-    const b = getNodeBrainstorm(host);
-    return !!(b && ((b.text || "").trim() || (b.html || "").trim()));
+    return window.BranchlineEditors.brainstorm.hasContent(host);
   }
   function subtaskHasBrainstormMarker(s) {
     return !!(s && (isBrainstormPrefixText(s.text) || hasBrainstormContent(s)));
@@ -6121,12 +6111,7 @@
     return isPlanNote(note) || !!(owner && isPlanText(owner.text));
   }
   function drcNoteIsFilled(note) {
-    const labels = drcTemplateLines();
-    const lines = noteLinesFromHtml(note && note.html)
-      .filter(l => !labels.some(lbl => lbl.toLowerCase() === l.toLowerCase()));
-    const typedLines = lines.filter(l => l.length > 0);
-    const typedChars = typedLines.join("").length;
-    return typedLines.length > 1 || typedChars >= 10;
+    return window.BranchlineEditors.drc.isFilled(note, drcTemplateLines());
   }
   // Count of filled-in DRC notes on the node (there can be more than one —
   // each "📋 DRC…" click starts a fresh one, so this adds up like a daily
