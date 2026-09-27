@@ -8507,6 +8507,36 @@
 
   /* ---------------- rendering ---------------- */
 
+  // Fast path for edits that only change one node's visible content.
+  // Re-measure that node first. If its box size changed, connector endpoints
+  // and sibling layout may also need to move, so fall back to renderAll().
+  // Otherwise replace only this node's DOM and leave the rest of the canvas,
+  // SVG connectors and event handlers untouched.
+  function refreshNodeOrRenderAll(nodeId) {
+    if (!state.current || !nodeId || state.editingId) { renderAll(); return; }
+    const node = findNode(nodeId);
+    const oldEl = nodesLayer.querySelector(`.node[data-id="${nodeId}"]`);
+    if (!node || !oldEl || state.originX == null || state.originY == null) { renderAll(); return; }
+
+    const oldW = node._w;
+    const oldH = node._h;
+    computeNodeBox(node);
+    if (node._w !== oldW || node._h !== oldH) {
+      renderAll();
+      return;
+    }
+
+    const next = oldEl.nextSibling;
+    oldEl.remove();
+    renderNode(node, state.originX, state.originY);
+
+    // renderNode appends the replacement. Put it back at the old DOM position
+    // so overlapping nodes retain exactly the same stacking order.
+    const fresh = nodesLayer.querySelector(`.node[data-id="${nodeId}"]`);
+    if (fresh && next && next.parentNode === nodesLayer) nodesLayer.insertBefore(fresh, next);
+    if (fresh && state.linkFromId === nodeId) fresh.classList.add("link-source");
+  }
+
   function renderAll() {
     if (!state.current) { clearCanvas(); return; }
     updateUndoRedoButtons();
@@ -17517,6 +17547,7 @@
     noteLinkifyUrls(noteTextarea, false);
     flushNoteAutosave();
     const redrawMap = noteMapVisualDirty;
+    const redrawNodeId = noteEditingId;
     noteEditingId = null;
     noteEditingPhotoId = null;
     noteEditingTaskId = null;
@@ -17533,7 +17564,7 @@
     // The node strip/progress may have changed, but while the note editor was
     // open there was no reason to tear down and recreate every map node on
     // each autosave. Refresh exactly once now that the user can see the map.
-    if (redrawMap) renderAll();
+    if (redrawMap) refreshNodeOrRenderAll(redrawNodeId);
   }
 
   // Phone-friendly note typing pipeline. None of the expensive full-note
@@ -20439,6 +20470,7 @@
     const redrawMap = tasksEditingTarget
       ? tasksMapStateAtOpen !== tasksMapStateSignature(tasksEditingTarget)
       : false;
+    const redrawNodeId = tasksEditingTarget && tasksEditingTarget.nodeId;
     tasksEditingTarget = null;
     tasksMapStateAtOpen = null;
     randomPickedSubtaskId = null;
@@ -20448,7 +20480,7 @@
     // Opening and closing Tasks without changing anything used to rebuild the
     // entire canvas. Only redraw when task data that affects the node actually
     // changed during this modal session.
-    if (redrawMap) renderAll();
+    if (redrawMap) refreshNodeOrRenderAll(redrawNodeId);
   }
 
   // Right-click (or long-press on touch) menu for a single subtask pill —
