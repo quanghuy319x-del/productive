@@ -21172,9 +21172,12 @@
       });
       stext.addEventListener("blur", () => {
         const v = stext.textContent.trim();
+        let brainstormVisibilityChanged = false;
         if (v && v !== s.text) {
+          const beforeBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
           pushUndo();
           s.text = v;
+          brainstormVisibilityChanged = beforeBrainstorm !== (isBrainstormPrefixText(s.text) || hasBrainstormContent(s));
           persist();
         } else {
           stext.textContent = s.text;
@@ -21182,6 +21185,7 @@
         stext.title = s.text;
         stext.contentEditable = "false";
         row.draggable = !window.matchMedia("(max-width: 640px)").matches;
+        if (brainstormVisibilityChanged) renderTasksModal();
       });
 
       row.addEventListener("contextmenu", (e) => {
@@ -22303,9 +22307,12 @@
       });
       stext.addEventListener("blur", () => {
         const v = stext.textContent.trim();
+        let brainstormVisibilityChanged = false;
         if (v && v !== s.text) {
+          const beforeBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
           pushUndo();
           s.text = v;
+          brainstormVisibilityChanged = beforeBrainstorm !== (isBrainstormPrefixText(s.text) || hasBrainstormContent(s));
           persist();
         } else {
           stext.textContent = s.text;
@@ -22313,6 +22320,10 @@
         stext.title = s.text;
         stext.contentEditable = "false";
         row.draggable = true;
+        if (brainstormVisibilityChanged) {
+          renderCalDayModal();
+          renderCalendar();
+        }
       });
 
       row.addEventListener("contextmenu", (e) => {
@@ -23186,10 +23197,20 @@
   }
 
   function closeBrainstormModal() {
+    const target = brainstormEditingId;
     flushBrainstormAutosave();
     brainstormEditingId = null;
-    renderAll();
     zoomModalClose(brainstormModal);
+
+    if (target && target.subtaskId) {
+      if (!tasksModal.classList.contains("hidden")) renderTasksModal();
+      if (calDayModalDate) {
+        renderCalDayModal();
+        renderCalendar();
+      }
+    } else {
+      renderAll();
+    }
   }
 
   function renderBrainstormModal() {
