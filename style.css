@@ -6507,3 +6507,28 @@ kbd{
   box-shadow:none!important;
   transform:none!important;
 }
+
+
+/* v365 final visual rule: every persistent pressed state looks exactly alike. */
+#note-tool-title-mode.active,
+#note-tool-title-mode.is-active,
+#note-tool-title-mode[aria-pressed="true"],
+#note-tool-bold.active,
+#note-tool-bold[aria-pressed="true"],
+#note-tool-upper.active,
+#note-tool-upper[aria-pressed="true"],
+#note-tool-strike.active,
+#note-tool-strike[aria-pressed="true"],
+#note-tool-ol.active,
+#note-tool-ol[aria-pressed="true"],
+#note-tool-check.active,
+#note-tool-check[aria-pressed="true"],
+#note-tool-autocolor.active,
+#note-tool-autocolor[aria-pressed="true"]{
+  border:1px solid #3b6ef0!important;
+  background:#eaf0ff!important;
+  color:#3b6ef0!important;
+  box-shadow:none!important;
+  transform:none!important;
+  filter:none!important;
+}
