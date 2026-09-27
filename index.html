@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=327">
+<link rel="stylesheet" href="style.css?v=328">
 </head>
 <body>
 <div id="app">
@@ -580,8 +580,6 @@
     <div class="note-toolbar">
       <button type="button" id="note-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
       <button type="button" id="note-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
-      <button type="button" id="note-font-smaller" class="note-tool-btn phone-editor-font-btn" title="Smaller text" aria-label="Smaller note text">A−</button>
-      <button type="button" id="note-font-bigger" class="note-tool-btn phone-editor-font-btn" title="Bigger text" aria-label="Bigger note text">A+</button>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
@@ -782,8 +780,6 @@
     <div class="note-toolbar">
       <button type="button" id="brainstorm-tool-undo" class="note-tool-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
       <button type="button" id="brainstorm-tool-redo" class="note-tool-btn" title="Redo (Ctrl/⌘+Shift+Z)" disabled>↷</button>
-      <button type="button" id="brainstorm-font-smaller" class="note-tool-btn phone-editor-font-btn" title="Smaller text" aria-label="Smaller brainstorm text">A−</button>
-      <button type="button" id="brainstorm-font-bigger" class="note-tool-btn phone-editor-font-btn" title="Bigger text" aria-label="Bigger brainstorm text">A+</button>
       <span class="note-tool-sep"></span>
       <button type="button" id="brainstorm-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="brainstorm-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
@@ -842,7 +838,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "327";
+  const APP_VERSION = "328";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -870,12 +866,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "327"') && !document.documentElement.dataset.v327Reloaded) {
+      if (fresh.includes('const APP_VERSION = "328"') && !document.documentElement.dataset.v328Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v327Reloaded = "1";
+          document.documentElement.dataset.v328Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -889,7 +885,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=327"></script>\n<script src="app.js?v=327"></script>
+<script src="phase1-editors.js?v=328"></script>\n<script src="app.js?v=328"></script>
 <script>
 (() => {
   function insertTab(editor) {
