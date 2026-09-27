@@ -6363,3 +6363,23 @@ kbd{
     display:none!important;
   }
 }
+
+
+/* v328 — Note/Brainstorm phone toolbar: two rows, larger usable buttons.
+   A−/A+ were moved out of this toolbar, so the remaining tools can breathe. */
+@media (max-width:640px){
+  #note-modal .note-toolbar,
+  #brainstorm-modal .note-toolbar{
+    grid-template-columns:repeat(9, minmax(0, 1fr))!important;
+    grid-auto-rows:38px!important;
+    max-height:80px!important;
+    gap:4px!important;
+  }
+  #note-modal .note-tool-btn,
+  #brainstorm-modal .note-tool-btn{
+    height:38px!important;
+    min-height:38px!important;
+    padding:0 3px!important;
+    font-size:13px!important;
+  }
+}
