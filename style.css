@@ -6267,29 +6267,3 @@ kbd{
     flex:0 0 20px!important;
   }
 }
-
-
-/* v318 — subtask long-press menu: large phone touch targets without
-   enlarging task/link/cell menus that reuse the same #ctx-menu element. */
-@media (max-width: 640px) and (pointer: coarse) {
-  .ctx-menu.subtask-context-menu{
-    min-width:min(320px, calc(100vw - 16px));
-    max-width:calc(100vw - 16px);
-    max-height:min(80vh, 640px);
-    padding:10px;
-    border-radius:12px;
-  }
-  .ctx-menu.subtask-context-menu .ctx-item{
-    min-height:54px;
-    padding:14px 15px;
-    box-sizing:border-box;
-    border-radius:9px;
-    font-size:18px;
-    line-height:1.35;
-  }
-  .ctx-menu.subtask-context-menu .ctx-item-label{
-    white-space:normal;
-    overflow:visible;
-    text-overflow:clip;
-  }
-}
