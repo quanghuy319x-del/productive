@@ -10988,6 +10988,10 @@
     if (!parent) return null;
     pushUndo();
     const n = newNode("");
+    if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
+      n.xGap = parent.childrenGap;
+      n.childrenGap = parent.childrenGap;
+    }
     // A branch-level font color is a style for the whole subtree, not only
     // the nodes that happened to exist when the color was chosen. New
     // descendants therefore inherit the parent's explicit fontColor too.
@@ -11006,6 +11010,10 @@
     if (!parent) return null;
     pushUndo();
     const n = newNode("");
+    if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
+      n.xGap = parent.childrenGap;
+      n.childrenGap = parent.childrenGap;
+    }
     n.fontColor = parent.fontColor || null;
     n.table = { cells: defaultTableCells() };
     parent.children.push(n);
@@ -11035,6 +11043,10 @@
     if (!parent) return addChild(nodeId); // root has no siblings -> add child instead
     pushUndo();
     const n = newNode("");
+    if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
+      n.xGap = parent.childrenGap;
+      n.childrenGap = parent.childrenGap;
+    }
     // Siblings belong to the same branch level, so they inherit the common
     // parent's branch font color rather than falling back to the original
     // automatic/default color.
@@ -11768,7 +11780,8 @@
         if (Number.isNaN(v)) return;
         const clamped = Math.max(MIN_X_GAP, Math.min(MAX_X_GAP, Math.round(v)));
         pushUndo();
-        allDescendants.forEach(d => { d.xGap = clamped; });
+        allDescendants.forEach(d => { d.xGap = clamped; d.childrenGap = clamped; });
+        node.childrenGap = clamped;
         renderAll();
         persist();
       });
@@ -11781,7 +11794,8 @@
         resetAll.addEventListener("click", () => {
           closeContextMenu();
           pushUndo();
-          allDescendants.forEach(d => { d.xGap = null; });
+          allDescendants.forEach(d => { d.xGap = null; delete d.childrenGap; });
+          delete node.childrenGap;
           renderAll();
           persist();
         });
