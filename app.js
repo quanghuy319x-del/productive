@@ -16357,6 +16357,13 @@
   let noteEditingCellPos = null;
   let noteSaveTimer = null;
   let noteLinkifyTimer = null;
+  // Phase-1 performance: editing a rich note is one logical map edit session.
+  // While the editor stays open, autosave writes the changed note to the map/
+  // IndexedDB but does NOT rebuild the entire canvas after every typing pause.
+  // One map-level undo snapshot is captured before the first mutation, and one
+  // full canvas refresh is deferred until the editor closes.
+  let noteMapUndoCaptured = false;
+  let noteMapVisualDirty = false;
   let noteIsResizing = false;
   // Android/phone contenteditable is particularly sensitive to full-DOM
   // serialization and command-state queries while the IME is composing.
@@ -16836,6 +16843,11 @@
   function openNoteModal(nodeId, index, photoId, taskId, cellPos, forceDRCTemplate, subtaskId) {
     const node = findNode(nodeId);
     if (!node) return;
+    const freshNoteSession = noteModal.classList.contains("hidden");
+    if (freshNoteSession) {
+      noteMapUndoCaptured = false;
+      noteMapVisualDirty = false;
+    }
     commitEditIfActive();
     // Where ← Back should go. A return point handed over by a browser wins;
     // otherwise, if this is a fresh open (not a jump between notes while the
@@ -17504,6 +17516,7 @@
     // recognizer has not fired yet, then flush that final HTML to storage.
     noteLinkifyUrls(noteTextarea, false);
     flushNoteAutosave();
+    const redrawMap = noteMapVisualDirty;
     noteEditingId = null;
     noteEditingPhotoId = null;
     noteEditingTaskId = null;
@@ -17512,9 +17525,15 @@
     noteWorkingList = [];
     noteActiveIndex = 0;
     noteReturn = null;
+    noteMapUndoCaptured = false;
+    noteMapVisualDirty = false;
     $("#note-color-popover").classList.add("hidden");
     $("#note-emoji-popover").classList.add("hidden");
     zoomModalClose(noteModal);
+    // The node strip/progress may have changed, but while the note editor was
+    // open there was no reason to tear down and recreate every map node on
+    // each autosave. Refresh exactly once now that the user can see the map.
+    if (redrawMap) renderAll();
   }
 
   // Phone-friendly note typing pipeline. None of the expensive full-note
@@ -17567,11 +17586,27 @@
   // idle "+ New note" click doesn't leave a phantom entry inflating the
   // marker's count — matches the old single-note behavior, where an
   // empty note never made the marker appear in the first place.
+  function captureNoteMapUndoOnce() {
+    if (noteMapUndoCaptured) return;
+    pushUndo();
+    noteMapUndoCaptured = true;
+  }
+
   function commitNotesToNode() {
     const node = findNode(noteEditingId);
     if (!node) return;
     captureActiveNote();
     const cleaned = noteWorkingList.filter(n => (n.title && n.title.trim()) || (n.html && n.html.trim()));
+
+    // Rich-note editing already has its own fine-grained undo stack. At map
+    // level, treat the whole open-editor session as one edit: capture the map
+    // once before the first mutation, persist every settled burst, and defer
+    // the expensive renderAll() until closeNoteModal().
+    const beginMutation = () => {
+      captureNoteMapUndoOnce();
+      noteMapVisualDirty = true;
+    };
+
     if (noteEditingTaskId) {
       const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
       const t = noteEditingNoteOwner(taskHost);
@@ -17579,11 +17614,12 @@
       const before = JSON.stringify(getTaskNotes(t));
       const after = JSON.stringify(cleaned);
       if (before !== after) {
-        pushUndo();
+        beginMutation();
         t.notes = cleaned;
         t.note = "";
-        renderAll();
         persist();
+        // The Tasks modal is a small focused surface and may be visible under
+        // the note editor; keep it current without rebuilding the mindmap.
         if (!tasksModal.classList.contains("hidden")) renderTasksModal();
       }
       return;
@@ -17593,10 +17629,9 @@
       const before = JSON.stringify(getCellNotes(a));
       const after = JSON.stringify(cleaned);
       if (before !== after) {
-        pushUndo();
+        beginMutation();
         a.notes = cleaned.length ? cleaned : null;
         a.note = null;
-        renderAll();
         persist();
       }
       return;
@@ -17605,9 +17640,8 @@
       const before = JSON.stringify(getPhotoNotes(node, noteEditingPhotoId));
       const after = JSON.stringify(cleaned);
       if (before !== after) {
-        pushUndo();
+        beginMutation();
         setPhotoNotes(node, noteEditingPhotoId, cleaned);
-        renderAll();
         persist();
       }
       return;
@@ -17615,14 +17649,12 @@
     const before = JSON.stringify(getNodeNotes(node));
     const after = JSON.stringify(cleaned);
     if (before !== after) {
-      pushUndo();
+      beginMutation();
       node.notes = cleaned;
       node.note = "";
-      renderAll();
       persist();
     }
   }
-
 
   // Finds the block-level "line" element containing the caret, so toolbar
   // actions and Enter-to-continue behave per line rather than globally.
@@ -19145,6 +19177,14 @@
   const tasksRandomBtn = $("#tasks-random-btn");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
+  let tasksMapStateAtOpen = null;
+  function tasksMapStateSignature(target) {
+    if (!target) return null;
+    const host = resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return null;
+    try { return JSON.stringify(getNodeTasks(host)); }
+    catch (e) { return null; }
+  }
   // Guards the same race as noteIsResizing above: dragging the resize
   // handle and releasing the mouse past the card's edge fires a "click"
   // on the modal backdrop right after mouseup, which would otherwise
@@ -20379,6 +20419,7 @@
     commitEditIfActive();
     closeContextMenu();
     tasksEditingTarget = { nodeId, r, c };
+    tasksMapStateAtOpen = tasksMapStateSignature(tasksEditingTarget);
     const node = findNode(nodeId);
     const cellText = (r != null && node && node.table && node.table.cells[r]) ? node.table.cells[r][c] : null;
     const label = r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${r + 1}, col ${c + 1})`);
@@ -20395,12 +20436,19 @@
   }
 
   function closeTasksModal() {
+    const redrawMap = tasksEditingTarget
+      ? tasksMapStateAtOpen !== tasksMapStateSignature(tasksEditingTarget)
+      : false;
     tasksEditingTarget = null;
+    tasksMapStateAtOpen = null;
     randomPickedSubtaskId = null;
     subtaskAddOpenFor.clear();
     closeTaskTemplatesPopover();
-    renderAll();
     zoomModalClose(tasksModal);
+    // Opening and closing Tasks without changing anything used to rebuild the
+    // entire canvas. Only redraw when task data that affects the node actually
+    // changed during this modal session.
+    if (redrawMap) renderAll();
   }
 
   // Right-click (or long-press on touch) menu for a single subtask pill —
