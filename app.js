@@ -22203,6 +22203,8 @@
     getTaskSubtasks(t).forEach((s) => {
       const row = document.createElement("li");
       row.className = "subtask-row" + (s.done ? " done" : "") + (s.failed ? " failed" : "");
+      row.dataset.taskId = t.id;
+      row.dataset.subtaskId = s.id;
 
       row.addEventListener("dragover", (e) => {
         if (!calDaySubtaskDragState || calDaySubtaskDragState.taskId !== t.id || calDaySubtaskDragState.subtaskId === s.id) return;
