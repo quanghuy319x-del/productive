@@ -5480,15 +5480,7 @@
       total += commentPoints;
       done += commentPoints;
     }
-    // Every non-empty line jotted in the node's Brainstorm scratchpad
-    // (node.brainstorm.text — see getNodeBrainstorm/brainstormPoints) is
-    // worth 1 point toward the same tally, same "always fully done"
-    // treatment as the above: 1 line = 1 point, 4 lines = 4 points, etc.
-    const brainstormPts = brainstormPoints(node);
-    if (brainstormPts > 0) {
-      total += brainstormPts;
-      done += brainstormPts;
-    }
+    // v360: Brainstorm is a Note variant only; it does not add task-progress points.
     // DRC notes no longer add points to the task tally (used to add a
     // flat 5 per filled-in DRC note via drcPoints — see drcPoints/
     // drcNoteIsFilled, still used elsewhere for the icon/tooltip status,
@@ -9251,9 +9243,7 @@
       items.push([label, () => openAffirmationGame(node.id, r, c)]);
     }
     {
-      const pts = brainstormPoints(a);
-      const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
-      items.push([label, () => openBrainstormModal(node.id, r, c)]);
+      items.push(["🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c)]);
     }
     // "Merge cells" only shows up once a multi-cell rectangle is actually
     // selected in this same table (see state.cellRange/handleTableCellClick,
@@ -9529,21 +9519,15 @@
       tbadge.appendChild(tlabel);
       strip.appendChild(tbadge);
     }
-    const cellBrainstormPts = brainstormPoints(a);
-    if (cellBrainstormPts > 0) {
+    const cellHasBrainstorm = hasBrainstormContent(a);
+    if (cellHasBrainstorm) {
       // Same brain-with-count marker as the node-level strip (see
       // renderNode) — click jumps straight into the scratchpad for this cell.
       const bIcon = document.createElement("span");
       bIcon.className = "node-table-cell-icon node-table-cell-brainstorm";
       bIcon.textContent = "🧠";
-      bIcon.title = `Brainstorm — ${cellBrainstormPts} point${cellBrainstormPts === 1 ? "" : "s"} (${brainstormLineCount(a)} lines). Click to keep writing.`;
+      bIcon.title = "Brainstorm — click to keep writing.";
       bIcon.addEventListener("click", () => openBrainstormModal(node.id, r, c));
-      if (cellBrainstormPts > 1) {
-        const bCount = document.createElement("span");
-        bCount.className = "node-marker-count";
-        bCount.textContent = String(cellBrainstormPts);
-        bIcon.appendChild(bCount);
-      }
       strip.appendChild(bIcon);
     }
 
@@ -9913,7 +9897,7 @@
     // marker, whether Brainstorm is opened directly or surfaced by one or
     // more "brainstorm..." subtasks.
     const nodeHasBrainstormMarker =
-      (brainstormPoints(node) > 0 || subtasksWithBrainstorm.length > 0) &&
+      (hasBrainstormContent(node) || subtasksWithBrainstorm.length > 0) &&
       !nodeNotes.some(isBrainstormNote);
     const affirmationWins = nodeAffirmationWins(node);
     const taskProg = nodeTaskProgress(node);
@@ -9921,7 +9905,6 @@
     const nodeImages = getNodeImages(node);
     const nodeImageIds = getNodeImageIds(node);
     const timePlayed = getNodeTimePlayed(node);
-    const brainstormPts = brainstormPoints(node);
     // Note, link, affirmation-completion, and time-played markers all
     // render inline as cells of this same strip, right alongside the
     // photo thumbnails, instead of floating outside the node — so every
@@ -10265,17 +10248,11 @@
         const bIcon = document.createElement("span");
         bIcon.className = "node-photo-thumb node-brainstorm-marker";
         bIcon.textContent = "🧠";
-        bIcon.title = `Brainstorm — ${brainstormPts} point${brainstormPts === 1 ? "" : "s"} (${brainstormLineCount(node)} lines). Click to keep writing.`;
+        bIcon.title = "Brainstorm — click to keep writing.";
         bIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openBrainstormModal(node.id);
         });
-        if (brainstormPts > 1) {
-          const bCount = document.createElement("span");
-          bCount.className = "node-marker-count";
-          bCount.textContent = String(brainstormPts);
-          bIcon.appendChild(bCount);
-        }
         strip.appendChild(bIcon);
       }
 
@@ -11618,9 +11595,7 @@
         addGroupRow(label, () => openTimerModal(node.id));
       }
       {
-        const pts = brainstormPoints(node);
-        const label = pts > 0 ? `🧠 Brainstorm (${pts} pt${pts === 1 ? "" : "s"})…` : "🧠 Brainstorm…";
-        addGroupRow(label, () => openBrainstormModal(node.id));
+        addGroupRow("🧠 Brainstorm…", () => openBrainstormModal(node.id));
       }
       {
         // Shortcut: opens this node's DRC note, pre-filled with the
@@ -20731,10 +20706,7 @@
         brainstormIcon = document.createElement("span");
         brainstormIcon.className = "subtask-note-icon subtask-brainstorm-icon";
         brainstormIcon.textContent = "🧠";
-        const pts = brainstormPoints(s);
-        brainstormIcon.title = pts
-          ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
-          : "Brainstorm — tap to start";
+        brainstormIcon.title = hasBrainstormContent(s) ? "Brainstorm — tap to keep writing" : "Brainstorm — tap to start";
         brainstormIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           const target = tasksEditingTarget;
@@ -21843,10 +21815,7 @@
         calBrainstormIcon = document.createElement("span");
         calBrainstormIcon.className = "subtask-note-icon subtask-brainstorm-icon";
         calBrainstormIcon.textContent = "🧠";
-        const pts = brainstormPoints(s);
-        calBrainstormIcon.title = pts
-          ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
-          : "Brainstorm — tap to start";
+        calBrainstormIcon.title = hasBrainstormContent(s) ? "Brainstorm — tap to keep writing" : "Brainstorm — tap to start";
         calBrainstormIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openBrainstormModal(node.id, r, c, t.id, s.id);
@@ -22710,8 +22679,7 @@
 
   function renderBrainstormProgress(host) {
     const lines = brainstormLineCount(host);
-    const pts = brainstormPoints(host);
-    brainstormProgressLabel.textContent = `${lines} line${lines === 1 ? "" : "s"} · ${pts} pt${pts === 1 ? "" : "s"}`;
+    brainstormProgressLabel.textContent = `${lines} line${lines === 1 ? "" : "s"}`;
   }
 
   // Debounced autosave: fires a short beat after the user stops typing,
