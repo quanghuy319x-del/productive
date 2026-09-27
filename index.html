@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=312">
+<link rel="manifest" href="manifest.webmanifest?v=313">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=312">
+<link rel="stylesheet" href="style.css?v=313">
 </head>
 <body>
 <div id="app">
@@ -879,7 +879,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="app.js?v=312"></script>
+<script src="app.js?v=313"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -1195,26 +1195,41 @@ document.querySelector(".tasks-compact-menu-actions")?.addEventListener("click",
 document.getElementById("btn-refresh-app")?.addEventListener("click", () => location.reload());
 </script>
 <script>
-/* v312: sidebar media browsers on touch devices must open without summoning
-   the software keyboard. Their browser views may focus a search field as
-   part of desktop-friendly setup, so release that focus after opening. */
+/* v313: prevent Android keyboard BEFORE the Notes / Photos / Videos browser
+   opens. Temporarily make text controls non-editable during the opening click,
+   so any desktop autofocus cannot summon the IME; restore immediately after. */
 (function () {
   var ids = ["btn-notesbrowser", "btn-photosbrowser", "btn-videosbrowser"];
   function isTouchPhone() {
     return window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
   }
+  function suppressOpeningKeyboard() {
+    if (!isTouchPhone()) return;
+    var changed = [];
+    document.querySelectorAll('input:not([type="button"]):not([type="submit"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"]').forEach(function (el) {
+      if (el.hasAttribute("contenteditable")) {
+        changed.push([el, "contenteditable", el.getAttribute("contenteditable")]);
+        el.setAttribute("contenteditable", "false");
+      } else if (!el.readOnly) {
+        changed.push([el, "readonly", null]);
+        el.readOnly = true;
+      }
+    });
+    setTimeout(function () {
+      changed.forEach(function (item) {
+        if (item[1] === "contenteditable") item[0].setAttribute("contenteditable", item[2] || "true");
+        else item[0].readOnly = false;
+      });
+      var active = document.activeElement;
+      if (active && active !== document.body && /^(INPUT|TEXTAREA)$/.test(active.tagName)) active.blur();
+    }, 350);
+  }
   ids.forEach(function (id) {
     var button = document.getElementById(id);
     if (!button) return;
-    button.addEventListener("click", function () {
-      if (!isTouchPhone()) return;
-      [0, 60, 180].forEach(function (delay) {
-        setTimeout(function () {
-          var active = document.activeElement;
-          if (active && active !== document.body && typeof active.blur === "function") active.blur();
-        }, delay);
-      });
-    });
+    /* capture phase runs before the app's normal click handler/autofocus */
+    button.addEventListener("pointerdown", suppressOpeningKeyboard, true);
+    button.addEventListener("touchstart", suppressOpeningKeyboard, {capture:true, passive:true});
   });
 })();
 </script>
