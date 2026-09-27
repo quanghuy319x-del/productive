@@ -10422,6 +10422,10 @@
     const subtasksWithBrainstorm = getNodeTasks(node).flatMap((t) =>
       getTaskSubtasks(t).filter(subtaskHasBrainstormMarker).map((s) => ({ t, s }))
     );
+    // v324: Brainstorm is node-scoped. A node gets at most one pink brain
+    // marker, whether Brainstorm is opened directly or surfaced by one or
+    // more "brainstorm..." subtasks.
+    const nodeHasBrainstormMarker = brainstormPoints(node) > 0 || subtasksWithBrainstorm.length > 0;
     const affirmationWins = nodeAffirmationWins(node);
     const taskProg = nodeTaskProgress(node);
 
@@ -10440,10 +10444,9 @@
       + stripBucketCount(nodeUrls.length)
       + tasksWithNotes.length
       + subtasksWithNotes.length
-      + subtasksWithBrainstorm.length
       + (affirmationWins ? 1 : 0)
       + (timePlayed ? 1 : 0)
-      + (brainstormPts > 0 ? 1 : 0);
+      + (nodeHasBrainstormMarker ? 1 : 0);
     if ((stripIconCount || nodeImages.length) && node.id !== state.editingId) {
       const strip = document.createElement("span");
       // A handful of items deserve bigger cells than a full grid of them
@@ -10615,28 +10618,8 @@
         strip.appendChild(subtaskNoteIcon);
       });
 
-      // Brainstorm scratchpad marker for each qualifying subtask. This is
-      // intentionally separate from the rich-note marker above because a
-      // subtask may legitimately have both a normal note and a Brainstorm.
-      subtasksWithBrainstorm.forEach(({ t, s }) => {
-        const bIcon = document.createElement("span");
-        bIcon.className = "node-photo-thumb node-brainstorm-marker node-subtask-brainstorm-marker";
-        bIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
-        const pts = brainstormPoints(s);
-        bIcon.title = pts
-          ? `Subtask "${s.text || "(untitled subtask)"}" — Brainstorm, ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
-          : `Subtask "${s.text || "(untitled subtask)"}" — Brainstorm, tap to start`;
-        bIcon.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openBrainstormModal(node.id, null, null, t.id, s.id);
-        });
-        bIcon.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openTasksModal(node.id);
-        });
-        strip.appendChild(bIcon);
-      });
+      // v324: no per-subtask Brainstorm markers in the node strip.
+      // All Brainstorm-prefixed subtasks share the node's single marker.
 
       // One icon per link (instead of a single icon plus a count/chooser
       // menu), same treatment as the per-note icons above — each link is
@@ -10784,12 +10767,8 @@
         strip.appendChild(tbadge);
       }
 
-      if (brainstormPts > 0) {
-        // Same small cell box as the note/link/timer markers above — a
-        // brain glyph with a purple tint, plus a count badge holding
-        // the point total once it's more than 1 (mirrors the affirmation
-        // checkmark's own count badge). Click jumps straight into the
-        // scratchpad to keep writing.
+      if (nodeHasBrainstormMarker) {
+        // v324: the one shared pink Brainstorm marker for this node.
         const bIcon = document.createElement("span");
         bIcon.className = "node-photo-thumb node-brainstorm-marker";
         bIcon.textContent = "🧠";
@@ -21349,7 +21328,7 @@
       if (subtaskIsBrainstorm) {
         brainstormIcon = document.createElement("span");
         brainstormIcon.className = "subtask-note-icon subtask-brainstorm-icon";
-        brainstormIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+        brainstormIcon.textContent = "🧠";
         const pts = brainstormPoints(s);
         brainstormIcon.title = pts
           ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
@@ -22461,7 +22440,7 @@
       if (calSubtaskIsBrainstorm) {
         calBrainstormIcon = document.createElement("span");
         calBrainstormIcon.className = "subtask-note-icon subtask-brainstorm-icon";
-        calBrainstormIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+        calBrainstormIcon.textContent = "🧠";
         const pts = brainstormPoints(s);
         calBrainstormIcon.title = pts
           ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
@@ -23036,11 +23015,10 @@
     if (!target) return null;
     const base = resolveHost(target.nodeId, target.r, target.c);
     if (!base) return null;
-    if (!target.taskId) return base;
-    const task = getNodeTasks(base).find(x => x.id === target.taskId);
-    if (!task) return null;
-    if (!target.subtaskId) return task;
-    return getTaskSubtasks(task).find(x => x.id === target.subtaskId) || null;
+    // v324: Brainstorm is deliberately node/cell scoped. Task/subtask callers
+    // keep the same API, but resolve to the owning node/cell so every
+    // Brainstorm entry point opens the same scratchpad.
+    return base;
   }
 
   function brainstormTargetLabel(target) {
