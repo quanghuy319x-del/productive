@@ -3604,18 +3604,24 @@
     else if (remote.title === base.title) title = local.title;
     else throw MERGE_CONFLICT;
 
-    const basePrefs = readEditorFontPrefs(base);
-    const localPrefs = readEditorFontPrefs(local);
-    const remotePrefs = readEditorFontPrefs(remote);
-    const mergePref = (key) => {
-      if (localPrefs[key] === remotePrefs[key]) return localPrefs[key];
-      if (localPrefs[key] === basePrefs[key]) return remotePrefs[key];
-      if (remotePrefs[key] === basePrefs[key]) return localPrefs[key];
+    const basePrefs = readAllEditorFontPrefs(base);
+    const localPrefs = readAllEditorFontPrefs(local);
+    const remotePrefs = readAllEditorFontPrefs(remote);
+    const mergePref = (device, key) => {
+      if (localPrefs[device][key] === remotePrefs[device][key]) return localPrefs[device][key];
+      if (localPrefs[device][key] === basePrefs[device][key]) return remotePrefs[device][key];
+      if (remotePrefs[device][key] === basePrefs[device][key]) return localPrefs[device][key];
       throw MERGE_CONFLICT;
     };
     const editorPrefs = {
-      noteFontSize: mergePref("noteFontSize"),
-      brainstormFontSize: mergePref("brainstormFontSize")
+      phone: {
+        noteFontSize: mergePref("phone", "noteFontSize"),
+        brainstormFontSize: mergePref("phone", "brainstormFontSize")
+      },
+      desktop: {
+        noteFontSize: mergePref("desktop", "noteFontSize"),
+        brainstormFontSize: mergePref("desktop", "brainstormFontSize")
+      }
     };
     return { root: mergedRoot, links, title, editorPrefs };
   }
@@ -3636,7 +3642,7 @@
         root: mapLike.root,
         links: mapLike.links || [],
         title: mapLike.title || "",
-        editorPrefs: readEditorFontPrefs(mapLike)
+        editorPrefs: readAllEditorFontPrefs(mapLike)
       });
     } catch (e) { console.error("Couldn't save sync snapshot", e); }
   }
@@ -6578,7 +6584,10 @@
       links: [],   // cross-links: [{ id, a: nodeId, b: nodeId }] — connections that
                    // aren't part of the parent/child tree (e.g. "this idea relates to that one")
       view: { scale: 1, tx: 0, ty: 0 },
-      editorPrefs: { noteFontSize: 13, brainstormFontSize: 13 },
+      editorPrefs: {
+        phone: { noteFontSize: 13, brainstormFontSize: 13 },
+        desktop: { noteFontSize: 13, brainstormFontSize: 13 }
+      },
       theme: defaultTheme(),
       layout: "mindmap"   // "mindmap" | "righty" | "timeline" (legacy "logic" is migrated to "righty" by ensureLayout)
     };
@@ -7283,10 +7292,10 @@
     persistTimer = setTimeout(kickPersist, 500);
   }
 
-  /* v337: Note / DRC / Brainstorm font size belongs to the mindmap.
-     It is saved with the map JSON and therefore follows the map through
-     IndexedDB / folder backup / Google Drive instead of being device-local.
-     Note + DRC share one setting because they use the same editor. */
+  /* v338: Note / DRC / Brainstorm font size is still stored in the
+     mindmap/Drive, but phone and desktop now have independent values.
+     A v337 map with the old shared fields is treated as the starting value
+     for both device classes until each side is changed. */
   const NOTE_EDITOR_FONT_MIN = 10;
   const NOTE_EDITOR_FONT_MAX = 30;
   const NOTE_EDITOR_FONT_DEFAULT = 13;
@@ -7298,13 +7307,46 @@
       : NOTE_EDITOR_FONT_DEFAULT;
   }
 
-  function readEditorFontPrefs(map = state.current) {
+  function editorFontDeviceKey() {
+    const sw = Number(window.screen && window.screen.width) || window.innerWidth || 1024;
+    const sh = Number(window.screen && window.screen.height) || window.innerHeight || 768;
+    return Math.min(sw, sh) <= 640 ? "phone" : "desktop";
+  }
+
+  function legacyEditorFontPrefs(map) {
     const p = map && map.editorPrefs && typeof map.editorPrefs === "object"
       ? map.editorPrefs
       : null;
+    const hasNote = p && Number.isFinite(Number(p.noteFontSize));
+    const hasBrainstorm = p && Number.isFinite(Number(p.brainstormFontSize));
     return {
-      noteFontSize: clampNoteEditorFontSize(p && p.noteFontSize),
-      brainstormFontSize: clampNoteEditorFontSize(p && p.brainstormFontSize)
+      noteFontSize: hasNote ? clampNoteEditorFontSize(p.noteFontSize) : NOTE_EDITOR_FONT_DEFAULT,
+      brainstormFontSize: hasBrainstorm ? clampNoteEditorFontSize(p.brainstormFontSize) : NOTE_EDITOR_FONT_DEFAULT
+    };
+  }
+
+  function readEditorFontPrefs(map = state.current, device = editorFontDeviceKey()) {
+    const legacy = legacyEditorFontPrefs(map);
+    const root = map && map.editorPrefs && typeof map.editorPrefs === "object"
+      ? map.editorPrefs
+      : null;
+    const p = root && root[device] && typeof root[device] === "object"
+      ? root[device]
+      : null;
+    return {
+      noteFontSize: p && Number.isFinite(Number(p.noteFontSize))
+        ? clampNoteEditorFontSize(p.noteFontSize)
+        : legacy.noteFontSize,
+      brainstormFontSize: p && Number.isFinite(Number(p.brainstormFontSize))
+        ? clampNoteEditorFontSize(p.brainstormFontSize)
+        : legacy.brainstormFontSize
+    };
+  }
+
+  function readAllEditorFontPrefs(map = state.current) {
+    return {
+      phone: readEditorFontPrefs(map, "phone"),
+      desktop: readEditorFontPrefs(map, "desktop")
     };
   }
 
@@ -7314,11 +7356,11 @@
     const bigger = document.getElementById(isBrainstorm ? "brainstorm-font-plus" : "note-font-plus");
     if (smaller) {
       smaller.disabled = px <= NOTE_EDITOR_FONT_MIN;
-      smaller.title = `Smaller text (current ${px}px)`;
+      smaller.title = `Smaller text (current ${px}px · ${editorFontDeviceKey()})`;
     }
     if (bigger) {
       bigger.disabled = px >= NOTE_EDITOR_FONT_MAX;
-      bigger.title = `Bigger text (current ${px}px)`;
+      bigger.title = `Bigger text (current ${px}px · ${editorFontDeviceKey()})`;
     }
   }
 
@@ -7335,12 +7377,21 @@
   function changeEditorFontPref(kind, delta) {
     const map = state.current;
     if (!map) return;
+    const device = editorFontDeviceKey();
     const key = kind === "brainstorm" ? "brainstormFontSize" : "noteFontSize";
-    const current = readEditorFontPrefs(map)[key];
+    const current = readEditorFontPrefs(map, device)[key];
     const next = clampNoteEditorFontSize(current + delta);
     if (next === current) return;
+
+    const inherited = readEditorFontPrefs(map, device);
     if (!map.editorPrefs || typeof map.editorPrefs !== "object") map.editorPrefs = {};
-    map.editorPrefs[key] = next;
+    if (!map.editorPrefs[device] || typeof map.editorPrefs[device] !== "object") {
+      map.editorPrefs[device] = {
+        noteFontSize: inherited.noteFontSize,
+        brainstormFontSize: inherited.brainstormFontSize
+      };
+    }
+    map.editorPrefs[device][key] = next;
     applyEditorFontPrefs(map);
     persist();
   }
