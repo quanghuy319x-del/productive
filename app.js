@@ -23292,6 +23292,32 @@
     return noteHtmlFromRaw(getBrainstormText(host));
   }
 
+  // v322: one Brainstorm per node. A Brainstorm may live on the node itself,
+  // a table cell, task, or subtask, but no second Brainstorm can be created
+  // anywhere else inside the same node. Existing content always remains openable.
+  function nodeBrainstormOwner(node) {
+    if (!node) return null;
+    const hasContent = (host) => {
+      const b = host && getNodeBrainstorm(host);
+      return !!(b && ((b.text || "").trim() || (b.html || "").trim()));
+    };
+    if (hasContent(node)) return node;
+    if (node.table && Array.isArray(node.table.cells)) {
+      for (const row of node.table.cells) {
+        if (!Array.isArray(row)) continue;
+        for (const cell of row) if (hasContent(cell)) return cell;
+      }
+    }
+    const tasks = getNodeTasks(node);
+    for (const task of tasks) {
+      if (hasContent(task)) return task;
+      for (const subtask of getTaskSubtasks(task)) {
+        if (hasContent(subtask)) return subtask;
+      }
+    }
+    return null;
+  }
+
   function openBrainstormModal(nodeId, r, c, taskId, subtaskId) {
     const target = {
       nodeId,
@@ -23302,6 +23328,12 @@
     };
     const host = resolveBrainstormTarget(target);
     if (!host) return;
+    const node = findNode(nodeId);
+    const owner = nodeBrainstormOwner(node);
+    if (owner && owner !== host && !hasBrainstormContent(host)) {
+      alert("This node already has a Brainstorm.");
+      return;
+    }
     commitEditIfActive();
     closeContextMenu();
     brainstormEditingId = target;
