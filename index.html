@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=331">
+<link rel="stylesheet" href="style.css?v=332">
 </head>
 <body>
 <div id="app">
@@ -842,7 +842,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "331";
+  const APP_VERSION = "332";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -870,12 +870,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "331"') && !document.documentElement.dataset.v331Reloaded) {
+      if (fresh.includes('const APP_VERSION = "332"') && !document.documentElement.dataset.v332Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v331Reloaded = "1";
+          document.documentElement.dataset.v332Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -889,7 +889,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=331"></script>\n<script src="app.js?v=331"></script>
+<script src="phase1-editors.js?v=332"></script>\n<script src="app.js?v=332"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -940,9 +940,23 @@ if ("serviceWorker" in navigator) {
   function changeEditorFont(editorId, delta) {
     const editor = document.getElementById(editorId);
     if (!editor) return;
-    const px = parseFloat(getComputedStyle(editor).fontSize) || 16;
-    editor.style.fontSize = Math.max(10, Math.min(30, px + delta)) + "px";
+    const key = editorId === "note-textarea" ? "branchline_note_font_size" : "branchline_brainstorm_font_size";
+    const px = parseFloat(editor.style.fontSize || localStorage.getItem(key) || getComputedStyle(editor).fontSize) || 16;
+    const next = Math.max(10, Math.min(30, px + delta));
+    editor.style.fontSize = next + "px";
+    try { localStorage.setItem(key, String(next)); } catch (_) {}
   }
+  function restoreEditorFont(editorId) {
+    const editor = document.getElementById(editorId);
+    if (!editor) return;
+    const key = editorId === "note-textarea" ? "branchline_note_font_size" : "branchline_brainstorm_font_size";
+    try {
+      const saved = parseFloat(localStorage.getItem(key));
+      if (Number.isFinite(saved)) editor.style.fontSize = Math.max(10, Math.min(30, saved)) + "px";
+    } catch (_) {}
+  }
+  restoreEditorFont("note-textarea");
+  restoreEditorFont("brainstorm-textarea");
   document.getElementById("note-font-minus")?.addEventListener("click", () => changeEditorFont("note-textarea", -1));
   document.getElementById("note-font-plus")?.addEventListener("click", () => changeEditorFont("note-textarea", 1));
   document.getElementById("brainstorm-font-minus")?.addEventListener("click", () => changeEditorFont("brainstorm-textarea", -1));
