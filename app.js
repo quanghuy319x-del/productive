@@ -17640,9 +17640,39 @@
   }
 
   function noteInsertSymbol(symbol) {
+    // v361: insert emoji/symbol as one plain text node at the saved caret.
+    // Avoid execCommand here: Android contenteditable/IME can inherit or
+    // split surrounding inline formatting, which made emoji appear in
+    // seemingly random places/styles.
+    const sel = window.getSelection();
+    let range = null;
+    if (sel && sel.rangeCount) {
+      const candidate = sel.getRangeAt(0);
+      if (noteTextarea.contains(candidate.commonAncestorContainer)) {
+        range = candidate.cloneRange();
+      }
+    }
     noteTextarea.focus();
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(noteTextarea);
+      range.collapse(false);
+    }
     notePushUndo();
-    document.execCommand("insertText", false, symbol);
+    range.deleteContents();
+    const node = document.createTextNode(String(symbol || ""));
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    noteTextarea.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      inputType: "insertText",
+      data: String(symbol || "")
+    }));
     scheduleNoteAutosave();
   }
 
