@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=329">
+<link rel="stylesheet" href="style.css?v=330">
 </head>
 <body>
 <div id="app">
@@ -773,7 +773,7 @@
     <div class="note-nav-row">
       <span id="brainstorm-node-label" class="brainstorm-node-label"></span>
       <span class="note-nav-gap"></span>
-      <button type="button" id="brainstorm-clear-btn" class="note-nav-btn note-nav-btn-danger" title="Clear this brainstorm" hidden>↺ Clear</button>
+      <button type="button" id="brainstorm-clear-btn" hidden aria-hidden="true" tabindex="-1" style="display:none!important"></button>
       <button type="button" id="brainstorm-font-minus" class="note-nav-btn" title="Smaller text">−</button>
       <button type="button" id="brainstorm-font-plus" class="note-nav-btn" title="Bigger text">+</button>
       <button type="button" id="brainstorm-tool-undo" class="note-nav-btn" title="Undo (Ctrl/⌘+Z)" disabled>↶</button>
@@ -842,7 +842,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "329";
+  const APP_VERSION = "330";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -870,12 +870,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "329"') && !document.documentElement.dataset.v329Reloaded) {
+      if (fresh.includes('const APP_VERSION = "330"') && !document.documentElement.dataset.v330Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v329Reloaded = "1";
+          document.documentElement.dataset.v330Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -889,7 +889,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=329"></script>\n<script src="app.js?v=329"></script>
+<script src="phase1-editors.js?v=330"></script>\n<script src="app.js?v=330"></script>
 <script>
 (() => {
   function insertTab(editor) {
