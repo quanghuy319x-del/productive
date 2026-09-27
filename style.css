@@ -6532,3 +6532,18 @@ kbd{
   transform:none!important;
   filter:none!important;
 }
+
+
+/* v366 — toolbar buttons must not keep the browser's gray/black focus ring
+   after a tap. Persistent ON state is still shown only by our blue style. */
+.note-toolbar .note-tool-btn:focus,
+.note-toolbar .note-tool-btn:focus-visible{
+  outline:none!important;
+  box-shadow:none!important;
+}
+.note-toolbar .note-tool-btn.active:focus,
+.note-toolbar .note-tool-btn.active:focus-visible,
+.note-toolbar .note-tool-btn.is-active:focus,
+.note-toolbar .note-tool-btn.is-active:focus-visible{
+  outline:none!important;
+}
