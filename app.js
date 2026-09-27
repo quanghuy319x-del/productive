@@ -6080,6 +6080,17 @@
   function isPlanText(str) {
     return (str || "").trim().toLowerCase() === "plan";
   }
+  // A subtask whose text STARTS with "brainstorm" gets an always-visible
+  // Brainstorm scratchpad icon, even before anything has been typed into it.
+  // Accepts natural separators: "brainstorm foo", "brainstorm: foo",
+  // "brainstorm - foo", etc., case-insensitively.
+  function isBrainstormPrefixText(str) {
+    return /^brainstorm(?:\s|[:\-–—]|$)/i.test((str || "").trim());
+  }
+  function hasBrainstormContent(host) {
+    const b = getNodeBrainstorm(host);
+    return !!(b && ((b.text || "").trim() || (b.html || "").trim()));
+  }
   function isPlanNote(note) {
     return !!(note && isPlanText(note.title));
   }
@@ -6727,6 +6738,7 @@
     // The popup is shared by node/task/link/cell menus. Clear this marker
     // first so the larger touch typography applies only to a node menu.
     ctxMenu.classList.remove("node-context-menu");
+    ctxMenu.classList.remove("subtask-context-menu");
     ctxMenu.classList.remove("hidden");
   }
 
@@ -20674,6 +20686,7 @@
   }
   function openSubtaskContextMenu(x, y, t, s, rerender, openNotes) {
     resetContextMenu();
+    ctxMenu.classList.add("subtask-context-menu");
     const addItem = (label, cls, fn) => {
       const it = document.createElement("div");
       it.className = "ctx-item" + (cls ? " " + cls : "");
@@ -21205,6 +21218,35 @@
       // note exists — just like the DRC icon does, and like a "plan" task's
       // note button already does.
       const subtaskIsPlan = isPlanNoteFor(subtaskNotesForS[0], s);
+
+      // "brainstorm..." prefix behaves like the DRC special-name affordance:
+      // the icon exists before there is any content. Unlike DRC, Brainstorm
+      // is its own scratchpad type (host.brainstorm), not a rich note, so this
+      // icon opens the existing Brainstorm editor directly on this subtask.
+      const subtaskIsBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
+      let brainstormIcon = null;
+      if (subtaskIsBrainstorm) {
+        brainstormIcon = document.createElement("span");
+        brainstormIcon.className = "subtask-note-icon subtask-brainstorm-icon";
+        brainstormIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+        const pts = brainstormPoints(s);
+        brainstormIcon.title = pts
+          ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
+          : "Brainstorm — tap to start";
+        brainstormIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const target = tasksEditingTarget;
+          if (!target) return;
+          openBrainstormModal(
+            node.id,
+            target.r != null ? target.r : null,
+            target.c != null ? target.c : null,
+            t.id,
+            s.id
+          );
+        });
+      }
+
       let snote = null;
       if (subtaskNotesForS.length || subtaskIsDRC || subtaskIsPlan) {
         snote = document.createElement("span");
@@ -21218,6 +21260,7 @@
 
       // No inline menu/drag button on phone — hold the pill to open its menu.
       row.appendChild(stext);
+      if (brainstormIcon) row.appendChild(brainstormIcon);
       if (snote) row.appendChild(snote);
       list.appendChild(row);
     });
@@ -21900,7 +21943,7 @@
       calDayModalList.appendChild(buildCalDayTaskRow(t, node, r, c));
       const subProg = taskSubtaskProgress(t);
       const subExpanded = (subProg.total > 0 || subtaskAddOpenFor.has(t.id)) && !collapsedSubtaskIds.has(t.id);
-      if (subExpanded) calDayModalList.appendChild(renderCalDaySubtaskPanel(node, t));
+      if (subExpanded) calDayModalList.appendChild(renderCalDaySubtaskPanel(node, t, r, c));
     });
     calDayModalEmpty.classList.toggle("hidden", dayEntries.length > 0);
     calDaySortBtn.disabled = dayEntries.length < 2;
@@ -22147,7 +22190,7 @@
   // Builds the same expanded subtask checklist panel as the Tasks
   // modal (checkbox, drag handle, delete, add-subtask input), just
   // re-rendering into the day popup's own list instead.
-  function renderCalDaySubtaskPanel(node, t) {
+  function renderCalDaySubtaskPanel(node, t, r, c) {
     const wrap = document.createElement("li");
     wrap.className = "subtask-panel";
     // Same sync as renderSubtaskPanel: match the task row's own color
@@ -22280,9 +22323,29 @@
         openSubtaskContextMenu(x, y, t, s, () => { renderCalDayModal(); renderCalendar(); });
       });
 
+      // Brainstorm-prefixed subtasks get the same always-visible brain icon
+      // in Calendar's expanded task view. Existing Brainstorm content keeps
+      // the icon visible even if the subtask is later renamed.
+      const calSubtaskIsBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
+      let calBrainstormIcon = null;
+      if (calSubtaskIsBrainstorm) {
+        calBrainstormIcon = document.createElement("span");
+        calBrainstormIcon.className = "subtask-note-icon subtask-brainstorm-icon";
+        calBrainstormIcon.innerHTML = CELL_BRAINSTORM_ICON_SVG;
+        const pts = brainstormPoints(s);
+        calBrainstormIcon.title = pts
+          ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(s)} lines)`
+          : "Brainstorm — tap to start";
+        calBrainstormIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openBrainstormModal(node.id, r, c, t.id, s.id);
+        });
+      }
+
       // No inline ✗ button on subtask pills — "Mark failed" / "Clear failed"
       // lives only in the pill's right-click menu (openSubtaskContextMenu).
       row.appendChild(stext);
+      if (calBrainstormIcon) row.appendChild(calBrainstormIcon);
       list.appendChild(row);
     });
 
@@ -22828,8 +22891,41 @@
   const brainstormClearBtn = $("#brainstorm-clear-btn");
   const brainstormCard = $(".brainstorm-modal-card");
   const brainstormResizeHandle = $("#brainstorm-resize-handle");
-  let brainstormEditingId = null; // {nodeId, r, c} — r/c omitted for a node-level scratchpad, both given for a table-cell one
+  // Target can be a node, table cell, task, or subtask. taskId/subtaskId are
+  // optional, so all older node/cell callers keep working unchanged.
+  let brainstormEditingId = null; // {nodeId, r, c, taskId, subtaskId}
   let brainstormSaveTimer = null;
+
+  function resolveBrainstormTarget(target) {
+    if (!target) return null;
+    const base = resolveHost(target.nodeId, target.r, target.c);
+    if (!base) return null;
+    if (!target.taskId) return base;
+    const task = getNodeTasks(base).find(x => x.id === target.taskId);
+    if (!task) return null;
+    if (!target.subtaskId) return task;
+    return getTaskSubtasks(task).find(x => x.id === target.subtaskId) || null;
+  }
+
+  function brainstormTargetLabel(target) {
+    if (!target) return "";
+    const node = findNode(target.nodeId);
+    if (!node) return "";
+    const base = resolveHost(target.nodeId, target.r, target.c);
+    if (!base) return node.text || "(untitled)";
+    if (target.taskId) {
+      const task = getNodeTasks(base).find(x => x.id === target.taskId);
+      if (task && target.subtaskId) {
+        const sub = getTaskSubtasks(task).find(x => x.id === target.subtaskId);
+        if (sub) return sub.text || "(untitled subtask)";
+      }
+      if (task) return task.text || "(untitled task)";
+    }
+    if (target.r != null && node.table && node.table.cells[target.r]) {
+      return node.table.cells[target.r][target.c] || `Cell (row ${target.r + 1}, col ${target.c + 1})`;
+    }
+    return node.text || "(untitled)";
+  }
   let brainstormIsResizing = false;
 
   // Same custom drag-to-resize grip as the note editor (see
@@ -23060,12 +23156,19 @@
     return noteHtmlFromRaw(getBrainstormText(host));
   }
 
-  function openBrainstormModal(nodeId, r, c) {
-    const host = resolveHost(nodeId, r, c);
+  function openBrainstormModal(nodeId, r, c, taskId, subtaskId) {
+    const target = {
+      nodeId,
+      r: r == null ? null : r,
+      c: c == null ? null : c,
+      taskId: taskId || null,
+      subtaskId: subtaskId || null
+    };
+    const host = resolveBrainstormTarget(target);
     if (!host) return;
     commitEditIfActive();
     closeContextMenu();
-    brainstormEditingId = { nodeId, r, c };
+    brainstormEditingId = target;
     renderBrainstormModal();
     // Same width-reset-on-open behavior as the note editor (see
     // openNoteModal/noteCard.style.width above) — a previous manual
@@ -23089,11 +23192,9 @@
 
   function renderBrainstormModal() {
     const t = brainstormEditingId;
-    const host = t ? resolveHost(t.nodeId, t.r, t.c) : null;
+    const host = t ? resolveBrainstormTarget(t) : null;
     if (!host) { closeBrainstormModal(); return; }
-    const node = findNode(t.nodeId);
-    const cellText = (t.r != null && node && node.table && node.table.cells[t.r]) ? node.table.cells[t.r][t.c] : null;
-    brainstormNodeLabel.textContent = t.r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${t.r + 1}, col ${t.c + 1})`);
+    brainstormNodeLabel.textContent = brainstormTargetLabel(t);
     brainstormTextarea.innerHTML = getBrainstormHtml(host);
     brainstormSyncAllCheckedLines();
     brainstormSyncAllOrderedColors();
@@ -23116,7 +23217,7 @@
   function scheduleBrainstormAutosave() {
     const t = brainstormEditingId;
     if (!t) return;
-    const host = resolveHost(t.nodeId, t.r, t.c);
+    const host = resolveBrainstormTarget(t);
     if (!host) return;
     brainstormAutoColorLines();
     if (!host.brainstorm) host.brainstorm = { text: "", html: "" };
@@ -23141,19 +23242,30 @@
   // renderAll(), same idea as updateNodeTimerLiveUI above.
   function updateBrainstormLiveUI(target) {
     if (!target) return;
-    const host = resolveHost(target.nodeId, target.r, target.c);
+    const host = resolveBrainstormTarget(target);
     if (!host) return;
     const pts = brainstormPoints(host);
+    const lineCount = brainstormLineCount(host);
+
+    // Task/subtask Brainstorm is rendered inside the Tasks/Calendar modal,
+    // not as a marker on the canvas node itself.
+    if (target.subtaskId) {
+      document.querySelectorAll(
+        `.subtask-row[data-task-id="${target.taskId}"][data-subtask-id="${target.subtaskId}"] .subtask-brainstorm-icon`
+      ).forEach((badge) => {
+        badge.title = pts
+          ? `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${lineCount} lines)`
+          : "Brainstorm — tap to start";
+      });
+      return;
+    }
+
     const badge = target.r == null
       ? nodesLayer.querySelector(`.node[data-id="${target.nodeId}"] .node-brainstorm-marker`)
       : nodesLayer.querySelector(`.node[data-id="${target.nodeId}"] .node-table-cell[data-r="${target.r}"][data-c="${target.c}"] .node-table-cell-brainstorm`);
     if (badge) {
-      badge.title = `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${brainstormLineCount(host)} lines). Click to keep writing.`;
+      badge.title = `Brainstorm — ${pts} point${pts === 1 ? "" : "s"} (${lineCount} lines). Click to keep writing.`;
     } else if (pts > 0 && target.nodeId !== state.editingId) {
-      // The badge doesn't exist in the DOM yet (this is the first line
-      // that's earned a point) — a one-time full render creates it
-      // if it's actually visible right now, same fallback
-      // updateNodeTimerLiveUI uses above.
       renderAll();
     }
   }
@@ -23839,7 +23951,7 @@
   brainstormClearBtn.addEventListener("click", () => {
     const t = brainstormEditingId;
     if (!t) return;
-    const host = resolveHost(t.nodeId, t.r, t.c);
+    const host = resolveBrainstormTarget(t);
     if (!host || !getBrainstormText(host)) return;
     pushUndo();
     host.brainstorm = { text: "", html: "" };
