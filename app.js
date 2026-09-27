@@ -3205,6 +3205,7 @@
                     existing.root = merged.root;
                     existing.links = merged.links;
                     existing.title = merged.title;
+                    existing.editorPrefs = merged.editorPrefs;
                     existing.updatedAt = nextUpdatedAt(existing);
                     await DB.put(existing);
                     showToast("Combined your edits with changes from another device");
@@ -3303,6 +3304,7 @@
               existing.root = mergedContent.root;
               existing.links = mergedContent.links;
               existing.title = mergedContent.title;
+              existing.editorPrefs = mergedContent.editorPrefs;
               existing.updatedAt = nextUpdatedAt(existing);
             }
             await DB.put(existing);
@@ -3367,9 +3369,10 @@
       if (targets.length) this.setSyncProgress("Drive metadata check complete", targets.length, targets.length, 70);
       else this.setSyncProgress("Drive is already up to date", 0, 0, 70);
 
-      // Metadata sync is done. If its map is already open, fill missing
-      // photos in the background; other maps stay metadata-only until opened.
+      // Metadata sync is done. If its map is already open, apply synced
+      // editor preferences immediately, then hydrate photos in background.
       if (state.current) {
+        applyEditorFontPrefs(state.current);
         const knownOpen = this.fileIndex[state.current.id];
         if (knownOpen && knownOpen.format === "2") {
           this.hydratePhotosForMap(state.current).catch((e) => console.warn("Lazy Drive photo load failed", e));
@@ -3600,7 +3603,21 @@
     else if (local.title === base.title) title = remote.title;
     else if (remote.title === base.title) title = local.title;
     else throw MERGE_CONFLICT;
-    return { root: mergedRoot, links, title };
+
+    const basePrefs = readEditorFontPrefs(base);
+    const localPrefs = readEditorFontPrefs(local);
+    const remotePrefs = readEditorFontPrefs(remote);
+    const mergePref = (key) => {
+      if (localPrefs[key] === remotePrefs[key]) return localPrefs[key];
+      if (localPrefs[key] === basePrefs[key]) return remotePrefs[key];
+      if (remotePrefs[key] === basePrefs[key]) return localPrefs[key];
+      throw MERGE_CONFLICT;
+    };
+    const editorPrefs = {
+      noteFontSize: mergePref("noteFontSize"),
+      brainstormFontSize: mergePref("brainstormFontSize")
+    };
+    return { root: mergedRoot, links, title, editorPrefs };
   }
 
   // The last content both this device and Drive are known to have
@@ -3616,7 +3633,10 @@
   async function setSyncSnapshot(id, mapLike) {
     try {
       await DB.setHandle("syncSnapshot:" + id, {
-        root: mapLike.root, links: mapLike.links || [], title: mapLike.title || ""
+        root: mapLike.root,
+        links: mapLike.links || [],
+        title: mapLike.title || "",
+        editorPrefs: readEditorFontPrefs(mapLike)
       });
     } catch (e) { console.error("Couldn't save sync snapshot", e); }
   }
@@ -6558,6 +6578,7 @@
       links: [],   // cross-links: [{ id, a: nodeId, b: nodeId }] — connections that
                    // aren't part of the parent/child tree (e.g. "this idea relates to that one")
       view: { scale: 1, tx: 0, ty: 0 },
+      editorPrefs: { noteFontSize: 13, brainstormFontSize: 13 },
       theme: defaultTheme(),
       layout: "mindmap"   // "mindmap" | "righty" | "timeline" (legacy "logic" is migrated to "righty" by ensureLayout)
     };
@@ -7262,6 +7283,80 @@
     persistTimer = setTimeout(kickPersist, 500);
   }
 
+  /* v337: Note / DRC / Brainstorm font size belongs to the mindmap.
+     It is saved with the map JSON and therefore follows the map through
+     IndexedDB / folder backup / Google Drive instead of being device-local.
+     Note + DRC share one setting because they use the same editor. */
+  const NOTE_EDITOR_FONT_MIN = 10;
+  const NOTE_EDITOR_FONT_MAX = 30;
+  const NOTE_EDITOR_FONT_DEFAULT = 13;
+
+  function clampNoteEditorFontSize(value) {
+    const n = Number(value);
+    return Number.isFinite(n)
+      ? Math.max(NOTE_EDITOR_FONT_MIN, Math.min(NOTE_EDITOR_FONT_MAX, n))
+      : NOTE_EDITOR_FONT_DEFAULT;
+  }
+
+  function readEditorFontPrefs(map = state.current) {
+    const p = map && map.editorPrefs && typeof map.editorPrefs === "object"
+      ? map.editorPrefs
+      : null;
+    return {
+      noteFontSize: clampNoteEditorFontSize(p && p.noteFontSize),
+      brainstormFontSize: clampNoteEditorFontSize(p && p.brainstormFontSize)
+    };
+  }
+
+  function updateEditorFontButtons(kind, px) {
+    const isBrainstorm = kind === "brainstorm";
+    const smaller = document.getElementById(isBrainstorm ? "brainstorm-font-minus" : "note-font-minus");
+    const bigger = document.getElementById(isBrainstorm ? "brainstorm-font-plus" : "note-font-plus");
+    if (smaller) {
+      smaller.disabled = px <= NOTE_EDITOR_FONT_MIN;
+      smaller.title = `Smaller text (current ${px}px)`;
+    }
+    if (bigger) {
+      bigger.disabled = px >= NOTE_EDITOR_FONT_MAX;
+      bigger.title = `Bigger text (current ${px}px)`;
+    }
+  }
+
+  function applyEditorFontPrefs(map = state.current) {
+    const prefs = readEditorFontPrefs(map);
+    const noteEditor = document.getElementById("note-textarea");
+    const brainstormEditor = document.getElementById("brainstorm-textarea");
+    if (noteEditor) noteEditor.style.fontSize = prefs.noteFontSize + "px";
+    if (brainstormEditor) brainstormEditor.style.fontSize = prefs.brainstormFontSize + "px";
+    updateEditorFontButtons("note", prefs.noteFontSize);
+    updateEditorFontButtons("brainstorm", prefs.brainstormFontSize);
+  }
+
+  function changeEditorFontPref(kind, delta) {
+    const map = state.current;
+    if (!map) return;
+    const key = kind === "brainstorm" ? "brainstormFontSize" : "noteFontSize";
+    const current = readEditorFontPrefs(map)[key];
+    const next = clampNoteEditorFontSize(current + delta);
+    if (next === current) return;
+    if (!map.editorPrefs || typeof map.editorPrefs !== "object") map.editorPrefs = {};
+    map.editorPrefs[key] = next;
+    applyEditorFontPrefs(map);
+    persist();
+  }
+
+  [
+    ["note-font-minus", "note", -1],
+    ["note-font-plus", "note", 1],
+    ["brainstorm-font-minus", "brainstorm", -1],
+    ["brainstorm-font-plus", "brainstorm", 1]
+  ].forEach(([id, kind, delta]) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+    btn.addEventListener("click", () => changeEditorFontPref(kind, delta));
+  });
+
   // Forces a pending save through right away instead of waiting out the
   // rest of the 500ms debounce — used when the tab is about to be
   // backgrounded or closed (see the visibilitychange/pagehide listeners
@@ -7551,6 +7646,7 @@
     document.getElementById("app").classList.toggle("hide-clock-widgets", isClockHidden());
     ensureSidesRepaired(state.current);
     ensureAffirmationMigrated(state.current);
+    applyEditorFontPrefs(state.current);
     if (!state.current._photosMigrated) await ensurePhotosMigrated(state.current);
     await loadPhotoCacheForMap(state.current.id);
     state.selectedId = null;
@@ -16573,56 +16669,6 @@
   const noteModal = $("#note-modal");
   const noteTextarea = $("#note-textarea");
 
-  // Phone-only display zoom for Note/DRC/Brainstorm text. This never writes
-  // font-size markup into the note itself: it only changes the editor element,
-  // so saved HTML, Drive sync and rich-text formatting stay untouched.
-  const EDITOR_FONT_MIN = 10;
-  const EDITOR_FONT_MAX = 22;
-  const EDITOR_FONT_DEFAULT = 13;
-  const NOTE_EDITOR_FONT_KEY = "branchline_note_editor_font_px_v1";
-  const BRAINSTORM_EDITOR_FONT_KEY = "branchline_brainstorm_editor_font_px_v1";
-
-  function storedEditorFontPx(key) {
-    try {
-      const n = parseInt(localStorage.getItem(key), 10);
-      if (Number.isFinite(n)) return clamp(n, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
-    } catch (e) {}
-    return EDITOR_FONT_DEFAULT;
-  }
-
-  function applyEditorFontPx(editor, px) {
-    if (!editor) return;
-    editor.style.fontSize = clamp(px, EDITOR_FONT_MIN, EDITOR_FONT_MAX) + "px";
-  }
-
-  function setupPhoneEditorFontControls(editor, key, smallerId, biggerId) {
-    const smaller = $(smallerId);
-    const bigger = $(biggerId);
-    if (!editor || !smaller || !bigger) return;
-    let px = storedEditorFontPx(key);
-
-    const refresh = () => {
-      applyEditorFontPx(editor, px);
-      smaller.disabled = px <= EDITOR_FONT_MIN;
-      bigger.disabled = px >= EDITOR_FONT_MAX;
-      smaller.title = `Smaller text (current ${px}px)`;
-      bigger.title = `Bigger text (current ${px}px)`;
-    };
-    const change = (delta) => {
-      px = clamp(px + delta, EDITOR_FONT_MIN, EDITOR_FONT_MAX);
-      try { localStorage.setItem(key, String(px)); } catch (e) {}
-      refresh();
-    };
-
-    // Keep the caret/selection in the contenteditable when tapping the tool.
-    smaller.addEventListener("mousedown", (e) => e.preventDefault());
-    bigger.addEventListener("mousedown", (e) => e.preventDefault());
-    smaller.addEventListener("click", () => change(-1));
-    bigger.addEventListener("click", () => change(1));
-    refresh();
-  }
-
-  setupPhoneEditorFontControls(noteTextarea, NOTE_EDITOR_FONT_KEY, "#note-font-smaller", "#note-font-bigger");
   const noteTitleInput = $("#note-title-input");
   const noteCard = $(".note-modal-card");
   const noteResizeHandle = $("#note-resize-handle");
@@ -22938,12 +22984,6 @@
   const brainstormModal = $("#brainstorm-modal");
   const brainstormNodeLabel = $("#brainstorm-node-label");
   const brainstormTextarea = $("#brainstorm-textarea");
-  setupPhoneEditorFontControls(
-    brainstormTextarea,
-    BRAINSTORM_EDITOR_FONT_KEY,
-    "#brainstorm-font-smaller",
-    "#brainstorm-font-bigger"
-  );
   const brainstormProgressLabel = $("#brainstorm-progress-label");
   const brainstormClearBtn = $("#brainstorm-clear-btn");
   const brainstormCard = $(".brainstorm-modal-card");
