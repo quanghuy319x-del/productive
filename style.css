@@ -6267,3 +6267,19 @@ kbd{
     flex:0 0 20px!important;
   }
 }
+
+
+/* v320 — phone-only display-size controls for Note/DRC/Brainstorm.
+   They change only the editor's view font-size; saved note HTML is untouched. */
+.phone-editor-font-btn{
+  display:none;
+}
+@media (max-width: 640px){
+  .phone-editor-font-btn{
+    display:flex;
+    width:38px;
+    min-width:38px;
+    font-size:13px;
+    font-weight:800;
+  }
+}
