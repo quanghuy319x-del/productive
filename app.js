@@ -17201,6 +17201,36 @@
 
     const wrap = document.createElement("li");
     wrap.className = "subtask-panel shared-queue-subtask-panel";
+    wrap.dataset.taskId = SHARED_QUEUE_TASK_ID;
+
+    const setQueueDropHighlight = (on) => {
+      wrap.classList.toggle("subtask-drop-target", !!on);
+      taskRow.classList.toggle("subtask-drop-target", !!on);
+    };
+    wrap.addEventListener("dragover", (e) => {
+      if (!subtaskDragState || subtaskDragState.taskId === SHARED_QUEUE_TASK_ID) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      setQueueDropHighlight(true);
+    });
+    wrap.addEventListener("dragleave", (e) => {
+      if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+      setQueueDropHighlight(false);
+    });
+    wrap.addEventListener("drop", (e) => {
+      if (!subtaskDragState || subtaskDragState.taskId === SHARED_QUEUE_TASK_ID) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setQueueDropHighlight(false);
+      moveSubtask(
+        subtaskDragState.taskId,
+        subtaskDragState.subtaskId,
+        SHARED_QUEUE_TASK_ID,
+        null,
+        false
+      );
+    });
 
     const list = document.createElement("ul");
     list.className = "subtask-list";
@@ -17226,7 +17256,8 @@
       row.addEventListener("dragend", () => endSubtaskDrag(row));
       row.addEventListener("dragover", (e) => {
         if (!subtaskDragState) return;
-        if (subtaskDragState.taskId === SHARED_QUEUE_TASK_ID && subtaskDragState.subtaskId === s.id) return;
+        if (subtaskDragState.taskId !== SHARED_QUEUE_TASK_ID) return; // whole Queue card handles cross-task moves
+        if (subtaskDragState.subtaskId === s.id) return;
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
@@ -17241,7 +17272,8 @@
       });
       row.addEventListener("drop", (e) => {
         if (!subtaskDragState) return;
-        if (subtaskDragState.taskId === SHARED_QUEUE_TASK_ID && subtaskDragState.subtaskId === s.id) return;
+        if (subtaskDragState.taskId !== SHARED_QUEUE_TASK_ID) return; // whole Queue card handles it
+        if (subtaskDragState.subtaskId === s.id) return;
         e.preventDefault();
         e.stopPropagation();
         const rect = row.getBoundingClientRect();
@@ -20063,7 +20095,8 @@
     row.classList.remove("task-dragging");
     subtaskDragState = null;
     tasksListEl.querySelectorAll(".subtask-row").forEach(r => r.classList.remove("drag-over-top", "drag-over-bottom"));
-    tasksListEl.querySelectorAll(".task-row.subtask-drop-target").forEach(r => r.classList.remove("subtask-drop-target"));
+    tasksListEl.querySelectorAll(".task-row.subtask-drop-target, .subtask-panel.subtask-drop-target")
+      .forEach(r => r.classList.remove("subtask-drop-target"));
   }
 
   // Moves a subtask to a new spot — anywhere in its own task's list, or
@@ -20728,10 +20761,45 @@
   function renderSubtaskPanel(node, t) {
     const wrap = document.createElement("li");
     wrap.className = "subtask-panel";
+    wrap.dataset.taskId = t.id;
     // Keep the panel's fill in sync with its task row's own color tint
     // (rather than the flat --panel-2 default), so a colored task and
     // its open subtask list read as one continuous, matching card.
     wrap.style.background = taskColorTint(getTaskColor(t)) || "";
+
+    // The task header row and this panel are visually one card, but they
+    // are sibling <li>s in the DOM. Make the ENTIRE panel a target when
+    // moving a subtask from another task, including empty space around/
+    // between its existing subtask pills.
+    const setWholeTaskDropHighlight = (on) => {
+      wrap.classList.toggle("subtask-drop-target", !!on);
+      const taskRow = tasksListEl.querySelector(`.task-row[data-task-id="${t.id}"]`);
+      if (taskRow) taskRow.classList.toggle("subtask-drop-target", !!on);
+    };
+    wrap.addEventListener("dragover", (e) => {
+      if (!subtaskDragState || subtaskDragState.taskId === t.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      setWholeTaskDropHighlight(true);
+    });
+    wrap.addEventListener("dragleave", (e) => {
+      if (e.relatedTarget && wrap.contains(e.relatedTarget)) return;
+      setWholeTaskDropHighlight(false);
+    });
+    wrap.addEventListener("drop", (e) => {
+      if (!subtaskDragState || subtaskDragState.taskId === t.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setWholeTaskDropHighlight(false);
+      moveSubtask(
+        subtaskDragState.taskId,
+        subtaskDragState.subtaskId,
+        t.id,
+        null,
+        false
+      );
+    });
 
     const list = document.createElement("ul");
     list.className = "subtask-list";
@@ -20744,9 +20812,17 @@
 
       row.addEventListener("dragover", (e) => {
         if (!subtaskDragState) return;
-        if (subtaskDragState.taskId === t.id && subtaskDragState.subtaskId === s.id) return;
+
+        // Crossing into ANOTHER task: don't make the user aim at this
+        // individual pill. Let the event bubble to the parent subtask-panel,
+        // whose full rectangle represents the target task card.
+        if (subtaskDragState.taskId !== t.id) return;
+
+        // Within the SAME task, individual pills still provide precise
+        // left/right reordering exactly as before.
+        if (subtaskDragState.subtaskId === s.id) return;
         e.preventDefault();
-        e.stopPropagation(); // don't also trigger this task's row-level drop target below it
+        e.stopPropagation();
         e.dataTransfer.dropEffect = "move";
         const rect = row.getBoundingClientRect();
         const before = (e.clientX - rect.left) < rect.width / 2;
@@ -20759,7 +20835,8 @@
       });
       row.addEventListener("drop", (e) => {
         if (!subtaskDragState) return;
-        if (subtaskDragState.taskId === t.id && subtaskDragState.subtaskId === s.id) return;
+        if (subtaskDragState.taskId !== t.id) return; // whole task card handles it
+        if (subtaskDragState.subtaskId === s.id) return;
         e.preventDefault();
         e.stopPropagation();
         const rect = row.getBoundingClientRect();
