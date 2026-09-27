@@ -6416,3 +6416,63 @@ kbd{
   box-shadow:none!important;
   transform:none!important;
 }
+
+
+/* v364 — user's visual classification.
+   Only T., B, AA, Strike, 1., Checklist and Auto-color have a persistent
+   selected/pressed appearance. Every other Note toolbar button shares one
+   neutral style; this is visual-only and does not change any command. */
+#note-tool-tab,
+#note-tool-divider,
+#note-tool-shift-enter,
+#note-tool-shift-divider,
+#note-tool-image,
+#note-tool-emoji,
+#note-tool-color,
+#note-tool-symbol{
+  color:var(--paper-text)!important;
+  background:#fff!important;
+  border:1px solid var(--paper-border)!important;
+  box-shadow:none!important;
+  transform:none!important;
+  filter:none!important;
+}
+#note-tool-tab:hover,
+#note-tool-divider:hover,
+#note-tool-shift-enter:hover,
+#note-tool-shift-divider:hover,
+#note-tool-image:hover,
+#note-tool-emoji:hover,
+#note-tool-color:hover,
+#note-tool-symbol:hover{
+  color:var(--paper-text)!important;
+  background:#f2f0e6!important;
+  border-color:var(--paper-text-dim)!important;
+}
+#note-tool-tab:active,
+#note-tool-divider:active,
+#note-tool-shift-enter:active,
+#note-tool-shift-divider:active,
+#note-tool-image:active,
+#note-tool-emoji:active,
+#note-tool-color:active,
+#note-tool-symbol:active{
+  color:var(--paper-text)!important;
+  background:#ece9dd!important;
+  border-color:#bdb8a7!important;
+  box-shadow:inset 0 2px 3px rgba(0,0,0,.14)!important;
+  transform:translateY(1px) scale(.96)!important;
+}
+/* These are the controls the user marked as stateful in v364. */
+#note-tool-title-mode.active,
+#note-tool-bold.active,
+#note-tool-upper.active,
+#note-tool-strike.active,
+#note-tool-ol.active,
+#note-tool-check.active,
+#note-tool-autocolor.active{
+  border-color:#3b6ef0!important;
+  background:#eaf0ff!important;
+  color:#3b6ef0!important;
+  box-shadow:inset 0 2px 3px rgba(59,110,240,.28)!important;
+}
