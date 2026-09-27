@@ -6283,3 +6283,42 @@ kbd{
     font-weight:800;
   }
 }
+
+
+/* v321 — phone Note/DRC/Brainstorm toolbar: never grow beyond two rows.
+   Keep every tool visible by compacting controls instead of hiding features. */
+@media (max-width:640px){
+  #note-modal .note-toolbar,
+  #brainstorm-modal .note-toolbar{
+    gap:2px!important;
+    margin-top:4px!important;
+    max-height:46px!important;
+    overflow:hidden!important;
+    align-content:flex-start!important;
+    justify-content:center!important;
+  }
+  #note-modal .note-tool-btn,
+  #brainstorm-modal .note-tool-btn{
+    width:20px!important;
+    min-width:20px!important;
+    height:20px!important;
+    min-height:20px!important;
+    padding:0!important;
+    font-size:9.5px!important;
+    border-radius:4px!important;
+    flex:0 0 20px!important;
+  }
+  #note-modal .phone-editor-font-btn,
+  #brainstorm-modal .phone-editor-font-btn{
+    width:25px!important;
+    min-width:25px!important;
+    flex-basis:25px!important;
+    font-size:10px!important;
+  }
+  #note-modal .note-tool-sep,
+  #brainstorm-modal .note-tool-sep{
+    width:1px!important;
+    margin:0 1px!important;
+    flex:0 0 1px!important;
+  }
+}
