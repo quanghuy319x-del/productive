@@ -6326,3 +6326,40 @@ kbd{
     flex:0 0 1px!important;
   }
 }
+
+
+/* v326 — phone Note/DRC/Brainstorm tools: exactly two comfortable rows.
+   Override the old v321 micro-buttons; no tools are hidden. */
+@media (max-width:640px){
+  #note-modal .note-toolbar,
+  #brainstorm-modal .note-toolbar{
+    display:grid!important;
+    grid-template-columns:repeat(10, minmax(0, 1fr))!important;
+    grid-auto-rows:34px!important;
+    gap:4px!important;
+    width:100%!important;
+    max-height:72px!important;
+    overflow:hidden!important;
+    margin-top:6px!important;
+    padding:0 2px!important;
+    box-sizing:border-box!important;
+    align-items:center!important;
+  }
+  #note-modal .note-tool-btn,
+  #brainstorm-modal .note-tool-btn,
+  #note-modal .phone-editor-font-btn,
+  #brainstorm-modal .phone-editor-font-btn{
+    width:100%!important;
+    min-width:0!important;
+    height:34px!important;
+    min-height:34px!important;
+    padding:0 2px!important;
+    font-size:12px!important;
+    border-radius:6px!important;
+    flex:none!important;
+  }
+  #note-modal .note-tool-sep,
+  #brainstorm-modal .note-tool-sep{
+    display:none!important;
+  }
+}
