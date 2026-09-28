@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=375">
+<link rel="stylesheet" href="style.css?v=376">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "375";
+  const APP_VERSION = "376";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "375"') && !document.documentElement.dataset.v375Reloaded) {
+      if (fresh.includes('const APP_VERSION = "376"') && !document.documentElement.dataset.v376Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v375Reloaded = "1";
+          document.documentElement.dataset.v376Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,9 +890,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=375"></script>
-<script src="phase2-layout.js?v=375"></script>
-<script src="app.js?v=375"></script>
+<script src="phase1-editors.js?v=376"></script>
+<script src="phase2-layout.js?v=376"></script>
+<script src="app.js?v=376"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -950,58 +950,8 @@ if ("serviceWorker" in navigator) {
   document.getElementById("note-tool-shift-divider")?.addEventListener("click", () => insertShiftDivider(document.getElementById("note-textarea")));
   document.getElementById("brainstorm-tool-shift-divider")?.addEventListener("click", () => insertShiftDivider(document.getElementById("brainstorm-textarea")));
 
-  // BB — ported from Review Trade: uppercase the current selection, then
-  // guarantee Bold without toggling already-bold text back off.
-  function uppercaseSelectionForBB(editor) {
-    if (!editor) return;
-    editor.focus();
-    const selection = window.getSelection();
-    if (!selection || !selection.rangeCount || selection.isCollapsed) return;
-    const range = selection.getRangeAt(0);
-    if (!editor.contains(range.commonAncestorContainer)) return;
-
-    const fragment = range.extractContents();
-    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
-    const textNodes = [];
-    while (walker.nextNode()) textNodes.push(walker.currentNode);
-    textNodes.forEach((node) => { node.data = node.data.toUpperCase(); });
-
-    const wrap = document.createElement("span");
-    wrap.appendChild(fragment);
-    range.insertNode(wrap);
-    const selected = document.createRange();
-    selected.selectNodeContents(wrap);
-    selection.removeAllRanges();
-    selection.addRange(selected);
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
-  }
-
-  function boldUpperSelection(editor) {
-    if (!editor) return;
-    uppercaseSelectionForBB(editor);
-    const selection = window.getSelection();
-    if (!selection || !selection.rangeCount || selection.isCollapsed ||
-        !editor.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
-
-    editor.focus();
-    try {
-      if (!document.queryCommandState("bold")) document.execCommand("bold", false, null);
-    } catch (e) {
-      try { document.execCommand("bold", false, null); } catch (_) {}
-    }
-    editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
-  }
-
-  function bindBoldUpper(buttonId, editorId) {
-    const button = document.getElementById(buttonId);
-    const editor = document.getElementById(editorId);
-    if (!button || !editor) return;
-    button.addEventListener("pointerdown", (e) => e.preventDefault());
-    button.addEventListener("click", () => boldUpperSelection(editor));
-  }
-  bindBoldUpper("note-tool-bold-upper", "note-textarea");
-  bindBoldUpper("brainstorm-tool-bold-upper", "brainstorm-textarea");
-
+  // BB is wired in app.js beside AA/B so it shares the same selection,
+  // caret typing-mode and pressed-state behavior as those controls.
   function setupTitleMode(buttonId, editorId) {
     const button = document.getElementById(buttonId);
     const editor = document.getElementById(editorId);
