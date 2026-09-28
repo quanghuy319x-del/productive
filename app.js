@@ -3268,8 +3268,12 @@
                     await DB.put(existing);
                     showToast("Combined your edits with changes from another device");
                   } else {
-                    const portableOther = await this.portableRemoteCopy(f, other);
-                    await saveConflictCopy(portableOther, "other device");
+                    if (this.driveFormatFor(f) === "2") {
+                      await saveConflictCopy(other, "other device", { sharedPhotoSourceMapId: id });
+                    } else {
+                      const portableOther = await this.portableRemoteCopy(f, other);
+                      await saveConflictCopy(portableOther, "other device");
+                    }
                   }
                 }
                 setSyncBase(id, remoteUpdatedAt);
@@ -3306,8 +3310,7 @@
               if (mergedContent) {
                 showToast("Combined your edits with changes from another device");
               } else {
-                const localPortable = await inlinePhotosForPortableCopy(existing);
-                await saveConflictCopy(localPortable, "unsynced copy");
+                await saveConflictCopy(existing, "unsynced copy", { sharedPhotoSourceMapId: existing.id });
               }
             }
           }
@@ -3483,20 +3486,31 @@
     catch (e) { return false; }
   }
 
-  // Keeps a losing version instead of throwing it away: stores it as its
-  // own map in the sidebar ("… (unsynced copy 9/20 14:05)"). `portable`
-  // must be a self-contained map (photos inline, e.g. straight from Drive
-  // or from inlinePhotosForPortableCopy).
-  async function saveConflictCopy(portable, label) {
+  // Keeps a losing version instead of throwing it away. For v2 maps we keep
+  // the same stable photo ids and point the recovery copy at the original
+  // map's photo store/folder, so a 60 MB map does NOT become another 60 MB
+  // just because conflict protection created a backup. Legacy inline-photo
+  // maps still fall back to the old self-contained migration.
+  async function saveConflictCopy(sourceMap, label, opts) {
     try {
-      const copy = JSON.parse(JSON.stringify(portable));
+      const options = opts || {};
+      const copy = JSON.parse(JSON.stringify(sourceMap));
+      const sourceId = options.sharedPhotoSourceMapId || null;
       const t = new Date();
       const pad = (n) => String(n).padStart(2, "0");
       copy.id = uid();
       copy.title = `${copy.title || "Untitled map"} (${label} ${t.getMonth() + 1}/${t.getDate()} ${pad(t.getHours())}:${pad(t.getMinutes())})`;
       copy.updatedAt = Date.now();
       copy.trashedAt = null;
-      await ensurePhotosMigrated(copy);
+
+      if (sourceId && sourceId !== copy.id) {
+        copy._sharedPhotoSourceMapId = sourceId;
+        copy._photoSharingV1 = true;
+        copy._photosMigrated = true;
+      } else {
+        await ensurePhotosMigrated(copy);
+      }
+
       await DB.put(copy);
       state.maps.push(copy);
       showToast(`Kept a copy of the version that would have been overwritten: "${copy.title}"`);
@@ -4343,8 +4357,12 @@
           try {
             const other = await DriveDB.downloadFile(before.id);
             if (other && other.root) {
-              const portableOther = await DriveDB.portableRemoteCopy(before, other);
-              kept = await saveConflictCopy(portableOther, "other device");
+              if (DriveDB.driveFormatFor(before) === "2") {
+                kept = await saveConflictCopy(other, "other device", { sharedPhotoSourceMapId: map.id });
+              } else {
+                const portableOther = await DriveDB.portableRemoteCopy(before, other);
+                kept = await saveConflictCopy(portableOther, "other device");
+              }
             }
           } catch (e) { console.error("Couldn't fetch Drive's newer copy", e); }
           if (!kept) { showToast("Couldn't back up Drive's newer copy first \u2014 nothing was uploaded"); return; }
