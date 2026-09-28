@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=373">
+<link rel="stylesheet" href="style.css?v=374">
 </head>
 <body>
 <div id="app">
@@ -589,6 +589,7 @@
       <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="note-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="note-tool-divider" class="note-tool-btn" title="Insert -----">------</button>
+      <button type="button" id="note-tool-arrow" class="note-tool-btn" title="Insert → with spaces">→</button>
       <button type="button" id="note-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
       <button type="button" id="note-tool-shift-divider" class="note-tool-btn" title="Shift+Enter + ------">↵ ------</button>
       <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color while 🎨 is on">1.</button>
@@ -789,6 +790,7 @@
       <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="brainstorm-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
       <button type="button" id="brainstorm-tool-divider" class="note-tool-btn" title="Insert -----">------</button>
+      <button type="button" id="brainstorm-tool-arrow" class="note-tool-btn" title="Insert → with spaces">→</button>
       <button type="button" id="brainstorm-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
       <button type="button" id="brainstorm-tool-shift-divider" class="note-tool-btn" title="Shift+Enter + ------">↵ ------</button>
       <button type="button" id="brainstorm-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color">1.</button>
@@ -886,9 +888,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=373"></script>
-<script src="phase2-layout.js?v=373"></script>
-<script src="app.js?v=373"></script>
+<script src="phase1-editors.js?v=374"></script>
+<script src="phase2-layout.js?v=374"></script>
+<script src="app.js?v=374"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -927,6 +929,8 @@ if ("serviceWorker" in navigator) {
   document.getElementById("brainstorm-tool-tab")?.addEventListener("click", () => insertTab(document.getElementById("brainstorm-textarea")));
   document.getElementById("note-tool-divider")?.addEventListener("click", () => insertText(document.getElementById("note-textarea"), " ------ "));
   document.getElementById("brainstorm-tool-divider")?.addEventListener("click", () => insertText(document.getElementById("brainstorm-textarea"), " ------ "));
+  document.getElementById("note-tool-arrow")?.addEventListener("click", () => insertText(document.getElementById("note-textarea"), " → "));
+  document.getElementById("brainstorm-tool-arrow")?.addEventListener("click", () => insertText(document.getElementById("brainstorm-textarea"), " → "));
   function shiftEnter(editor) {
     if (!editor) return;
     editor.focus();
