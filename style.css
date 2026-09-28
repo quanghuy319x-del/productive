@@ -6658,3 +6658,10 @@ kbd{
     font-size:11px!important;
   }
 }
+
+
+/* v374 — Queue Tasks: completed queue pills recede more strongly than
+   ordinary completed subtasks, while remaining readable/clickable. */
+#tasks-modal .shared-queue-subtask-panel .subtask-row.done{
+  opacity:.32!important;
+}
