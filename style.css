@@ -6665,3 +6665,19 @@ kbd{
 #tasks-modal .shared-queue-subtask-panel .subtask-row.done{
   opacity:.32!important;
 }
+
+
+/* v380 — phone editor Tab: preserve the leading "T" while fitting narrow
+   toolbar cells. Use a tighter label instead of clipping its left edge. */
+@media (max-width:640px){
+  #note-tool-tab,
+  #brainstorm-tool-tab,
+  #drc-tool-tab{
+    font-size:10px!important;
+    letter-spacing:-.45px!important;
+    padding:0!important;
+    text-indent:0!important;
+    overflow:hidden!important;
+    direction:ltr!important;
+  }
+}
