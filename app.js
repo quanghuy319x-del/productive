@@ -17548,11 +17548,19 @@
   // Note, DRC and Brainstorm use this exact same path; no type-specific default.
   function setNoteAutoColorEnabled(enabled) {
     noteAutoColorEnabled = enabled;
-    const btn = $("#note-tool-autocolor");
-    if (!btn) return;
-    btn.classList.toggle("active", enabled);
-    btn.setAttribute("aria-pressed", String(enabled));
-    btn.title = "Auto alternate line colors: " + (enabled ? "on" : "off");
+    const autoChoice = $("#note-color-auto");
+    if (autoChoice) {
+      autoChoice.classList.toggle("active", enabled);
+      autoChoice.setAttribute("aria-pressed", String(enabled));
+    }
+    const trigger = $("#note-tool-color");
+    const label = $("#note-color-trigger-label");
+    const swatch = $("#note-color-trigger-swatch");
+    if (enabled) {
+      if (trigger) { trigger.classList.add("active"); trigger.title = "Color: Auto"; trigger.setAttribute("aria-label", "Color: Auto"); }
+      if (label) label.textContent = "🎨";
+      if (swatch) { swatch.style.background = ""; swatch.classList.add("note-color-trigger-swatch-auto"); }
+    }
   }
   function noteAutoColorParagraphs(container = noteTextarea) {
     if (!noteAutoColorEnabled) return;
@@ -18441,62 +18449,54 @@
     e.preventDefault();
     noteApplyUppercase();
   });
+  const noteColorTriggerBtn = $("#note-tool-color");
+  const noteColorPopover = $("#note-color-popover");
+  const noteAutoColorChoice = $("#note-color-auto");
+
+  function setNoteManualColorSelection(color) {
+    setNoteAutoColorEnabled(false);
+    noteColorPopover.querySelectorAll(".note-color-swatch").forEach((b) => b.classList.toggle("active", b.dataset.color === color));
+    if (noteAutoColorChoice) noteAutoColorChoice.classList.remove("active");
+    setNoteColorTrigger(color);
+  }
+
   document.querySelectorAll(".note-color-swatch").forEach(btn => {
     btn.addEventListener("mousedown", (e) => {
-      e.preventDefault(); // keep focus (and the note's text selection) off this button
+      e.preventDefault();
       noteApplyForeColor(btn.dataset.color);
-      setNoteColorTrigger(btn.dataset.color);
+      setNoteManualColorSelection(btn.dataset.color);
     });
-    // Close the popover on "click" rather than inside the mousedown handler
-    // above. Hiding it mid-mousedown used to remove it from the hit tree
-    // before mouseup/click fired, so the browser re-targeted that click
-    // onto whatever sat underneath — the note-modal backdrop, since the
-    // popover intentionally renders outside the card (see the
-    // .note-color-popover CSS comment) so it isn't clipped — which closed
-    // the whole note editor. Waiting for "click" lets the swatch stay put
-    // through the full mousedown→mouseup→click sequence, so the click
-    // always resolves on the swatch itself and never leaks to the modal.
     btn.addEventListener("click", () => { closeNoteColorPopover(); });
   });
   $("#note-color-custom").addEventListener("input", (e) => {
     noteApplyForeColor(e.target.value);
-    setNoteColorTrigger(e.target.value);
+    setNoteManualColorSelection(e.target.value);
   });
   $("#note-color-custom").addEventListener("mousedown", (e) => e.stopPropagation());
 
-  // Single trigger button that opens/closes the color popover, instead of
-  // 6 separate swatch buttons always taking up space in the toolbar.
-  const noteAutoColorBtn = $("#note-tool-autocolor");
-  noteAutoColorBtn.addEventListener("mousedown", (e) => {
+  noteAutoColorChoice?.addEventListener("mousedown", (e) => {
     e.preventDefault();
-    setNoteAutoColorEnabled(!noteAutoColorEnabled);
-    // v368: no DRC/Brainstorm branch and no forced gray typing.
-    // ON applies the same shared Note auto-color engine; OFF simply stops it.
-    if (noteAutoColorEnabled) {
-      notePushUndo();
-      noteSyncAllOrderedColors();
-      noteAutoColorParagraphs();
-      scheduleNoteAutosave();
-    }
+    e.stopPropagation();
+    setNoteAutoColorEnabled(true);
+    noteColorPopover.querySelectorAll(".note-color-swatch").forEach((b) => b.classList.remove("active"));
+    notePushUndo();
+    noteSyncAllOrderedColors();
+    noteAutoColorParagraphs();
+    scheduleNoteAutosave();
   });
-  const noteColorTriggerBtn = $("#note-tool-color");
-  const noteColorPopover = $("#note-color-popover");
+  noteAutoColorChoice?.addEventListener("click", () => closeNoteColorPopover());
+
   noteColorTriggerBtn.addEventListener("mousedown", (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (!noteEmojiPopover.classList.contains("hidden")) closeNoteEmojiPopover();
-    if (noteColorPopover.classList.contains("hidden")) {
-      openNoteColorPopover();
-    } else {
-      closeNoteColorPopover();
-    }
+    if (noteColorPopover.classList.contains("hidden")) openNoteColorPopover();
+    else closeNoteColorPopover();
   });
   noteColorPopover.addEventListener("mousedown", (e) => e.stopPropagation());
   document.addEventListener("mousedown", (e) => {
     if (!noteColorPopover.classList.contains("hidden") &&
-        !noteColorPopover.contains(e.target) && e.target !== noteColorTriggerBtn) {
-      closeNoteColorPopover();
-    }
+        !noteColorPopover.contains(e.target) && e.target !== noteColorTriggerBtn) closeNoteColorPopover();
   });
   window.addEventListener("resize", () => {
     if (!noteColorPopover.classList.contains("hidden")) positionNoteColorPopover();
@@ -18506,9 +18506,6 @@
     positionNoteColorPopover();
   }
   function closeNoteColorPopover(){ noteColorPopover.classList.add("hidden"); }
-  // Places the popover using fixed viewport coordinates (rather than CSS
-  // relative-to-button positioning) and clamps it so it always stays fully
-  // on-screen, whichever edge of the note modal the trigger button is near.
   function positionNoteColorPopover(){
     const margin = 8;
     const btnRect = noteColorTriggerBtn.getBoundingClientRect();
@@ -18516,13 +18513,18 @@
     let left = btnRect.left + btnRect.width / 2 - popRect.width / 2;
     left = Math.max(margin, Math.min(left, window.innerWidth - popRect.width - margin));
     let top = btnRect.bottom + 6;
-    if (top + popRect.height > window.innerHeight - margin) {
-      top = btnRect.top - popRect.height - 6; // not enough room below: flip above
-    }
+    if (top + popRect.height > window.innerHeight - margin) top = btnRect.top - popRect.height - 6;
     noteColorPopover.style.left = `${left}px`;
     noteColorPopover.style.top = `${top}px`;
   }
-  function setNoteColorTrigger(color){ $("#note-color-trigger-swatch").style.background = color; }
+  function setNoteColorTrigger(color){
+    const trigger = $("#note-tool-color");
+    const label = $("#note-color-trigger-label");
+    const swatch = $("#note-color-trigger-swatch");
+    if (trigger) { trigger.classList.remove("active"); trigger.title = "Text color"; trigger.setAttribute("aria-label", "Text color"); }
+    if (label) label.textContent = "A";
+    if (swatch) { swatch.classList.remove("note-color-trigger-swatch-auto"); swatch.style.background = color; }
+  }
 
   // ---- Symbol button — used to open a popover of choices, but now only
   // one symbol (➡️) remains, so clicking the button inserts it directly
