@@ -3678,6 +3678,200 @@
     return { convertedMaps, freedBytes };
   }
 
+  // Old builds made conflict/recovery copies self-contained, which meant
+  // every photo was duplicated under a new map id. Migrate those copies
+  // conservatively: only when the title identifies a conflict copy and at
+  // least 80% of its stored photo bytes/count match one same-title source
+  // map byte-for-byte. Matching photos are switched to the source's stable
+  // ids, then the redundant recovery-owned Blob rows are deleted.
+  function legacyRecoveryBaseTitle(map) {
+    const title = String((map && map.title) || "");
+    const m = /^(.*) \((?:other device|unsynced copy) \d{1,2}\/\d{1,2} \d{1,2}:\d{2}\)$/.exec(title);
+    return m ? m[1] : null;
+  }
+
+  function photoRecordByteSize(rec) {
+    if (!rec) return 0;
+    if (rec.blob && typeof rec.blob.size === "number") return rec.blob.size;
+    if (typeof rec.data === "string") {
+      const comma = rec.data.indexOf(",");
+      return Math.max(0, Math.floor((rec.data.length - (comma + 1)) * 0.75));
+    }
+    return 0;
+  }
+
+  async function photoRecordFingerprint(rec) {
+    if (!rec) return null;
+    try {
+      if (rec.blob) {
+        const buf = await rec.blob.arrayBuffer();
+        return fingerprintBytes(new Uint8Array(buf));
+      }
+      if (typeof rec.data === "string" && rec.data.startsWith("data:")) {
+        return fingerprintBytes(dataUrlToBytes(rec.data).bytes);
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function replacePhotoIdEverywhere(map, fromId, toId) {
+    if (!map || !map.root || !fromId || !toId || fromId === toId) return 0;
+    let changed = 0;
+    (function walk(node) {
+      if (!node) return;
+      changed += replacePhotoIdInNode(node, fromId, toId);
+      (node.children || []).forEach(walk);
+    })(map.root);
+    return changed;
+  }
+
+  let legacyRecoveryPhotoMigrationRunning = null;
+  async function migrateLegacyRecoveryPhotoSharing() {
+    if (legacyRecoveryPhotoMigrationRunning) return legacyRecoveryPhotoMigrationRunning;
+    legacyRecoveryPhotoMigrationRunning = (async () => {
+      let migratedMaps = 0;
+      let removedRows = 0;
+      let freedBytes = 0;
+
+      for (const recovery of state.maps.slice()) {
+        if (!recovery || sharedPhotoSourceMapId(recovery)) continue;
+        const baseTitle = legacyRecoveryBaseTitle(recovery);
+        if (!baseTitle) continue;
+
+        let recoveryRows = [];
+        try { recoveryRows = await PhotoDB.getAllForMap(recovery.id); } catch (e) {}
+        if (!recoveryRows.length) continue;
+
+        const candidates = state.maps.filter((m) =>
+          m && m.id !== recovery.id &&
+          String(m.title || "") === baseTitle &&
+          !legacyRecoveryBaseTitle(m)
+        );
+        if (!candidates.length) continue;
+
+        // Prefer the candidate whose raw photo-size profile overlaps most;
+        // this cheap pass avoids hashing unrelated same-title maps.
+        let source = null;
+        let sourceRows = null;
+        let bestSizeScore = -1;
+        const recoverySizes = new Map();
+        recoveryRows.forEach((r) => {
+          const size = photoRecordByteSize(r);
+          recoverySizes.set(size, (recoverySizes.get(size) || 0) + 1);
+        });
+        for (const candidate of candidates) {
+          let rows = [];
+          try { rows = await PhotoDB.getAllForMap(candidate.id); } catch (e) {}
+          if (!rows.length) continue;
+          const counts = new Map();
+          rows.forEach((r) => {
+            const size = photoRecordByteSize(r);
+            counts.set(size, (counts.get(size) || 0) + 1);
+          });
+          let score = 0;
+          recoverySizes.forEach((count, size) => {
+            score += Math.min(count, counts.get(size) || 0);
+          });
+          if (score > bestSizeScore) {
+            bestSizeScore = score;
+            source = candidate;
+            sourceRows = rows;
+          }
+        }
+        if (!source || !sourceRows || bestSizeScore <= 0) continue;
+
+        const sourceByFp = new Map();
+        for (let i = 0; i < sourceRows.length; i++) {
+          const row = sourceRows[i];
+          const fp = await photoRecordFingerprint(row);
+          if (fp) {
+            let ids = sourceByFp.get(fp);
+            if (!ids) { ids = []; sourceByFp.set(fp, ids); }
+            ids.push(row.id);
+          }
+          if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
+        }
+
+        const replacements = [];
+        let matchedBytes = 0;
+        const totalBytes = recoveryRows.reduce((sum, r) => sum + photoRecordByteSize(r), 0);
+        for (let i = 0; i < recoveryRows.length; i++) {
+          const row = recoveryRows[i];
+          const fp = await photoRecordFingerprint(row);
+          const ids = fp && sourceByFp.get(fp);
+          if (ids && ids.length) {
+            replacements.push({ oldId: row.id, sourceId: ids[0], bytes: photoRecordByteSize(row) });
+            matchedBytes += photoRecordByteSize(row);
+          }
+          if (i % 4 === 3) await new Promise((r) => setTimeout(r, 0));
+        }
+
+        const countRatio = replacements.length / Math.max(1, recoveryRows.length);
+        const byteRatio = matchedBytes / Math.max(1, totalBytes);
+        if (countRatio < 0.8 && byteRatio < 0.8) continue;
+
+        let changedRefs = 0;
+        replacements.forEach(({ oldId, sourceId }) => {
+          changedRefs += replacePhotoIdEverywhere(recovery, oldId, sourceId);
+        });
+        if (!changedRefs) continue;
+
+        recovery._sharedPhotoSourceMapId = source.id;
+        recovery._photoSharingV1 = true;
+        recovery._photosMigrated = true;
+        recovery.updatedAt = nextUpdatedAt(recovery);
+
+        // Save the new references first. Only after the tree is durable is it
+        // safe to drop duplicate recovery-owned photo rows.
+        await DB.put(recovery);
+        const stillReferenced = collectReferencedPhotoIds(recovery.root);
+        const doomed = replacements
+          .filter(({ oldId }) => !stillReferenced.has(oldId))
+          .map(({ oldId }) => oldId);
+        if (doomed.length) {
+          await PhotoDB.deleteMany(doomed);
+          removedRows += doomed.length;
+          const doomedSet = new Set(doomed);
+          freedBytes += replacements
+            .filter((x) => doomedSet.has(x.oldId))
+            .reduce((sum, x) => sum + x.bytes, 0);
+        }
+
+        migratedMaps++;
+        if (state.current && state.current.id === recovery.id) {
+          await loadPhotoCacheForMap(recovery.id);
+          try { renderAll(); } catch (e) {}
+        }
+
+        // Let the normal verified Drive save publish the lightweight
+        // manifest and delete the recovery map's now-unused duplicate Drive
+        // files. If Drive is busy/offline, updatedAt remains dirty and the
+        // existing retry/pushLocalNewer path will finish it later.
+        if (DriveDB.signedIn && !DriveDB.busy && !DriveDB.pushingLocal && isOnline) {
+          try { await DriveDB.save(recovery); } catch (e) {
+            console.warn("Recovery photo-sharing Drive migration will retry later", e);
+          }
+        }
+      }
+
+      if (migratedMaps) {
+        try {
+          showToast(
+            `Shared recovery photos for ${migratedMaps} map${migratedMaps === 1 ? "" : "s"}` +
+            (freedBytes ? ` — freed ~${formatStorageBytes(freedBytes)} locally.` : ".")
+          );
+        } catch (e) {}
+      }
+      return { migratedMaps, removedRows, freedBytes };
+    })();
+
+    try {
+      return await legacyRecoveryPhotoMigrationRunning;
+    } finally {
+      legacyRecoveryPhotoMigrationRunning = null;
+    }
+  }
+
   /* ---------------- node-level three-way merge ----------------
      Before this, ANY overlap (this device changed a map AND Drive's
      copy also changed since they last agreed) fell straight back to
@@ -24328,6 +24522,9 @@
 
   async function openStorageModal() {
     zoomModalOpen(storageModal);
+    try { await migrateLegacyRecoveryPhotoSharing(); } catch (e) {
+      console.warn("Storage recovery-photo migration skipped", e);
+    }
     await renderStorageModal();
   }
   function closeStorageModal() {
@@ -26155,6 +26352,13 @@
 
           await DriveDB.restore(); // may download/upload large maps; now background work
           startupLocalPreview = false;
+
+          // Convert old heavyweight conflict copies to shared-photo recovery
+          // maps after Drive metadata is known. This runs in the background,
+          // never delaying the cached map's first paint.
+          try { await migrateLegacyRecoveryPhotoSharing(); } catch (e) {
+            console.warn("Legacy recovery photo sharing migration skipped", e);
+          }
 
           const dupesTrashed = await autoRemoveDuplicateMaps();
           if (dupesTrashed) console.log(`Auto-removed ${dupesTrashed} duplicate map(s) to trash`);
