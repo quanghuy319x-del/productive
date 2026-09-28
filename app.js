@@ -16236,6 +16236,12 @@
 
     $("#note-tool-bold").classList.toggle("active", !!boldOn);
     $("#note-tool-upper").classList.toggle("active", noteUppercasePending);
+    const noteBoldUpperBtn = $("#note-tool-bold-upper");
+    if (noteBoldUpperBtn) {
+      const bbOn = noteUppercasePending && !!boldOn;
+      noteBoldUpperBtn.classList.toggle("active", bbOn);
+      noteBoldUpperBtn.setAttribute("aria-pressed", String(bbOn));
+    }
     $("#note-tool-strike").classList.toggle("active", !!strikeOn);
     $("#note-tool-ol").classList.toggle("active", orderedOn);
     $("#note-tool-check").classList.toggle("active", checklistOn);
@@ -17695,6 +17701,90 @@
     updateNoteToolActiveStates();
   }
 
+  // Shared BB selection transform: preserve the selected rich-text markup,
+  // uppercase only text nodes, make the whole selection bold, then collapse
+  // the caret at the END of the transformed selection so typing can continue.
+  // The caller owns undo/autosave and the AA-style pending state.
+  function applyBoldUppercaseSelection(editor) {
+    const selection = window.getSelection();
+    if (!editor || !selection || !selection.rangeCount || selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return false;
+
+    const fragment = range.extractContents();
+    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach((node) => { node.data = node.data.toUpperCase(); });
+
+    const wrap = document.createElement("span");
+    wrap.setAttribute("data-bb-temp", "1");
+    wrap.appendChild(fragment);
+    range.insertNode(wrap);
+
+    const selected = document.createRange();
+    selected.selectNodeContents(wrap);
+    selection.removeAllRanges();
+    selection.addRange(selected);
+    try {
+      if (!document.queryCommandState("bold")) document.execCommand("bold", false, null);
+    } catch (e) {
+      try { document.execCommand("bold", false, null); } catch (_) {}
+    }
+
+    // The wrapper exists only to keep one stable range while execCommand
+    // applies Bold. Unwrap it immediately so BB does not leave extra saved
+    // markup behind in Note/DRC/Brainstorm HTML.
+    const parent = wrap.parentNode;
+    if (parent) {
+      const after = wrap.nextSibling;
+      while (wrap.firstChild) parent.insertBefore(wrap.firstChild, wrap);
+      parent.removeChild(wrap);
+      const caret = document.createRange();
+      if (after && after.parentNode === parent) caret.setStartBefore(after);
+      else caret.setStart(parent, parent.childNodes.length);
+      caret.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(caret);
+    }
+    return true;
+  }
+
+  function noteApplyBoldUppercase() {
+    noteTextarea.focus();
+    const sel = window.getSelection();
+    const collapsed = !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    let boldOn = false;
+    try { boldOn = document.queryCommandState("bold"); } catch (_) {}
+
+    if (collapsed) {
+      // BB is literally AA + B for the typing caret. Press once to turn
+      // both on; press again while both are on to turn both off.
+      const bbOn = noteUppercasePending && boldOn;
+      noteUppercasePending = !bbOn;
+      try {
+        if (bbOn && boldOn) document.execCommand("bold", false, null);
+        else if (!bbOn && !boldOn) document.execCommand("bold", false, null);
+      } catch (_) {}
+      updateNoteToolActiveStates();
+      return;
+    }
+
+    // With selected text, BB formats the selection AND immediately arms
+    // the caret at its end for continued BOLD + UPPERCASE typing.
+    notePushUndo();
+    if (!applyBoldUppercaseSelection(noteTextarea)) return;
+    noteUppercasePending = true;
+    try {
+      if (!document.queryCommandState("bold")) document.execCommand("bold", false, null);
+    } catch (e) {
+      try { document.execCommand("bold", false, null); } catch (_) {}
+    }
+    noteTextarea.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    scheduleNoteAutosave();
+    updateNoteToolActiveStates();
+  }
+
   function noteInsertSymbol(symbol) {
     // v361: insert emoji/symbol as one plain text node at the saved caret.
     // Avoid execCommand here: Android contenteditable/IME can inherit or
@@ -18444,6 +18534,10 @@
   $("#note-tool-bold").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteApplyBold();
+  });
+  $("#note-tool-bold-upper").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    noteApplyBoldUppercase();
   });
   $("#note-tool-upper").addEventListener("mousedown", (e) => {
     e.preventDefault();
@@ -22863,6 +22957,12 @@
     try { boldOn = document.queryCommandState("bold"); } catch (_) { /* ignore */ }
     $("#brainstorm-tool-bold").classList.toggle("active", !!boldOn);
     $("#brainstorm-tool-upper").classList.toggle("active", brainstormUppercasePending);
+    const brainstormBoldUpperBtn = $("#brainstorm-tool-bold-upper");
+    if (brainstormBoldUpperBtn) {
+      const bbOn = brainstormUppercasePending && !!boldOn;
+      brainstormBoldUpperBtn.classList.toggle("active", bbOn);
+      brainstormBoldUpperBtn.setAttribute("aria-pressed", String(bbOn));
+    }
   }
 
   function brainstormRestoreSnapshot(html) {
@@ -23011,6 +23111,37 @@
     const text = sel.toString();
     if (!text) return;
     document.execCommand("insertText", false, text.toUpperCase());
+    scheduleBrainstormAutosave();
+    updateBrainstormToolActiveStates();
+  }
+
+  function brainstormApplyBoldUppercase() {
+    brainstormTextarea.focus();
+    const sel = window.getSelection();
+    const collapsed = !sel.rangeCount || sel.getRangeAt(0).collapsed;
+    let boldOn = false;
+    try { boldOn = document.queryCommandState("bold"); } catch (_) {}
+
+    if (collapsed) {
+      const bbOn = brainstormUppercasePending && boldOn;
+      brainstormUppercasePending = !bbOn;
+      try {
+        if (bbOn && boldOn) document.execCommand("bold", false, null);
+        else if (!bbOn && !boldOn) document.execCommand("bold", false, null);
+      } catch (_) {}
+      updateBrainstormToolActiveStates();
+      return;
+    }
+
+    brainstormPushUndo();
+    if (!applyBoldUppercaseSelection(brainstormTextarea)) return;
+    brainstormUppercasePending = true;
+    try {
+      if (!document.queryCommandState("bold")) document.execCommand("bold", false, null);
+    } catch (e) {
+      try { document.execCommand("bold", false, null); } catch (_) {}
+    }
+    brainstormTextarea.dispatchEvent(new InputEvent("input", { bubbles: true }));
     scheduleBrainstormAutosave();
     updateBrainstormToolActiveStates();
   }
@@ -23316,6 +23447,10 @@
   $("#brainstorm-tool-bold").addEventListener("mousedown", (e) => {
     e.preventDefault();
     brainstormApplyBold();
+  });
+  $("#brainstorm-tool-bold-upper").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    brainstormApplyBoldUppercase();
   });
   $("#brainstorm-tool-upper").addEventListener("mousedown", (e) => {
     e.preventDefault();
