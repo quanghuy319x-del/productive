@@ -8256,6 +8256,14 @@
       const shouldForce = token.force;
       if (virtualRefreshRAF !== token) return;
       virtualRefreshRAF = null;
+      // Never tear down the DOM node that currently owns a live text edit.
+      // On Android, opening the soft keyboard fires a viewport/window resize;
+      // rebuilding the virtual scene at that moment removes the focused
+      // contenteditable node, its blur handler commits the edit immediately,
+      // and the keyboard visibly pops up then disappears. commitEdit() already
+      // does a full render when editing actually ends, so simply defer any
+      // virtualization refresh while state.editingId is active.
+      if (state.editingId) return;
       // Do not tear down a live node drag. The 1000px render buffer easily
       // covers the gesture; a forced reconciliation runs on drop instead.
       if (dragCandidate && dragCandidate.moved) return;
@@ -12595,7 +12603,13 @@
   $("#zoom-in").addEventListener("click", () => { state.scale = clamp(state.scale * 1.15, 0.25, 2.5); applyTransform(); persistViewOnly(); });
   $("#zoom-out").addEventListener("click", () => { state.scale = clamp(state.scale / 1.15, 0.25, 2.5); applyTransform(); persistViewOnly(); });
   $("#zoom-reset").addEventListener("click", () => { state.scale = 1; state.tx = 60; state.ty = 60; applyTransform(); persistViewOnly(); });
-  window.addEventListener("resize", debounce(() => scheduleVirtualViewportRefresh(true), 120));
+  window.addEventListener("resize", debounce(() => {
+    // Android soft-keyboard open/close presents as a resize. Rebuilding the
+    // node layer while a node is contenteditable destroys its focus and closes
+    // the keyboard, so wait until commitEdit() performs the normal full render.
+    if (state.editingId) return;
+    scheduleVirtualViewportRefresh(true);
+  }, 120));
 
   // Floating add-child / add-sibling buttons — same effect as the Tab/Enter
   // shortcuts, for anyone who'd rather click (or has no keyboard handy).
