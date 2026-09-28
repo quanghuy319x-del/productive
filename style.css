@@ -2086,6 +2086,12 @@ kbd{
   cursor:pointer;
   padding:0;
 }
+#note-tool-tab,
+#brainstorm-tool-tab{
+  width:auto;
+  min-width:42px;
+  padding:0 5px;
+}
 .note-tool-btn:hover{ border-color: var(--paper-text-dim); background:#f2f0e6; }
 .note-tool-btn:disabled{ opacity:0.35; cursor:not-allowed; }
 .note-tool-btn:disabled:hover{ border-color: var(--paper-border); background:#ffffff; }
@@ -2381,6 +2387,20 @@ kbd{
 }
 .note-textarea a:hover{
   text-decoration-thickness:2px;
+}
+/* Review Trade-style dot-leader Tab. Stored as one atomic token so a
+   single Backspace/Delete removes the whole leader. */
+.note-textarea .trade-review-dot-tab{
+  display:inline-block;
+  white-space:nowrap;
+  font-size:.72em;
+  font-weight:400!important;
+  line-height:1;
+  letter-spacing:.55px;
+  opacity:.34;
+  vertical-align:baseline;
+  user-select:all;
+  cursor:default;
 }
 .note-textarea .note-line-checked,
 .note-textarea.note-line-checked{ text-decoration: line-through; }
