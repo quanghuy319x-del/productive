@@ -6593,3 +6593,28 @@ kbd{
   padding-right:5px!important;
   gap:0!important;
 }
+
+
+/* v373 — picker swatches are large color chips with no A glyph. */
+#note-color-popover .note-color-swatch{
+  width:34px!important;
+  min-width:34px!important;
+  height:30px!important;
+  padding:3px!important;
+  font-size:0!important;
+  background:var(--picker-color, transparent)!important;
+  border:2px solid rgba(0,0,0,.14)!important;
+  border-radius:7px!important;
+}
+#note-color-popover .note-color-swatch[data-color="#2b2a25"]{--picker-color:#2b2a25;}
+#note-color-popover .note-color-swatch[data-color="#000000"]{--picker-color:#000000;}
+#note-color-popover .note-color-swatch[data-color="#b5504a"]{--picker-color:#b5504a;}
+#note-color-popover .note-color-swatch[data-color="#c98a3a"]{--picker-color:#c98a3a;}
+#note-color-popover .note-color-swatch[data-color="#5a8f5a"]{--picker-color:#5a8f5a;}
+#note-color-popover .note-color-swatch[data-color="#4a72b5"]{--picker-color:#4a72b5;}
+#note-color-popover .note-color-swatch[data-color="#7c7c76"]{--picker-color:#7c7c76;}
+#note-color-popover .note-color-swatch.active{
+  outline:2px solid #3b6ef0!important;
+  outline-offset:1px!important;
+  border-color:#fff!important;
+}
