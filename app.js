@@ -4407,7 +4407,7 @@
     const body = document.getElementById("note-textarea");
     const title = document.getElementById("note-title-input");
     if (body) body.contentEditable = locked ? "false" : "true";
-    if (title) title.readOnly = locked;
+    if (title) title.readOnly = locked || !!noteEditingSubtaskId;
     modal.classList.toggle("note-locked", locked);
     const lockNote = document.getElementById("note-lock-banner");
     if (lockNote) lockNote.classList.toggle("hidden", !locked);
@@ -5407,6 +5407,17 @@
   }
   function taskHasNotes(t) {
     return getTaskNotes(t).length > 0;
+  }
+
+  // A subtask's own Note title is not independent metadata: it always
+  // mirrors the current subtask name. Keep every existing note entry in
+  // sync so renaming a subtask also renames its note immediately.
+  function syncSubtaskNoteTitles(s) {
+    if (!s) return;
+    const title = (s.text || "").trim();
+    if (Array.isArray(s.notes)) {
+      s.notes.forEach((n) => { if (n) n.title = title; });
+    }
   }
 
   // A table cell's note uses the exact same rich, multi-entry note editor
@@ -17156,6 +17167,13 @@
       ? getCellNotes(getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c))
       : (noteEditingPhotoId ? getPhotoNotes(node, noteEditingPhotoId) : getNodeNotes(node));
     noteWorkingList = existing.map(n => ({ id: n.id || uid(), title: n.title || "", html: n.html, kind: n.kind || null, favorite: !!n.favorite, createdAt: n.createdAt, updatedAt: n.updatedAt }));
+    // Subtask-owned notes always use the subtask name as their title.
+    // This also self-heals older notes that had a blank/custom title.
+    if (noteEditingSubtaskId) {
+      const subtaskOwner = noteEditingNoteOwner(taskHost);
+      const subtaskTitle = (subtaskOwner && subtaskOwner.text || "").trim();
+      noteWorkingList.forEach((n) => { n.title = subtaskTitle; });
+    }
     // The "DRC" context-menu shortcut (see the Tasks/Timer/Brainstorm
     // group below). Only one DRC note is allowed per node: if one
     // already exists among this node's notes (title "DRC" — see
@@ -17180,7 +17198,10 @@
         // "Plan" note template (if one is saved) instead of a blank note.
         const planSeed = (noteEditingTaskId && !noteWorkingList.length)
           ? planTemplateSeedFor(noteEditingNoteOwner(taskHost)) : null;
-        noteWorkingList.push({ id: uid(), title: planSeed ? planSeed.title : "", html: planSeed ? planSeed.html : "", createdAt: Date.now(), updatedAt: Date.now() });
+        const ownerTitle = noteEditingSubtaskId
+          ? ((noteEditingNoteOwner(taskHost) && noteEditingNoteOwner(taskHost).text) || "").trim()
+          : (planSeed ? planSeed.title : "");
+        noteWorkingList.push({ id: uid(), title: ownerTitle, html: planSeed ? planSeed.html : "", createdAt: Date.now(), updatedAt: Date.now() });
       }
       noteActiveIndex = wantsNew ? noteWorkingList.length - 1
         : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
@@ -17219,7 +17240,13 @@
   function loadNoteIntoEditor() {
     const node = findNode(noteEditingId);
     const current = noteWorkingList[noteActiveIndex];
+    if (noteEditingSubtaskId && noteEditingTaskId) {
+      const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
+      const subtaskOwner = noteEditingNoteOwner(taskHost);
+      current.title = ((subtaskOwner && subtaskOwner.text) || "").trim();
+    }
     noteTitleInput.value = current.title || "";
+    noteTitleInput.readOnly = !!noteEditingSubtaskId || !isEditingAllowed();
     if (noteEditingTaskId) {
       const taskHost = noteEditingCellPos ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
       const t = noteEditingNoteOwner(taskHost);
@@ -17354,7 +17381,7 @@
       if (next === null) return;
       const clean = next.trim();
       if (!clean || clean === (s.text || "")) return;
-      updateDRCQueueSubtask(s.id, (live) => { live.text = clean; });
+      updateDRCQueueSubtask(s.id, (live) => { live.text = clean; syncSubtaskNoteTitles(live); });
     });
     addItem(s.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
       updateDRCQueueSubtask(s.id, (live) => {
@@ -17713,7 +17740,12 @@
   function captureActiveNote() {
     const current = noteWorkingList[noteActiveIndex];
     if (!current) return;
-    const newTitle = noteTitleInput.value;
+    const node = findNode(noteEditingId);
+    const taskHost = noteEditingCellPos && node ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
+    const subtaskOwner = noteEditingSubtaskId ? noteEditingNoteOwner(taskHost) : null;
+    const newTitle = noteEditingSubtaskId
+      ? (((subtaskOwner && subtaskOwner.text) || "").trim())
+      : noteTitleInput.value;
     // The card decoration (classes + CSS variables) lives only in the open
     // editor — never in what's saved — so merely opening a DRC note isn't
     // counted as changing it.
@@ -17744,7 +17776,10 @@
 
   function addAnotherNote() {
     captureActiveNote();
-    noteWorkingList.push({ id: uid(), title: "", html: "", createdAt: Date.now(), updatedAt: Date.now() });
+    const node = findNode(noteEditingId);
+    const taskHost = noteEditingCellPos && node ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c) : node;
+    const subtaskOwner = noteEditingSubtaskId ? noteEditingNoteOwner(taskHost) : null;
+    noteWorkingList.push({ id: uid(), title: noteEditingSubtaskId ? (((subtaskOwner && subtaskOwner.text) || "").trim()) : "", html: "", createdAt: Date.now(), updatedAt: Date.now() });
     noteActiveIndex = noteWorkingList.length - 1;
     loadNoteIntoEditor();
     commitNotesToNode();
@@ -20996,6 +21031,7 @@
       if (!clean || clean === (s.text || "")) return;
       pushUndo();
       s.text = clean;
+      syncSubtaskNoteTitles(s);
       persist();
       rerender();
     });
@@ -21464,6 +21500,7 @@
           const beforeBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
           pushUndo();
           s.text = v;
+          syncSubtaskNoteTitles(s);
           brainstormVisibilityChanged = beforeBrainstorm !== (isBrainstormPrefixText(s.text) || hasBrainstormContent(s));
           persist();
         } else {
@@ -22596,6 +22633,7 @@
           const beforeBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
           pushUndo();
           s.text = v;
+          syncSubtaskNoteTitles(s);
           brainstormVisibilityChanged = beforeBrainstorm !== (isBrainstormPrefixText(s.text) || hasBrainstormContent(s));
           persist();
         } else {
