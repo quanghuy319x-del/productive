@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=370">
+<link rel="stylesheet" href="style.css?v=371">
 </head>
 <body>
 <div id="app">
@@ -599,12 +599,10 @@
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-emoji" class="note-tool-btn" title="Add emoji">😊</button>
       <span class="note-tool-sep"></span>
-      <button type="button" id="note-tool-autocolor" class="note-tool-btn note-tool-btn-toggle active" title="Auto alternate line colors: on" aria-pressed="true">🎨</button>
-      <span class="note-tool-sep"></span>
       <div class="note-color-picker">
-        <button type="button" id="note-tool-color" class="note-tool-btn note-color-trigger" title="Text color">
-          <span class="note-color-trigger-glyph">A</span>
-          <span id="note-color-trigger-swatch" class="note-color-trigger-swatch"></span>
+        <button type="button" id="note-tool-color" class="note-tool-btn note-color-trigger active" title="Color: Auto" aria-label="Color: Auto">
+          <span id="note-color-trigger-label" class="note-color-trigger-glyph">🎨</span>
+          <span id="note-color-trigger-swatch" class="note-color-trigger-swatch note-color-trigger-swatch-auto"></span>
         </button>
       </div>
       <span class="note-tool-sep"></span>
@@ -616,6 +614,7 @@
     <span id="note-line-count" class="note-line-count" aria-hidden="true">Lines: 0</span>
   </div>
   <div id="note-color-popover" class="note-color-popover hidden">
+    <button type="button" id="note-color-auto" class="note-tool-btn note-color-auto-choice active" title="Auto Color" aria-label="Auto Color">🎨</button>
     <button type="button" class="note-tool-btn note-color-swatch" data-color="#2b2a25" title="Default text">A</button>
     <button type="button" class="note-tool-btn note-color-swatch" data-color="#000000" title="Black">A</button>
     <button type="button" class="note-tool-btn note-color-swatch" data-color="#b5504a" title="Red">A</button>
@@ -840,7 +839,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "370";
+  const APP_VERSION = "371";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -868,12 +867,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "370"') && !document.documentElement.dataset.v370Reloaded) {
+      if (fresh.includes('const APP_VERSION = "371"') && !document.documentElement.dataset.v371Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v370Reloaded = "1";
+          document.documentElement.dataset.v371Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -887,9 +886,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=370"></script>
-<script src="phase2-layout.js?v=370"></script>
-<script src="app.js?v=370"></script>
+<script src="phase1-editors.js?v=371"></script>
+<script src="phase2-layout.js?v=371"></script>
+<script src="app.js?v=371"></script>
 <script>
 (() => {
   function insertTab(editor) {
