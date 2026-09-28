@@ -420,6 +420,29 @@
     }
   };
 
+  // Recovery/conflict copies can share immutable photo rows/files with the
+  // original map instead of duplicating tens of MB of identical bytes.
+  // New/edited photos on the recovery copy still belong to the copy itself;
+  // only unchanged ids fall back to this source map.
+  function sharedPhotoSourceMapId(map) {
+    const id = map && map._sharedPhotoSourceMapId;
+    return id && id !== map.id ? id : null;
+  }
+
+  async function photoRowsForMapWithSharedSource(map) {
+    if (!map) return [];
+    let own = [];
+    try { own = await PhotoDB.getAllForMap(map.id); } catch (e) {}
+    const sourceId = sharedPhotoSourceMapId(map);
+    if (!sourceId) return own;
+    let source = [];
+    try { source = await PhotoDB.getAllForMap(sourceId); } catch (e) {}
+    const byId = new Map();
+    source.forEach((r) => { if (r && r.id) byId.set(r.id, r); });
+    own.forEach((r) => { if (r && r.id) byId.set(r.id, r); }); // own wins
+    return Array.from(byId.values());
+  }
+
   // In-memory id -> object-URL cache for whichever map is currently
   // open, populated by loadPhotoCacheForMap() (see openMap). Every
   // rendering/editing call site keeps working with a plain URL string
@@ -535,16 +558,19 @@
     photoFpIndexPromise = Promise.resolve();
     if (!mapId) return;
     try {
-      const rows = await PhotoDB.getAllForMap(mapId);
+      const map = state.maps.find((m) => m.id === mapId) || (state.current && state.current.id === mapId ? state.current : null);
+      const rows = map ? await photoRowsForMapWithSharedSource(map) : await PhotoDB.getAllForMap(mapId);
       const migrations = [];
       rows.forEach(r => {
         let blob = r.blob;
         if (!blob && r.data) {
           // Legacy base64 row — convert once and persist the Blob form
-          // so every future load of this photo skips this step.
+          // so every future load of this photo skips this step. Keep the
+          // original row's owner: a shared recovery must never "adopt" the
+          // source map's bytes just because it displayed them.
           try {
             blob = dataUrlToBlob(r.data);
-            migrations.push(PhotoDB.put({ id: r.id, mapId, blob }));
+            migrations.push(PhotoDB.put({ id: r.id, mapId: r.mapId || mapId, blob }));
           } catch (e) { console.error("Migrating photo to blob storage failed", e); return; }
         }
         if (!blob) return;
@@ -856,7 +882,14 @@
     if (!ids || !ids.length) return;
     try {
       const still = map && map.root ? collectReferencedPhotoIds(map.root) : new Set();
-      const doomed = ids.filter((id) => !still.has(id));
+      const candidates = ids.filter((id) => !still.has(id));
+      const doomed = [];
+      for (const id of candidates) {
+        const rec = await PhotoDB.get(id);
+        // A shared recovery can stop referencing a source photo, but that
+        // must not delete the original map's PhotoDB row.
+        if (!rec || !map || rec.mapId === map.id) doomed.push(id);
+      }
       if (doomed.length) await PhotoDB.deleteMany(doomed);
     } catch (e) { console.error("Deleting photos failed", e); }
   }
@@ -1003,7 +1036,7 @@
   // see this browser's PhotoDB.
   async function inlinePhotosForPortableCopy(map) {
     if (!map || !map.root) return map;
-    const rows = await PhotoDB.getAllForMap(map.id);
+    const rows = await photoRowsForMapWithSharedSource(map);
     const lookup = new Map();
     // Rows are stored as a Blob (see PhotoDB above) apart from any
     // not-yet-migrated legacy row, which is already a portable base64
@@ -1116,6 +1149,10 @@
       }
       (node.children || []).forEach(walk);
     })(clone.root);
+    // Portable exports/folder backups are self-contained, so they must not
+    // retain a browser/Drive-local dependency on another map's photo folder.
+    delete clone._sharedPhotoSourceMapId;
+    delete clone._photoSharingV1;
     return clone;
   }
 
