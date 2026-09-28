@@ -5564,10 +5564,10 @@
   }
 
   // Task-list templates — a whole node's task list, saved as one named
-  // template (each task's text, color and subtask text plus the line
-  // breaks between subtask pills — not done state,
-  // ids, due dates or notes: a template is a reusable shape, not a
-  // snapshot of one specific in-progress list) from the tasks modal's
+  // template (each task's text, color, priority star and subtask text plus
+  // the line breaks between subtask pills — not done state, ids, due dates
+  // or notes: a template is a reusable shape, not a snapshot of one specific
+  // in-progress list) from the tasks modal's
   // "📋 Templates" button, then insertable onto any other node's task
   // list from that same button. Stored the same way as the quote banner
   // lines (a flat JSON array under one localStorage key), shared across
@@ -5591,6 +5591,9 @@
     return getNodeTasks(host).map(t => ({
       text: (t.text || "").trim() || "Untitled task",
       color: getTaskColor(t) || null,
+      // Preserve the task's reusable priority marker. Done/failed/due remain
+      // progress-specific and intentionally do not belong to a template.
+      stars: getTaskStars(t) > 0 ? 1 : 0,
       // brBefore = the line breaks entered *between* subtask pills (see
       // enhanceSubtaskList), remembered so a template restores the same
       // pill layout. Only stored when non-zero.
@@ -5861,10 +5864,22 @@
   function insertTaskListTemplate(tpl, host) {
     if (!tpl || !host || !Array.isArray(tpl.tasks) || !tpl.tasks.length) return;
     pushUndo();
-    if (!Array.isArray(host.tasks)) host.tasks = [];
+
+    // Read through getNodeTasks first so any old star migration is completed
+    // before deciding whether this list already owns its single allowed ★.
+    const existingTasks = getNodeTasks(host).slice();
+    let starAvailable = !existingTasks.some(t => getTaskStars(t) > 0);
+
     const newTasks = tpl.tasks.map(t => {
+      // A template may contain one priority star. If the destination already
+      // has a starred task, keep that existing task untouched and import the
+      // template task unstarred. This preserves the one-star-per-list rule.
+      const wantsStar = getTaskStars(t) > 0;
+      const stars = wantsStar && starAvailable ? 1 : 0;
+      if (stars) starAvailable = false;
+
       const task = {
-        id: uid(), text: t.text, done: false, stars: 0, due: null,
+        id: uid(), text: t.text, done: false, stars, starred: stars > 0, due: null,
         subtasks: (t.subtasks || []).map(s => {
           const sub = { id: uid(), text: s.text, done: false };
           if (s.brBefore > 0) sub.brBefore = Math.min(5, s.brBefore | 0);
@@ -5874,7 +5889,12 @@
       if (t.color) task.color = t.color;
       return task;
     });
-    host.tasks = host.tasks.concat(newTasks);
+
+    // getNodeTasks() above also marks a legacy list as starsReset=true.
+    // Keeping its migrated array and appending here prevents a freshly inserted
+    // template star from being mistaken for an old pre-reset star and cleared.
+    host.tasks = existingTasks.concat(newTasks);
+    host.starsReset = true;
     persist();
   }
 
