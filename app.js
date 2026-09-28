@@ -17650,6 +17650,147 @@
     noteColorTriggerBtn.title = "Text color";
   }
 
+  // Review Trade-style Word-like Tab: advance to the next 96px stop with
+  // a faint dot leader. The whole leader is one contenteditable=false token,
+  // so one Backspace/Delete removes the entire Tab.
+  const NOTE_DOT_TAB_STOP_PX = 96;
+  const NOTE_DOT_TAB_FONT_SCALE = 0.72;
+  const NOTE_DOT_TAB_LETTER_SPACING_PX = 0.55;
+  let noteDotMeasureCanvas = null;
+
+  function measureNoteDotWidth(editor) {
+    if (!editor) return 3;
+    if (!noteDotMeasureCanvas) noteDotMeasureCanvas = document.createElement("canvas");
+    const ctx = noteDotMeasureCanvas.getContext("2d");
+    if (!ctx) return 3;
+    const cs = getComputedStyle(editor);
+    const baseSize = parseFloat(cs.fontSize) || 13;
+    ctx.font = `${cs.fontStyle || "normal"} 400 ${baseSize * NOTE_DOT_TAB_FONT_SCALE}px ${cs.fontFamily || "sans-serif"}`;
+    return Math.max(1.5, ctx.measureText(".").width + NOTE_DOT_TAB_LETTER_SPACING_PX);
+  }
+
+  function noteCaretLeftPx(editor, range) {
+    if (!editor || !range) return 0;
+    const editorRect = editor.getBoundingClientRect();
+    const cs = getComputedStyle(editor);
+    const contentLeft = editorRect.left + (parseFloat(cs.paddingLeft) || 0);
+
+    let rect = null;
+    try {
+      const rects = range.getClientRects();
+      if (rects && rects.length) rect = rects[0];
+    } catch (_) {}
+
+    if (!rect || !Number.isFinite(rect.left) || (!rect.width && !rect.height)) {
+      const marker = document.createElement("span");
+      marker.textContent = "\u200B";
+      marker.style.cssText = "display:inline-block;width:0;overflow:hidden;padding:0;margin:0;border:0;";
+      try {
+        range.insertNode(marker);
+        rect = marker.getBoundingClientRect();
+        range.setStartAfter(marker);
+        range.collapse(true);
+        marker.remove();
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch (_) {
+        try { marker.remove(); } catch (_) {}
+      }
+    }
+
+    const x = rect && Number.isFinite(rect.left) ? rect.left - contentLeft : 0;
+    return Math.max(0, x);
+  }
+
+  function insertNoteDotTab(editor, pushUndoFn) {
+    if (!editor) return false;
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return false;
+
+    if (typeof pushUndoFn === "function") pushUndoFn();
+    if (!range.collapsed) range.deleteContents();
+
+    const x = noteCaretLeftPx(editor, range);
+    let gap = NOTE_DOT_TAB_STOP_PX - (x % NOTE_DOT_TAB_STOP_PX);
+    if (gap < 10) gap += NOTE_DOT_TAB_STOP_PX;
+
+    const dotWidth = measureNoteDotWidth(editor);
+    const count = Math.max(2, Math.round(gap / dotWidth));
+    const tab = document.createElement("span");
+    tab.className = "trade-review-dot-tab";
+    tab.setAttribute("contenteditable", "false");
+    tab.setAttribute("aria-label", "Tab");
+    tab.textContent = ".".repeat(count);
+    range.insertNode(tab);
+    range.setStartAfter(tab);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    editor.dispatchEvent(new InputEvent("input", {
+      bubbles: true, inputType: "insertText", data: "\t"
+    }));
+    return true;
+  }
+
+  function noteDotTabAtEditingEdge(editor, range, backward) {
+    if (!editor || !range || !range.collapsed) return null;
+    const isTab = node => node?.nodeType === Node.ELEMENT_NODE &&
+      node.classList?.contains("trade-review-dot-tab");
+
+    let node = range.startContainer;
+    let offset = range.startOffset;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      const atEdge = backward ? offset === 0 : offset === node.data.length;
+      if (!atEdge) return null;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const idx = backward ? offset - 1 : offset;
+      if (idx >= 0 && idx < node.childNodes.length) {
+        const candidate = node.childNodes[idx];
+        if (isTab(candidate)) return candidate;
+        if (!(candidate.nodeType === Node.TEXT_NODE && candidate.data === "")) return null;
+      }
+    }
+
+    while (node && node !== editor) {
+      const sibling = backward ? node.previousSibling : node.nextSibling;
+      if (sibling) {
+        if (isTab(sibling)) return sibling;
+        if (sibling.nodeType === Node.TEXT_NODE && sibling.data === "") {
+          node = sibling;
+          continue;
+        }
+        return null;
+      }
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function deleteNoteDotTab(editor, tab, pushUndoFn, inputType) {
+    if (!editor || !tab || !tab.parentNode) return false;
+    if (typeof pushUndoFn === "function") pushUndoFn();
+    const parent = tab.parentNode;
+    const index = Array.prototype.indexOf.call(parent.childNodes, tab);
+    tab.remove();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    try {
+      range.setStart(parent, Math.max(0, Math.min(index, parent.childNodes.length)));
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (_) {}
+    editor.dispatchEvent(new InputEvent("input", {
+      bubbles: true, inputType: inputType || "deleteContentBackward"
+    }));
+    return true;
+  }
+
   function noteApplyStrikethrough() {
     noteTextarea.focus();
     notePushUndo();
@@ -18526,6 +18667,10 @@
     e.preventDefault();
     noteToggleLinePrefix(/^[☐☑]\s+/, () => "☐ ");
   });
+  $("#note-tool-tab").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    insertNoteDotTab(noteTextarea, notePushUndo);
+  });
   $("#note-tool-strike").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteApplyStrikethrough();
@@ -18738,6 +18883,28 @@
   );
   noteTextarea.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Tab/Enter/Delete trigger the canvas shortcuts while typing a note
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      insertNoteDotTab(noteTextarea, notePushUndo);
+      return;
+    }
+    if ((e.key === "Backspace" || e.key === "Delete") &&
+        !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        if (noteTextarea.contains(range.commonAncestorContainer)) {
+          const backward = e.key === "Backspace";
+          const tab = noteDotTabAtEditingEdge(noteTextarea, range, backward);
+          if (tab) {
+            e.preventDefault();
+            deleteNoteDotTab(noteTextarea, tab, notePushUndo,
+              backward ? "deleteContentBackward" : "deleteContentForward");
+            return;
+          }
+        }
+      }
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) noteRedo(); else noteUndo();
@@ -23434,6 +23601,10 @@
     e.preventDefault();
     brainstormToggleLinePrefix(/^[☐☑]\s+/, () => "☐ ");
   });
+  $("#brainstorm-tool-tab").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    insertNoteDotTab(brainstormTextarea, brainstormPushUndo);
+  });
   $("#brainstorm-tool-strike").addEventListener("mousedown", (e) => {
     e.preventDefault();
     brainstormApplyStrikethrough();
@@ -23586,6 +23757,28 @@
   brainstormTextarea.addEventListener("input", () => { brainstormAutoColorLines(); scheduleBrainstormAutosave(); });
   brainstormTextarea.addEventListener("keydown", (e) => {
     e.stopPropagation(); // don't let Tab/Enter/Delete/etc trigger canvas shortcuts while typing
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      insertNoteDotTab(brainstormTextarea, brainstormPushUndo);
+      return;
+    }
+    if ((e.key === "Backspace" || e.key === "Delete") &&
+        !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        if (brainstormTextarea.contains(range.commonAncestorContainer)) {
+          const backward = e.key === "Backspace";
+          const tab = noteDotTabAtEditingEdge(brainstormTextarea, range, backward);
+          if (tab) {
+            e.preventDefault();
+            deleteNoteDotTab(brainstormTextarea, tab, brainstormPushUndo,
+              backward ? "deleteContentBackward" : "deleteContentForward");
+            return;
+          }
+        }
+      }
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) brainstormRedo(); else brainstormUndo();
