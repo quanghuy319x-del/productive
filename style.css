@@ -6701,3 +6701,30 @@ kbd{
     direction:ltr!important;
   }
 }
+
+
+/* v382 mobile Tab···: keep the Review Trade label inside its toolbar pill. */
+@media (max-width: 640px){
+  #note-tool-tab,
+  #brainstorm-tool-tab{
+    width:54px!important;
+    min-width:54px!important;
+    max-width:54px!important;
+    padding:0!important;
+    overflow:hidden!important;
+    white-space:nowrap!important;
+    font-size:0!important;
+  }
+  #note-tool-tab::before,
+  #brainstorm-tool-tab::before{
+    content:"Tab···";
+    display:block;
+    width:100%;
+    overflow:hidden;
+    white-space:nowrap;
+    text-align:center;
+    font-size:10px;
+    font-weight:600;
+    line-height:1;
+  }
+}
