@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=374">
+<link rel="stylesheet" href="style.css?v=375">
 </head>
 <body>
 <div id="app">
@@ -585,6 +585,7 @@
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
+      <button type="button" id="note-tool-bold-upper" class="note-tool-btn" title="Bold + UPPERCASE selected text"><b>BB</b></button>
       <button type="button" id="note-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
       <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="note-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
@@ -786,6 +787,7 @@
       <span class="note-tool-sep"></span>
       <button type="button" id="brainstorm-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="brainstorm-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
+      <button type="button" id="brainstorm-tool-bold-upper" class="note-tool-btn" title="Bold + UPPERCASE selected text"><b>BB</b></button>
       <button type="button" id="brainstorm-tool-upper" class="note-tool-btn" title="UPPERCASE selected text">AA</button>
       <button type="button" id="brainstorm-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="brainstorm-tool-tab" class="note-tool-btn" title="Insert tab">Tab</button>
@@ -841,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "373";
+  const APP_VERSION = "375";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -869,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "373"') && !document.documentElement.dataset.v373Reloaded) {
+      if (fresh.includes('const APP_VERSION = "375"') && !document.documentElement.dataset.v375Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v373Reloaded = "1";
+          document.documentElement.dataset.v375Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -888,9 +890,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=374"></script>
-<script src="phase2-layout.js?v=374"></script>
-<script src="app.js?v=374"></script>
+<script src="phase1-editors.js?v=375"></script>
+<script src="phase2-layout.js?v=375"></script>
+<script src="app.js?v=375"></script>
 <script>
 (() => {
   function insertTab(editor) {
@@ -947,6 +949,59 @@ if ("serviceWorker" in navigator) {
   }
   document.getElementById("note-tool-shift-divider")?.addEventListener("click", () => insertShiftDivider(document.getElementById("note-textarea")));
   document.getElementById("brainstorm-tool-shift-divider")?.addEventListener("click", () => insertShiftDivider(document.getElementById("brainstorm-textarea")));
+
+  // BB — ported from Review Trade: uppercase the current selection, then
+  // guarantee Bold without toggling already-bold text back off.
+  function uppercaseSelectionForBB(editor) {
+    if (!editor) return;
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+
+    const fragment = range.extractContents();
+    const walker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach((node) => { node.data = node.data.toUpperCase(); });
+
+    const wrap = document.createElement("span");
+    wrap.appendChild(fragment);
+    range.insertNode(wrap);
+    const selected = document.createRange();
+    selected.selectNodeContents(wrap);
+    selection.removeAllRanges();
+    selection.addRange(selected);
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  }
+
+  function boldUpperSelection(editor) {
+    if (!editor) return;
+    uppercaseSelectionForBB(editor);
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount || selection.isCollapsed ||
+        !editor.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+
+    editor.focus();
+    try {
+      if (!document.queryCommandState("bold")) document.execCommand("bold", false, null);
+    } catch (e) {
+      try { document.execCommand("bold", false, null); } catch (_) {}
+    }
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  }
+
+  function bindBoldUpper(buttonId, editorId) {
+    const button = document.getElementById(buttonId);
+    const editor = document.getElementById(editorId);
+    if (!button || !editor) return;
+    button.addEventListener("pointerdown", (e) => e.preventDefault());
+    button.addEventListener("click", () => boldUpperSelection(editor));
+  }
+  bindBoldUpper("note-tool-bold-upper", "note-textarea");
+  bindBoldUpper("brainstorm-tool-bold-upper", "brainstorm-textarea");
+
   function setupTitleMode(buttonId, editorId) {
     const button = document.getElementById(buttonId);
     const editor = document.getElementById(editorId);
