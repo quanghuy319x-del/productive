@@ -19454,8 +19454,12 @@
         const h2 = t2 && resolveHost(t2.nodeId, t2.r, t2.c);
         if (!h2) return;
         insertTaskListTemplate(tpl, h2);
-        closeTaskTemplatesPopover();
+        closeTaskListActionUI();
         renderTasksModal();
+        // Android can deliver the tail end of the same tap after the task
+        // list re-renders. Close once more on the next frame so neither the
+        // template picker nor the ••• action menu can be left covering it.
+        requestAnimationFrame(closeTaskListActionUI);
       });
       // Overwrites this template's saved tasks with whatever's on the
       // currently open list — the explicit way to update a template
@@ -19507,6 +19511,17 @@
   }
   function closeTaskTemplatesPopover() {
     taskTemplatesPopover.classList.add("hidden");
+  }
+
+  // Close every floating/expanded Task List action layer together. On
+  // touch browsers the template picker is body-level while Font/Sort/
+  // Templates/Random live inside a <details>, so closing only one layer
+  // can leave the other sitting over the task list after a template is
+  // applied.
+  function closeTaskListActionUI() {
+    closeTaskTemplatesPopover();
+    const compact = tasksModal.querySelector(".tasks-compact-menu");
+    if (compact) compact.removeAttribute("open");
   }
   function positionTaskTemplatesPopover(btn) {
     const margin = 8;
