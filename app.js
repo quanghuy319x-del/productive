@@ -2492,9 +2492,17 @@
       // duplicate note-image alias chains produced by old export/import code.
       // This is intentionally before collectReferencedPhotoIds(): otherwise
       // hundreds of stale aliases get counted as separate photos again.
-      const remote = await this.listRemotePhotos(map.id, !!options.forceRemote);
+      const ownRemote = await this.listRemotePhotos(map.id, !!options.forceRemote);
+      const sharedSourceId = sharedPhotoSourceMapId(map);
+      const sharedRemote = sharedSourceId
+        ? await this.listRemotePhotos(sharedSourceId, !!options.forceRemote)
+        : {};
+      // Read path sees both sets. Write/cleanup path below only ever mutates
+      // ownRemote, so a recovery map can never delete or re-upload the
+      // original map's shared Drive photos.
+      const remote = { ...sharedRemote, ...ownRemote };
       let localRows = [];
-      try { localRows = await PhotoDB.getAllForMap(map.id); } catch (e) {}
+      try { localRows = await photoRowsForMapWithSharedSource(map); } catch (e) {}
       const localIds = new Set(localRows.map((r) => r && r.id).filter(Boolean));
       if (state.current && state.current.id === map.id) {
         for (const id of photoBlobCache.keys()) localIds.add(id);
@@ -2587,21 +2595,24 @@
           throw new Error(`Photo ${photoNumber}/${referenced.size} failed: ${detail}`);
         }
 
-        remote[photoId] = {
+        const uploadedEntry = {
           id: fileId,
           name: this.photoFilename(map.id, photoId, photoBlob.type),
           mimeType: photoBlob.type || "application/octet-stream",
           appProperties: { branchlineMapId: map.id, branchlinePhoto: "1", branchlinePhotoId: photoId }
         };
-        // Checkpoint every successful photo immediately.
-        this.photoFileIndex[map.id] = remote;
+        ownRemote[photoId] = uploadedEntry;
+        remote[photoId] = uploadedEntry;
+        // Checkpoint only this map's OWN files. Shared source files remain
+        // indexed under the source map id.
+        this.photoFileIndex[map.id] = ownRemote;
 
         // Yield occasionally so mobile Chrome can run auth/UI timers during a
         // several-hundred-photo migration.
         if ((i + 1) % 4 === 0) await new Promise((resolve) => setTimeout(resolve, 40));
       }
 
-      this.photoFileIndex[map.id] = remote;
+      this.photoFileIndex[map.id] = ownRemote;
 
       let quarantined = [];
       if (unavailable.length) {
@@ -2639,7 +2650,7 @@
         );
       }
 
-      return { referenced, remote, quarantined };
+      return { referenced, remote: ownRemote, quarantined };
     },
 
     async cleanupRemotePhotos(mapId, referenced, remoteIndex) {
@@ -2667,14 +2678,19 @@
           this.photoHydratedMaps.add(map.id);
           return false;
         }
-        const rows = await PhotoDB.getAllForMap(map.id);
+        const rows = await photoRowsForMapWithSharedSource(map);
         const localIds = new Set(rows.map((r) => r.id));
         const missing = Array.from(referenced).filter((id) => !localIds.has(id));
         if (!missing.length) {
           this.photoHydratedMaps.add(map.id);
           return false;
         }
-        const remote = await this.listRemotePhotos(map.id, !!options.forceIndex);
+        const ownRemote = await this.listRemotePhotos(map.id, !!options.forceIndex);
+        const sharedSourceId = sharedPhotoSourceMapId(map);
+        const sharedRemote = sharedSourceId
+          ? await this.listRemotePhotos(sharedSourceId, !!options.forceIndex)
+          : {};
+        const remote = { ...sharedRemote, ...ownRemote };
         let downloaded = 0;
         for (let i = 0; i < missing.length; i++) {
           const id = missing[i];
@@ -2684,7 +2700,12 @@
             continue;
           }
           const photoBlob = await this.downloadPhotoFile(f.id);
-          await PhotoDB.put({ id, mapId: map.id, blob: photoBlob });
+          const ownerMapId = f.appProperties && f.appProperties.branchlineMapId
+            ? f.appProperties.branchlineMapId
+            : map.id;
+          // If this file came from the shared source, keep one local copy
+          // owned by that source rather than duplicating it under recovery id.
+          await PhotoDB.put({ id, mapId: ownerMapId, blob: photoBlob });
           downloaded++;
           if (state.current && state.current.id === map.id) {
             const old = photoCache.get(id);
