@@ -16235,7 +16235,6 @@
     const checklistOn = /^[☐☑]\s/.test(lineText);
 
     $("#note-tool-bold").classList.toggle("active", !!boldOn);
-    $("#note-tool-upper").classList.toggle("active", noteUppercasePending);
     const noteBoldUpperBtn = $("#note-tool-bold-upper");
     if (noteBoldUpperBtn) {
       const bbOn = noteUppercasePending && !!boldOn;
@@ -18538,10 +18537,6 @@
   $("#note-tool-bold-upper").addEventListener("mousedown", (e) => {
     e.preventDefault();
     noteApplyBoldUppercase();
-  });
-  $("#note-tool-upper").addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    noteApplyUppercase();
   });
   const noteColorTriggerBtn = $("#note-tool-color");
   const noteColorPopover = $("#note-color-popover");
@@ -22956,7 +22951,6 @@
     let boldOn = false;
     try { boldOn = document.queryCommandState("bold"); } catch (_) { /* ignore */ }
     $("#brainstorm-tool-bold").classList.toggle("active", !!boldOn);
-    $("#brainstorm-tool-upper").classList.toggle("active", brainstormUppercasePending);
     const brainstormBoldUpperBtn = $("#brainstorm-tool-bold-upper");
     if (brainstormBoldUpperBtn) {
       const bbOn = brainstormUppercasePending && !!boldOn;
@@ -23451,10 +23445,6 @@
   $("#brainstorm-tool-bold-upper").addEventListener("mousedown", (e) => {
     e.preventDefault();
     brainstormApplyBoldUppercase();
-  });
-  $("#brainstorm-tool-upper").addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    brainstormApplyUppercase();
   });
   document.querySelectorAll(".brainstorm-color-swatch").forEach(btn => {
     btn.addEventListener("mousedown", (e) => {
