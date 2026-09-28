@@ -6559,3 +6559,20 @@ kbd{
   line-height:1;
   white-space:nowrap;
 }
+
+
+/* v371 — merged Auto Color + manual text color picker. */
+#note-color-popover .note-color-auto-choice{
+  width:auto;
+  min-width:34px;
+  padding:0 7px;
+}
+#note-color-popover .note-color-auto-choice.active,
+#note-color-popover .note-color-swatch.active{
+  border-color:#3b6ef0!important;
+  background:#eaf0ff!important;
+  color:#3b6ef0!important;
+}
+.note-color-trigger-swatch.note-color-trigger-swatch-auto{
+  background:linear-gradient(90deg,#b5504a 0 25%,#c98a3a 25% 50%,#5a8f5a 50% 75%,#4a72b5 75% 100%)!important;
+}
