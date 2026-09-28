@@ -24314,8 +24314,12 @@
     const rows = await Promise.all(state.maps.map(async (m) => {
       let photoBytes = 0;
       let photoCount = 0;
+      let sharedCount = 0;
+      let sharedSourceName = "";
+      let ownIds = new Set();
       try {
         const photoRows = await PhotoDB.getAllForMap(m.id);
+        ownIds = new Set(photoRows.map((r) => r.id));
         photoCount = photoRows.length;
         for (const r of photoRows) {
           if (r.blob && typeof r.blob.size === "number") photoBytes += r.blob.size;
@@ -24324,11 +24328,23 @@
             photoBytes += Math.floor((r.data.length - (commaIdx + 1)) * 0.75);
           }
         }
+
+        const sourceId = sharedPhotoSourceMapId(m);
+        if (sourceId) {
+          const sourceMap = state.maps.find((x) => x.id === sourceId);
+          sharedSourceName = sourceMap ? (sourceMap.title || "source map") : "source map";
+          const sourceRows = await PhotoDB.getAllForMap(sourceId);
+          const sourceIds = new Set(sourceRows.map((r) => r.id));
+          collectReferencedPhotoIds(m.root).forEach((id) => {
+            if (!ownIds.has(id) && sourceIds.has(id)) sharedCount++;
+          });
+        }
       } catch (e) { /* best-effort estimate */ }
       // Actual UTF-8 JSON payload size of nodes/text/settings only.
-      // Photo Blob bytes are counted separately above.
+      // Photo Blob bytes are counted only under the map that physically owns
+      // them. Shared recovery references therefore do not inflate Total.
       const treeBytes = new Blob([JSON.stringify(m)], { type: "application/json" }).size;
-      return { map: m, treeBytes, photoBytes, photoCount, bytes: photoBytes + treeBytes };
+      return { map: m, treeBytes, photoBytes, photoCount, sharedCount, sharedSourceName, bytes: photoBytes + treeBytes };
     }));
     rows.sort((a, b) => b.bytes - a.bytes);
 
@@ -24393,7 +24409,7 @@
       return;
     }
 
-    rows.forEach(({ map: m, treeBytes, photoBytes, photoCount, bytes }) => {
+    rows.forEach(({ map: m, treeBytes, photoBytes, photoCount, sharedCount, sharedSourceName, bytes }) => {
       const li = document.createElement("li");
       li.className = "trash-row" + (m.trashedAt ? " storage-row-trashed" : "");
 
@@ -24406,8 +24422,9 @@
       meta.className = "trash-row-meta";
       meta.textContent =
         `Map data: ${formatStorageBytes(treeBytes)} · ` +
-        `Photos: ${formatStorageBytes(photoBytes)} (${photoCount}) · ` +
-        `Total: ${formatStorageBytes(bytes)}`;
+        `Photos owned: ${formatStorageBytes(photoBytes)} (${photoCount})` +
+        (sharedCount ? ` · Shared photos: ${sharedCount} from "${sharedSourceName}"` : "") +
+        ` · Total stored here: ${formatStorageBytes(bytes)}`;
       text.append(name, meta);
 
       const actions = document.createElement("div");
