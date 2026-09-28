@@ -18522,7 +18522,7 @@
     const label = $("#note-color-trigger-label");
     const swatch = $("#note-color-trigger-swatch");
     if (trigger) { trigger.classList.remove("active"); trigger.title = "Text color"; trigger.setAttribute("aria-label", "Text color"); }
-    if (label) label.textContent = "A";
+    if (label) label.textContent = "";
     if (swatch) { swatch.classList.remove("note-color-trigger-swatch-auto"); swatch.style.background = color; }
   }
 
