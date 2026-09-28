@@ -781,6 +781,22 @@
     return !!state.current && collectReferencedPhotoIds(state.current.root).has(id);
   }
 
+  // Shared recovery maps may keep referencing a photo after the source map
+  // itself no longer does. Any physical delete/GC must therefore consider
+  // ALL maps, not just the map currently being saved.
+  function photoIsReferencedByAnyMap(id) {
+    if (!id) return false;
+    for (const map of state.maps || []) {
+      if (map && map.root && collectReferencedPhotoIds(map.root).has(id)) return true;
+    }
+    return false;
+  }
+
+  function sharedPhotoDependentMaps(sourceMapId) {
+    if (!sourceMapId) return [];
+    return (state.maps || []).filter((m) => sharedPhotoSourceMapId(m) === sourceMapId);
+  }
+
   // Swaps fromId for toId wherever ONE node holds it — its own photos
   // (carrying the per-photo tags/notes/comments/favorite/date over to the
   // new id), its table cells' photos, and its link-comment photos. A list
@@ -888,7 +904,7 @@
         const rec = await PhotoDB.get(id);
         // A shared recovery can stop referencing a source photo, but that
         // must not delete the original map's PhotoDB row.
-        if (!rec || !map || rec.mapId === map.id) doomed.push(id);
+        if ((!rec || !map || rec.mapId === map.id) && !photoIsReferencedByAnyMap(id)) doomed.push(id);
       }
       if (doomed.length) await PhotoDB.deleteMany(doomed);
     } catch (e) { console.error("Deleting photos failed", e); }
@@ -2655,7 +2671,14 @@
 
     async cleanupRemotePhotos(mapId, referenced, remoteIndex) {
       const index = remoteIndex || await this.listRemotePhotos(mapId, false);
-      const doomed = Object.keys(index).filter((id) => !referenced.has(id));
+      const keep = new Set(referenced || []);
+      // Shared recovery manifests intentionally don't own another copy of
+      // these files; keep source Drive files alive while any dependent map
+      // still references them.
+      sharedPhotoDependentMaps(mapId).forEach((dep) => {
+        collectReferencedPhotoIds(dep.root).forEach((id) => keep.add(id));
+      });
+      const doomed = Object.keys(index).filter((id) => !keep.has(id));
       for (const id of doomed) {
         try {
           await this.api(`https://www.googleapis.com/drive/v3/files/${index[id].id}`, { method: "DELETE" });
@@ -7373,6 +7396,11 @@
       // Includes photos attached to link comments (video/link screenshots),
       // which the sweep used to overlook.
       const referenced = collectReferencedPhotoIds(map.root);
+      // A source map can own bytes still used by one or more lightweight
+      // recovery maps. Count those references as live too.
+      sharedPhotoDependentMaps(map.id).forEach((dep) => {
+        collectReferencedPhotoIds(dep.root).forEach((id) => referenced.add(id));
+      });
       const rows = await PhotoDB.getAllForMap(map.id);
       for (const r of rows) {
         if (!referenced.has(r.id)) {
