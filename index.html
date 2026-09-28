@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=372">
+<link rel="stylesheet" href="style.css?v=373">
 </head>
 <body>
 <div id="app">
@@ -615,13 +615,13 @@
   </div>
   <div id="note-color-popover" class="note-color-popover hidden">
     <button type="button" id="note-color-auto" class="note-tool-btn note-color-auto-choice active" title="Auto Color" aria-label="Auto Color">🎨</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#2b2a25" title="Default text">A</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#000000" title="Black">A</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#b5504a" title="Red">A</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#c98a3a" title="Orange">A</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#5a8f5a" title="Green">A</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#4a72b5" title="Blue">A</button>
-    <button type="button" class="note-tool-btn note-color-swatch" data-color="#7c7c76" title="Gray">A</button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#2b2a25" title="Default text"></button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#000000" title="Black"></button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#b5504a" title="Red"></button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#c98a3a" title="Orange"></button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#5a8f5a" title="Green"></button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#4a72b5" title="Blue"></button>
+    <button type="button" class="note-tool-btn note-color-swatch" data-color="#7c7c76" title="Gray"></button>
     <label class="note-tool-btn note-color-custom-wrap" title="Custom color">
       <span>+</span>
       <input type="color" id="note-color-custom" value="#2b2a25">
@@ -839,7 +839,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "372";
+  const APP_VERSION = "373";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -867,12 +867,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "372"') && !document.documentElement.dataset.v372Reloaded) {
+      if (fresh.includes('const APP_VERSION = "373"') && !document.documentElement.dataset.v373Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v372Reloaded = "1";
+          document.documentElement.dataset.v373Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -886,9 +886,9 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=372"></script>
-<script src="phase2-layout.js?v=372"></script>
-<script src="app.js?v=372"></script>
+<script src="phase1-editors.js?v=373"></script>
+<script src="phase2-layout.js?v=373"></script>
+<script src="app.js?v=373"></script>
 <script>
 (() => {
   function insertTab(editor) {
