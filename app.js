@@ -3521,6 +3521,140 @@
     }
   }
 
+
+  // One-time cleanup for recovery maps created by older builds, which copied
+  // every photo into a fresh map id. Match by exact byte fingerprint, remap
+  // only proven-identical ids to the original map, then delete the duplicate
+  // rows owned by the recovery. Unique recovery-only photos stay independent.
+  function recoveryBaseTitle(title) {
+    const m = String(title || "").match(/^(.*) \((?:other device|unsynced copy) \d{1,2}\/\d{1,2} \d{1,2}:\d{2}\)$/i);
+    return m ? m[1] : null;
+  }
+
+  async function photoRecordFingerprint(rec) {
+    if (!rec) return null;
+    try {
+      let blob = rec.blob || null;
+      if (!blob && rec.data) blob = dataUrlToBlob(rec.data);
+      if (!blob) return null;
+      const buf = await blob.arrayBuffer();
+      return fingerprintBytes(new Uint8Array(buf));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function migrateLegacyConflictPhotoCopies() {
+    let convertedMaps = 0;
+    let freedBytes = 0;
+    const fpCache = new Map();
+
+    const fpFor = async (rec) => {
+      if (!rec || !rec.id) return null;
+      if (fpCache.has(rec.id)) return fpCache.get(rec.id);
+      const fp = await photoRecordFingerprint(rec);
+      fpCache.set(rec.id, fp);
+      return fp;
+    };
+
+    const copies = state.maps.filter((m) => !sharedPhotoSourceMapId(m) && recoveryBaseTitle(m.title));
+    for (const copy of copies) {
+      const baseTitle = recoveryBaseTitle(copy.title);
+      const candidates = state.maps.filter((m) => m.id !== copy.id && (m.title || "") === baseTitle);
+      if (!candidates.length) continue;
+
+      let copyRows = [];
+      try { copyRows = await PhotoDB.getAllForMap(copy.id); } catch (e) {}
+      if (!copyRows.length) continue;
+
+      const copyFp = new Map();
+      for (const r of copyRows) {
+        const fp = await fpFor(r);
+        if (fp) copyFp.set(r.id, fp);
+      }
+      if (!copyFp.size) continue;
+
+      let best = null;
+      for (const candidate of candidates) {
+        let sourceRows = [];
+        try { sourceRows = await PhotoDB.getAllForMap(candidate.id); } catch (e) {}
+        if (!sourceRows.length) continue;
+        const byFp = new Map();
+        for (const r of sourceRows) {
+          const fp = await fpFor(r);
+          if (fp && !byFp.has(fp)) byFp.set(fp, r.id);
+        }
+        let matches = 0;
+        copyFp.forEach((fp) => { if (byFp.has(fp)) matches++; });
+        if (matches && (!best || matches > best.matches)) best = { map: candidate, byFp, matches };
+      }
+      if (!best) continue;
+
+      const oldIds = [];
+      let changedRefs = 0;
+      for (const r of copyRows) {
+        const fp = copyFp.get(r.id);
+        const sourceId = fp && best.byFp.get(fp);
+        if (!sourceId || sourceId === r.id) continue;
+        let changed = 0;
+        (function walk(n) {
+          if (!n) return;
+          changed += replacePhotoIdInNode(n, r.id, sourceId);
+          (n.children || []).forEach(walk);
+        })(copy.root);
+        if (changed) {
+          changedRefs += changed;
+          oldIds.push(r.id);
+        }
+      }
+      if (!changedRefs) continue;
+
+      copy._sharedPhotoSourceMapId = best.map.id;
+      copy._photoSharingV1 = true;
+      copy._photosMigrated = true;
+      copy.updatedAt = nextUpdatedAt(copy);
+      await DB.put(copy);
+
+      // Tree first, bytes second: a crash can therefore never leave the
+      // stored recovery pointing at ids whose duplicate rows were deleted.
+      const still = collectReferencedPhotoIds(copy.root);
+      const doomed = [];
+      for (const id of oldIds) {
+        if (still.has(id)) continue;
+        const rec = await PhotoDB.get(id);
+        if (rec && rec.mapId === copy.id) {
+          if (rec.blob && typeof rec.blob.size === "number") freedBytes += rec.blob.size;
+          else if (typeof rec.data === "string") {
+            const commaIdx = rec.data.indexOf(",");
+            freedBytes += Math.floor((rec.data.length - (commaIdx + 1)) * 0.75);
+          }
+          doomed.push(id);
+        }
+      }
+      if (doomed.length) await PhotoDB.deleteMany(doomed);
+      convertedMaps++;
+
+      if (state.current && state.current.id === copy.id) {
+        await loadPhotoCacheForMap(copy.id);
+        try { renderAll(); } catch (e) {}
+      }
+
+      // Publish the lightweight manifest and let Drive cleanup remove only
+      // this recovery map's now-unused duplicate photo files.
+      if (DriveDB.signedIn && !DriveDB.needsReauth && !DriveDB.driveBroken()) {
+        try { await DriveDB.save(copy); } catch (e) { console.warn("Couldn't publish shared recovery migration", e); }
+      }
+    }
+
+    if (convertedMaps) {
+      try {
+        showToast(`Recovery photos shared across ${convertedMaps} map${convertedMaps === 1 ? "" : "s"}` +
+          (freedBytes ? ` — freed ${formatStorageBytes(freedBytes)} locally.` : "."));
+      } catch (e) {}
+    }
+    return { convertedMaps, freedBytes };
+  }
+
   /* ---------------- node-level three-way merge ----------------
      Before this, ANY overlap (this device changed a map AND Drive's
      copy also changed since they last agreed) fell straight back to
@@ -8025,6 +8159,11 @@
     if (!requireSignIn()) return;
     const m = state.maps.find(x => x.id === id);
     if (!m) return;
+    const dependents = state.maps.filter((x) => x.id !== id && sharedPhotoSourceMapId(x) === id);
+    if (dependents.length) {
+      alert(`This map still supplies shared photos to ${dependents.length} recovery cop${dependents.length === 1 ? "y" : "ies"}. Delete those recovery copies first so their photos cannot break.`);
+      return;
+    }
     if (!confirm(`Permanently delete "${m.title || 'Untitled map'}"? This cannot be undone.`)) return;
     await DB.delete(id);
     await PhotoDB.deleteAllForMap(id);
@@ -8037,7 +8176,9 @@
 
   async function emptyTrash() {
     if (!requireSignIn()) return;
-    const trashed = trashedMapsList();
+    const trashed = trashedMapsList().slice().sort((a, b) =>
+      Number(!!sharedPhotoSourceMapId(b)) - Number(!!sharedPhotoSourceMapId(a))
+    );
     if (!trashed.length) return;
     if (!confirm(`Permanently delete all ${trashed.length} map${trashed.length === 1 ? "" : "s"} in the trash? This cannot be undone.`)) return;
     // Each step below can fail independently (a blocked IndexedDB
@@ -8051,6 +8192,10 @@
     const failed = [];
     for (const m of trashed) {
       try {
+        const dependents = state.maps.filter((x) => x.id !== m.id && sharedPhotoSourceMapId(x) === m.id);
+        if (dependents.length) {
+          throw new Error("Map still supplies shared photos to another recovery copy");
+        }
         await DB.delete(m.id);
         await PhotoDB.deleteAllForMap(m.id);
         await FolderDB.remove(m);
@@ -25968,6 +26113,17 @@
 
           const dupesTrashed = await autoRemoveDuplicateMaps();
           if (dupesTrashed) console.log(`Auto-removed ${dupesTrashed} duplicate map(s) to trash`);
+
+          // Older conflict backups duplicated every photo. Convert them in
+          // the background after Drive reconciliation, so startup rendering
+          // stays fast and the user's existing 60 MB recovery copies shrink
+          // automatically after upgrading.
+          try {
+            const sharedMigration = await migrateLegacyConflictPhotoCopies();
+            if (sharedMigration.convertedMaps) renderSidebar();
+          } catch (e) {
+            console.warn("Recovery photo sharing migration skipped", e);
+          }
 
           if (activeMaps().length === 0) {
             const sample = sampleMindMap();
