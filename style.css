@@ -6549,22 +6549,13 @@ kbd{
 }
 
 
-/* v367 — keep "+ New note" text inside its pill on phone. */
+/* v368 — New note is icon-only and matches the other note navigation buttons. */
 #note-nav-add{
   box-sizing:border-box;
-  height:auto;
+  height:22px;
   min-height:22px;
-  line-height:1.15;
+  min-width:0;
+  padding:0 9px;
+  line-height:1;
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:clip;
-}
-@media (max-width: 700px){
-  #note-nav-add{
-    height:42px;
-    min-height:42px;
-    padding:0 10px;
-    line-height:1;
-    white-space:nowrap;
-  }
 }
