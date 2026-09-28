@@ -6638,3 +6638,23 @@ kbd{
   outline-offset:1px!important;
   border-color:#fff!important;
 }
+
+
+/* v373 — phone editor Tab: keep the Tab label fully inside its grid button.
+   Older base CSS gives Tab min-width:42px; phone toolbar columns can be
+   narrower, so explicitly release that minimum and clip the label safely. */
+@media (max-width:640px){
+  #note-tool-tab,
+  #brainstorm-tool-tab,
+  #drc-tool-tab{
+    width:100%!important;
+    min-width:0!important;
+    max-width:100%!important;
+    padding:0 1px!important;
+    overflow:hidden!important;
+    white-space:nowrap!important;
+    text-overflow:clip!important;
+    box-sizing:border-box!important;
+    font-size:11px!important;
+  }
+}
