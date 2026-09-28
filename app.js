@@ -10927,12 +10927,10 @@
     updateSelectedClasses(prevId, id);
   }
 
-  let nodeEditStartedAt = 0;
   function startEdit(id) {
     if (!requireSignIn()) return;
     state.selectedId = id;
     state.editingId = id;
-    nodeEditStartedAt = Date.now();
     renderAll();
   }
 
@@ -11496,12 +11494,29 @@
     // Long-press already opens this menu on touch, so put Rename here too.
     if (!nodeIsTable(node)) {
       structureItems.push(["✏️ Rename", () => {
-        // v369: finish the long-press/menu gesture before focusing the
-        // contenteditable node; otherwise Android immediately drops focus.
         const touchPhone = window.matchMedia("(pointer: coarse)").matches ||
           window.matchMedia("(max-width: 640px)").matches;
-        if (touchPhone) setTimeout(() => startEdit(node.id), 0);
-        else startEdit(node.id);
+        if (!touchPhone) {
+          startEdit(node.id);
+          return;
+        }
+        // v370: phone rename deliberately does not use the canvas
+        // contenteditable. Android can dismiss that keyboard as the
+        // long-press/context-menu gesture finishes. A native text prompt
+        // owns focus independently of the canvas and remains stable.
+        const next = window.prompt("Rename node", node.text || "");
+        if (next === null) return;
+        const value = next.trim();
+        if (value === (node.text || "")) return;
+        pushUndo();
+        node.text = value;
+        if (state.current && node.id === state.current.root.id) {
+          state.current.title = value;
+          titleInput.value = value;
+          renderSidebar();
+        }
+        renderAll();
+        persist();
       }]);
     }
     // Move-to-new-parent, as an alternative to dragging the node across
@@ -12188,9 +12203,6 @@
   let pinchState = null;
 
   function startPan(clientX, clientY) {
-    // v369: suppress the trailing synthetic touch from the context-menu
-    // gesture that has just opened Rename.
-    if (state.editingId && Date.now() - nodeEditStartedAt < 350) return;
     // What was on screen before this press decides how much has to be
     // redrawn afterwards (see the end of this function).
     const hadEditing = !!state.editingId;
