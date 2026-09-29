@@ -6130,9 +6130,14 @@
     return { items: getDRCQueueItems(), deleted: getDeletedDRCQueueItems() };
   }
   function drcQueueDisplayItems() {
-    // Stable sort: unfinished/failed first; completed items always fall to
-    // the end while preserving the user's order inside each group.
-    return getDRCQueueItems().slice().sort((a, b) => Number(!!a.done) - Number(!!b.done));
+    // Unfinished/failed items stay first in their existing order.
+    // Completed queue items stay at the end, newest completion/update first.
+    return getDRCQueueItems().slice().sort((a, b) => {
+      const doneDiff = Number(!!a.done) - Number(!!b.done);
+      if (doneDiff) return doneDiff;
+      if (a.done && b.done) return (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0);
+      return 0;
+    });
   }
   function saveDRCQueueMutation(items, deleted) {
     saveDRCQueueItems(items);
