@@ -10657,9 +10657,12 @@
     }
     {
       const notes = getCellNotes(a);
-      // v427: a cell is a mini-node: one visible Note/DRC/Plan marker
-      // represents exactly one note and moving it moves only that note.
-      // Brainstorm is skipped because its dedicated 🧠 marker below owns it.
+      // v432: a cell is a mini-node not only for its own notes, but also for
+      // the note markers owned by tasks/subtasks inside the cell. Copy/Paste
+      // all icons already carries the complete task tree; render those nested
+      // markers here too so a pasted cell does not appear to lose Note/DRC.
+      // Brainstorm host notes are skipped because the shared 🧠 marker below
+      // owns them, exactly like the node strip.
       notes.forEach((n, i) => {
         if (isBrainstormNote(n)) return;
         const noteIcon = document.createElement("span");
@@ -10678,6 +10681,68 @@
         noteIcon.addEventListener("dragend", endMarkerDrag);
         noteIcon.addEventListener("click", () => openNoteModal(node.id, i, null, null, { r, c }));
         strip.appendChild(noteIcon);
+      });
+
+      const tasksWithNotes = getNodeTasks(a).filter(taskHasNotes);
+      const subtasksWithNotes = getNodeTasks(a).flatMap((t) =>
+        getTaskSubtasks(t).filter(taskHasNotes).map((sub) => ({ t, sub }))
+      );
+
+      tasksWithNotes.forEach((t) => {
+        const first = getTaskNotes(t)[0];
+        if (!first) return;
+        const isDrc = isDRCNote(first);
+        const icon = document.createElement("span");
+        icon.className = "node-table-cell-icon node-table-cell-note node-table-cell-task-note" +
+          (isDrc ? " node-table-cell-drc" : "");
+        icon.innerHTML = isDrc
+          ? NODE_DRC_ICON_IMG
+          : (isPlanNoteFor(first, t) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
+        icon.title = isDrc
+          ? `Task "${t.text || "(untitled task)"}" — DRC, ${drcNoteIsFilled(first) ? "filled in" : "not filled in yet"}`
+          : `Task "${t.text || "(untitled task)"}" — ${notePreviewText(first)}`;
+        icon.title += " — drag onto a node or cell to move this task's note(s) (hold Alt to copy)";
+        icon.draggable = true;
+        icon.addEventListener("dragstart", (e) =>
+          startMarkerDrag(e, node, "task-notes", { sourceTaskId: t.id, sourceR: r, sourceC: c }));
+        armMarkerTouchDrag(icon, node, "task-notes", { sourceTaskId: t.id, sourceR: r, sourceC: c });
+        icon.addEventListener("dragend", endMarkerDrag);
+        icon.addEventListener("click", () => openNoteModal(node.id, undefined, null, t.id, { r, c }));
+        strip.appendChild(icon);
+      });
+
+      subtasksWithNotes.forEach(({ t, sub }) => {
+        const first = getTaskNotes(sub)[0];
+        if (!first) return;
+        const isDrc = isDRCNote(first);
+        const icon = document.createElement("span");
+        icon.className = "node-table-cell-icon node-table-cell-note node-table-cell-subtask-note" +
+          (isDrc ? " node-table-cell-drc" : "");
+        icon.innerHTML = isDrc
+          ? NODE_DRC_ICON_IMG
+          : (isPlanNoteFor(first, sub) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
+        icon.title = isDrc
+          ? `Subtask "${sub.text || "(untitled subtask)"}" — DRC, ${drcNoteIsFilled(first) ? "filled in" : "not filled in yet"}`
+          : `Subtask "${sub.text || "(untitled subtask)"}" — ${notePreviewText(first)}`;
+        icon.title += " — drag onto a node or cell to move this subtask's note(s) (hold Alt to copy)";
+        icon.draggable = true;
+        icon.addEventListener("dragstart", (e) =>
+          startMarkerDrag(e, node, "task-notes", {
+            sourceTaskId: t.id,
+            sourceSubtaskId: sub.id,
+            sourceR: r,
+            sourceC: c
+          }));
+        armMarkerTouchDrag(icon, node, "task-notes", {
+          sourceTaskId: t.id,
+          sourceSubtaskId: sub.id,
+          sourceR: r,
+          sourceC: c
+        });
+        icon.addEventListener("dragend", endMarkerDrag);
+        icon.addEventListener("click", () =>
+          openNoteModal(node.id, undefined, null, t.id, { r, c }, false, sub.id));
+        strip.appendChild(icon);
       });
     }
     // One icon per link (instead of a single icon), same treatment as
@@ -10746,7 +10811,13 @@
       tbadge.appendChild(tlabel);
       strip.appendChild(tbadge);
     }
-    const cellHasBrainstorm = hasBrainstormContent(a);
+    // v432: Brainstorm-prefixed subtasks inside a cell share the cell's one
+    // Brainstorm marker, matching the one-marker-per-node rule. This is what
+    // makes Paste all icons visibly preserve a "brainstorm..." subtask marker
+    // even before any Brainstorm text has been written.
+    const cellHasBrainstorm =
+      hasBrainstormContent(a) ||
+      getNodeTasks(a).some((t) => getTaskSubtasks(t).some(subtaskHasBrainstormMarker));
     if (cellHasBrainstorm) {
       // Same brain-with-count marker as the node-level strip (see
       // renderNode) — click jumps straight into the scratchpad for this cell.
