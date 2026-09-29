@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=410">
+<link rel="stylesheet" href="style.css?v=411">
 </head>
 <body>
 <div id="app">
@@ -658,6 +658,7 @@
           <button type="button" id="tasks-sort-stars" class="tasks-sort-stars-btn" title="Sort tasks by star, then color. Click again to sort by color instead.">★ Sort</button>
           <button type="button" id="tasks-templates-btn" class="tasks-sort-stars-btn" title="Save this whole task list as a template, or insert a saved one">📋 Templates</button>
           <button type="button" id="tasks-random-btn" class="tasks-sort-stars-btn" title="Pick a random unfinished subtask from the whole task list">🎲 Random</button>
+          <button type="button" id="tasks-delete-list" class="tasks-sort-stars-btn tasks-delete-list-btn" title="Delete this entire task list">🗑 Delete list</button>
         </div>
       </details>
     </div>
@@ -841,7 +842,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "410";
+  const APP_VERSION = "411";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -869,12 +870,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "410"') && !document.documentElement.dataset.v410Reloaded) {
+      if (fresh.includes('const APP_VERSION = "411"') && !document.documentElement.dataset.v411Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v410Reloaded = "1";
+          document.documentElement.dataset.v411Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -888,8 +889,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=410"></script>
-<script src="phase2-layout.js?v=410"></script>
+<script src="phase1-editors.js?v=411"></script>
+<script src="phase2-layout.js?v=411"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -926,7 +927,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=410"></script>
+<script src="app.js?v=411"></script>
 <script>
 (() => {
   function insertText(editor, text) {

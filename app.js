@@ -10073,7 +10073,7 @@
     // v409: keep the badge available as the cell's fast Tasks entry point.
     // A task list with zero points still gets a "0" badge so it can always
     // be reopened directly from the calendar/table cell.
-    if (!prog || (!hasTasks && prog.done <= 0)) return null;
+    if (!prog || !hasTasks) return null;
     const points = Math.max(0, Number(prog.done) || 0);
     const badge = document.createElement("span");
     badge.className = "node-table-cell-score-badge score-" + cellScoreBand(points);
@@ -20176,6 +20176,7 @@
   const tasksFontColorToggleBtn = $("#tasks-font-color-toggle");
   const tasksTemplatesBtn = $("#tasks-templates-btn");
   const tasksRandomBtn = $("#tasks-random-btn");
+  const tasksDeleteListBtn = $("#tasks-delete-list");
   const tasksFocusTimerEl = $("#tasks-focus-timer");
   let tasksEditingTarget = null; // {nodeId, r, c} — r/c null when the modal is open for a whole node instead of one table cell
   let tasksMapStateAtOpen = null;
@@ -22453,6 +22454,7 @@
       : "No tasks yet";
     tasksSortStarsBtn.disabled = tasks.length < 2;
     tasksRandomBtn.disabled = unfinishedSubtasksOfHost(host).length === 0;
+    if (tasksDeleteListBtn) tasksDeleteListBtn.disabled = tasks.length === 0;
     updateTaskFontColorToggleBtn();
   }
 
@@ -22476,6 +22478,41 @@
     showToast(`🎲 ${s.text}`);
   }
   tasksRandomBtn.addEventListener("click", pickRandomSubtask);
+
+  // Deletes the WHOLE task list currently open in the modal (node or one
+  // calendar/table cell). This is a list-level action, so it lives in the
+  // same ••• menu as Font / Sort / Templates / Random rather than on each
+  // individual task row.
+  function deleteCurrentTaskList() {
+    const target = tasksEditingTarget;
+    const host = target && resolveHost(target.nodeId, target.r, target.c);
+    if (!host) return;
+    const tasks = getNodeTasks(host);
+    if (!tasks.length) {
+      showToast("Task list is already empty");
+      closeTaskListActionUI();
+      return;
+    }
+
+    const subtaskCount = tasks.reduce((sum, t) => sum + getTaskSubtasks(t).length, 0);
+    const details = [
+      `${tasks.length} task${tasks.length === 1 ? "" : "s"}`,
+      subtaskCount ? `${subtaskCount} subtask${subtaskCount === 1 ? "" : "s"}` : null
+    ].filter(Boolean).join(" and ");
+    if (!confirm(`Delete this entire task list? This will remove ${details}, including their notes.`)) return;
+
+    pushUndo();
+    host.tasks = [];
+    // Clear the legacy single-task field too, so an old cell save cannot
+    // lazily recreate a deleted list via getCellAttach().
+    if (Object.prototype.hasOwnProperty.call(host, "task")) host.task = null;
+
+    closeTaskListActionUI();
+    persist();
+    showToast("Task list deleted");
+    closeTasksModal();
+  }
+  if (tasksDeleteListBtn) tasksDeleteListBtn.addEventListener("click", deleteCurrentTaskList);
 
   // Reflects the current taskFontBlackMode on the toggle button itself
   // (label + pressed state) — called whenever the tasks modal (re)renders.

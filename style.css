@@ -2700,6 +2700,15 @@ kbd{
 /* Pressed/"on" state for the task font-color toggle (black mode active) */
 .tasks-sort-stars-btn.active{ background: var(--accent, #4a72b5); color: #fff; border-color: transparent; }
 .tasks-sort-stars-btn.active:hover{ color: #fff; }
+.tasks-delete-list-btn{
+  color:#c0392b;
+  border-color:rgba(192,57,43,.35);
+}
+.tasks-delete-list-btn:hover:not(:disabled){
+  color:#a82419;
+  border-color:rgba(192,57,43,.65);
+  background:rgba(192,57,43,.08);
+}
 /* Tasks header compact menu: on desktop the <details> wrapper is visually
    transparent, so the four existing action buttons stay in their old row. */
 .tasks-compact-menu{
@@ -3558,6 +3567,9 @@ kbd{
     padding:7px 6px;
     font-size:11px;
     text-align:center;
+  }
+  #tasks-modal .tasks-compact-menu-actions .tasks-delete-list-btn{
+    grid-column:1 / -1;
   }
   #tasks-modal .task-text{ font-size:13px; }
   #tasks-modal .subtask-text{ font-size:11px; }
