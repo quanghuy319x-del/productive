@@ -10338,17 +10338,14 @@
     // Clipboard lives at the top so it is always visible without scrolling.
     addSection("Clipboard");
     addItem("📋 Copy all icons", () => copyAllIconsFromHost(a));
-    addItem("📥 Paste all icons", () => pasteAllIconsToHost(a), {
-      disabled: !allIconsClipboard,
-      hint: allIconsClipboard ? "" : "empty"
-    });
+    addItem("📥 Paste all icons", () => pasteAllIconsToHost(a));
 
     addSection("Content");
-    addItem("🖼 Add photo…", () => openCellPhotoPicker(node, r, c));
+    addItem("🖼️ Add photo…", () => openCellPhotoPicker(node, r, c));
     if (cellHasImages(a)) {
       const cellPhotos = getCellPhotos(a);
-      addItem(cellPhotos.length > 1 ? "👁 View photos…" : "👁 View photo…", () => openCellPhotoModal(node.id, r, c, 0));
-      addItem("🗑 Remove all photos", () => {
+      addItem(cellPhotos.length > 1 ? "👁️ View photos…" : "👁️ View photo…", () => openCellPhotoModal(node.id, r, c, 0));
+      addItem("🗑️ Remove all photos", () => {
         pushUndo();
         const removedCellIds = getCellPhotoIds(a).slice();
         a.images = null;
@@ -10361,7 +10358,7 @@
 
     addItem(cellHasNotes(a) ? `📝 Notes (${getCellNotes(a).length})…` : "📝 Add note…", () => editCellNote(node, r, c));
     if (cellHasNotes(a)) {
-      addItem("🗑 Remove all notes", () => {
+      addItem("🗑️ Remove all notes", () => {
         pushUndo();
         a.note = null;
         a.notes = null;
@@ -10370,15 +10367,15 @@
         persist();
       }, { danger: true });
     }
-    addItem("🔗 Add link…", () => addCellUrl(node, r, c));
+    addSection("Work");
 
     const prog = nodeTaskProgress(a);
-    addItem(prog.total ? `✓ Tasks (${prog.done}/${prog.total})…` : "✓ Add tasks…", () => openTasksModal(node.id, r, c));
+    addItem(prog.total ? `✅ Tasks… (${prog.done}/${prog.total})` : "✅ Add tasks…", () => openTasksModal(node.id, r, c));
 
     const played = getNodeTimePlayed(a);
-    addItem(played ? `⏱ Timer — ${formatTimePlayed(played)}…` : "⏱ Add timer…", () => openTimerModal(node.id, r, c));
+    addItem(played ? `⏱️ Timer — ${formatTimePlayed(played)}…` : "⏱️ Add timer…", () => openTimerModal(node.id, r, c));
     if (played) {
-      addItem("Remove timer", () => {
+      addItem("🗑️ Remove timer", () => {
         pushUndo();
         a.timePlayedSec = 0;
         renderAll();
@@ -10386,12 +10383,17 @@
       }, { danger: true });
     }
 
-    const wins = nodeAffirmationWins(a);
-    addItem(wins ? `🎮 Affirmation (✓ ${wins})` : "🎮 Affirmation game", () => openAffirmationGame(node.id, r, c));
     addItem("🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c));
 
     const drcFilled = getCellNotes(a).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
-    addItem(drcFilled > 0 ? `📋 DRC (${drcFilled} filled)…` : "📋 DRC…", () => openCellDRCModal(node, r, c));
+    addItem(drcFilled > 0 ? `📋 DRC (${drcFilled} filled in)…` : "📋 DRC…", () => openCellDRCModal(node, r, c));
+
+    const urls = getCellUrls(a);
+    const commented = urls.filter(u => getCellLinkComment(a, u)).length;
+    addItem(commented > 0 ? `🔗 Links (${commented} commented)…` : "🔗 Add link…", () => addCellUrl(node, r, c));
+
+    const wins = nodeAffirmationWins(a);
+    addItem(wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game", () => openAffirmationGame(node.id, r, c));
 
     addSection("Cell");
     if (state.cellRange && state.cellRange.nodeId === node.id &&
@@ -10417,6 +10419,22 @@
     }
 
     addSection("Appearance");
+
+    const combinedOn = !!a.bold && !!a.allCaps;
+    addItem(combinedOn ? "𝐀𝐀 Bold + ALL CAPS ✓" : "𝐀𝐀 Bold + ALL CAPS", () => {
+      pushUndo();
+      const turnOn = !(a.bold && a.allCaps);
+      a.bold = turnOn;
+      a.allCaps = turnOn;
+      renderAll();
+      persist();
+    });
+    addItem(a.struck ? "~~ Remove strikethrough" : "~~ Strikethrough", () => {
+      pushUndo();
+      a.struck = !a.struck;
+      renderAll();
+      persist();
+    });
 
     const fillLabel = document.createElement("div");
     fillLabel.className = "ctx-item cell-menu-subhead";
@@ -11004,8 +11022,12 @@
         textEl.textContent = row[c] || "";
         textEl.style.color = a.fontColor || "";
         textEl.style.textAlign = a.align || (node.table.calendar ? "center" : "");
+        textEl.style.textTransform = a.allCaps ? "uppercase" : "";
+        textEl.style.textDecoration = a.struck ? "line-through" : "";
         if (node.table.calendar && (r === 0 || r === 1)) {
           textEl.style.fontWeight = r === 0 ? "900" : "800";
+        } else {
+          textEl.style.fontWeight = a.bold ? "800" : "";
         }
         textEl.addEventListener("click", (e) => { e.stopPropagation(); handleTableCellClick(node, r, c, e.shiftKey); });
         textEl.addEventListener("blur", () => {
@@ -13038,6 +13060,25 @@
       }
     };
     const addSep = () => { const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep); };
+    const addSection = (title) => {
+      if (ctxMenu.childElementCount) addSep();
+      const head = document.createElement("div");
+      head.className = "ctx-item ctx-item-header";
+      const span = document.createElement("span");
+      span.className = "ctx-item-label";
+      span.textContent = title;
+      head.appendChild(span);
+      ctxMenu.appendChild(head);
+    };
+
+    // v431: node and cell menus now start with the same Clipboard block.
+    addSection("Clipboard");
+    renderItemRows([
+      ["📋 Copy all icons", () => copyAllIconsFromHost(node)],
+      ["📥 Paste all icons", () => pasteAllIconsToHost(node)],
+    ]);
+
+    addSection("Node");
 
     // Group: structure — renaming, moving, and other actions that change
     // where/how this node sits in the tree, not what it contains.
@@ -13100,7 +13141,7 @@
     // structure, notes, photos), kept apart from the structural actions
     // above since these add/change what the node holds rather than where
     // it sits.
-    addSep();
+    addSection("Content");
     const contentItems = [];
     contentItems.push(["▦ Add table child", () => {
       const n = addTableChild(node.id);
@@ -13169,13 +13210,11 @@
         renderAll(); persist();
       }]);
     }
-    contentItems.push(["📋 Copy all icons", () => copyAllIconsFromHost(node)]);
-    contentItems.push(["📥 Paste all icons", () => pasteAllIconsToHost(node)]);
     renderItemRows(contentItems);
 
     // Group: reference — actions that read/export/mark this branch
     // rather than change or add to it.
-    addSep();
+    addSection("Reference");
     renderItemRows([
       ["📋 Copy as outline", () => copyNodeBranchToClipboard(node)],
       [state.highlightId === node.id ? "🖍️ Remove highlight" : "🖍️ Highlight branch", () => setHighlight(node.id)],
@@ -13192,7 +13231,7 @@
     // elsewhere in this menu) that opens the shared lines-editor modal
     // instead of starting a round.
     {
-      addSep();
+      addSection("Work");
 
       const addGroupRow = (label, fn) => {
         const row = document.createElement("div");
@@ -13269,7 +13308,7 @@
     // on/off toggle, plus "None" to turn it off. Reuses the same
     // label-then-row layout as the branch color swatches below.
     {
-      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
+      addSection("Appearance");
       const label = document.createElement("div");
       label.className = "ctx-item"; label.style.cursor = "default";
       label.textContent = "✨ Glow effect";
