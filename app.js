@@ -10060,7 +10060,25 @@
             c >= state.cellRange.c0 && c <= state.cellRange.c1) {
           td.classList.add("range-selected");
         }
-        td.addEventListener("click", (e) => { e.stopPropagation(); handleTableCellClick(node, r, c, e.shiftKey); });
+        td.addEventListener("click", (e) => {
+          e.stopPropagation();
+          handleTableCellClick(node, r, c, e.shiftKey);
+          // The whole cell is an editing target, including empty space below
+          // short text. Clicking that padding focuses the cell editor and
+          // places the caret at the end instead of doing nothing.
+          if (!e.shiftKey && e.target === td) {
+            const editor = td.querySelector(".node-table-cell-text");
+            if (editor) {
+              editor.focus();
+              const sel = window.getSelection();
+              const range = document.createRange();
+              range.selectNodeContents(editor);
+              range.collapse(false);
+              sel.removeAllRanges();
+              sel.addRange(range);
+            }
+          }
+        });
         td.addEventListener("contextmenu", (e) => {
           e.preventDefault(); e.stopPropagation();
           if (!requireSignIn()) return;
