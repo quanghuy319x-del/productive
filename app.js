@@ -10045,6 +10045,26 @@
   // more. Mirrors the node-level photo/note/link strip (see renderNode)
   // at a smaller scale, and reads/writes node.table.attach[r][c] instead
   // of the node's own fields.
+  function cellScoreBand(points) {
+    const p = Math.max(0, Number(points) || 0);
+    if (p >= 100) return "very-high";
+    if (p >= 75) return "high";
+    if (p >= 50) return "strong";
+    if (p >= 25) return "medium";
+    if (p >= 10) return "low";
+    return "very-low";
+  }
+
+  function buildCellScoreBadge(a) {
+    const prog = nodeTaskProgress(a);
+    if (!prog || prog.done <= 0) return null;
+    const badge = document.createElement("span");
+    badge.className = "node-table-cell-score-badge score-" + cellScoreBand(prog.done);
+    badge.textContent = String(prog.done);
+    badge.title = `${prog.done} progress points${prog.total ? ` / ${prog.total} total` : ""}`;
+    return badge;
+  }
+
   function buildCellIconStrip(node, r, c) {
     const a = getCellAttach(node, r, c);
     const strip = document.createElement("div");
@@ -10147,10 +10167,8 @@
       });
       strip.appendChild(linkIcon);
     });
-    // v407: the badge shows this cell's real progress POINTS, using the
-    // same weighted scoring as nodeTaskProgress(): starred work, completed
-    // subtasks/tasks, affirmation wins, logged timer minutes, and commented
-    // links all contribute exactly as they do everywhere else.
+    // v408: keep the task icon compact; the numeric progress score itself
+    // is rendered separately at the cell's top-right corner below.
     const cellTaskProg = nodeTaskProgress(a);
     if (cellTaskProg.total) {
       const taskEl = document.createElement("span");
@@ -10163,12 +10181,6 @@
       taskEl.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
       armMarkerTouchDrag(taskEl, node, "tasks", { sourceR: r, sourceC: c });
       taskEl.addEventListener("dragend", endMarkerDrag);
-      if (cellTaskProg.done > 0) {
-        const doneBadge = document.createElement("span");
-        doneBadge.className = "node-marker-count node-table-cell-task-count";
-        doneBadge.textContent = String(cellTaskProg.done);
-        taskEl.appendChild(doneBadge);
-      }
       strip.appendChild(taskEl);
     }
     const cellAffirmationWins = nodeAffirmationWins(a);
@@ -10473,6 +10485,8 @@
         });
         td.appendChild(textEl);
         td.appendChild(buildCellIconStrip(node, r, c));
+        const scoreBadge = buildCellScoreBadge(a);
+        if (scoreBadge) td.appendChild(scoreBadge);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);

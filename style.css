@@ -1014,6 +1014,12 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-table-cell.has-cell-icons .node-table-cell-text{
   padding-bottom: 12px;
 }
+.node-table-cell:has(.node-table-cell-score-badge) .node-table-cell-text{
+  padding-right: 24px;
+}
+.node-table-calendar .calendar-day-cell:has(.node-table-cell-score-badge) .node-table-cell-text{
+  padding-right: 24px;
+}
 .node-table-cell-icon{
   width: 10px;
   height: 10px;
@@ -1126,13 +1132,51 @@ body.signed-out #title-input{ visibility:hidden; }
   color: #f5a25c;
 }
 .node-table-cell-tasks.done:hover{ background: rgba(255, 215, 106, 0.35); }
-.node-table-cell-task-count{
-  right: -5px;
-  top: -6px;
-  min-width: 11px;
-  height: 11px;
-  padding: 0 2px;
-  font-size: 7px;
+/* v408: weighted progress score sits in the CELL's top-right corner,
+   independent of the task icon strip. 100+ is treated as very high. */
+.node-table-cell-score-badge{
+  position:absolute;
+  top:3px;
+  right:3px;
+  z-index:5;
+  min-width:16px;
+  height:16px;
+  padding:0 4px;
+  box-sizing:border-box;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:8px;
+  font-weight:900;
+  line-height:1;
+  pointer-events:none;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.68);
+  box-shadow:0 1px 3px rgba(0,0,0,.28);
+  font-variant-numeric:tabular-nums;
+}
+.node-table-cell-score-badge.score-very-low{
+  background:#64748b;
+}
+.node-table-cell-score-badge.score-low{
+  background:#0ea5e9;
+}
+.node-table-cell-score-badge.score-medium{
+  background:#22a06b;
+}
+.node-table-cell-score-badge.score-strong{
+  background:#d9a21b;
+}
+.node-table-cell-score-badge.score-high{
+  background:#f97316;
+}
+.node-table-cell-score-badge.score-very-high{
+  background:#ef4444;
+  box-shadow:
+    0 1px 3px rgba(0,0,0,.28),
+    0 0 0 2px rgba(239,68,68,.16),
+    0 0 7px rgba(239,68,68,.6);
 }
 
 /* Selection ring: an outline sitting outside the box (not a border-color
