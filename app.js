@@ -10020,7 +10020,7 @@
     ensureTableAttach(node);
     const cells = node.table.cells;
     const cols = Math.max(1, ...cells.map(r => r.length));
-    const colWidths = node._tableColWidths || new Array(cols).fill(TABLE_CELL_MIN_W);
+    const colWidths = node._tableColWidths || new Array(cols).fill(node.table.calendar ? TABLE_CELL_MIN_W * 2 : TABLE_CELL_MIN_W);
     const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
 
     const table = document.createElement("table");
