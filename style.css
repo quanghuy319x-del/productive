@@ -1323,8 +1323,9 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-table-cell-brainstorm svg{ width: 70%; height: 70%; }
 
-/* v436: Tasks use one shared neutral badge color on nodes and
-   table/calendar cells. Score still controls physical size, but never color. */
+/* v437: Task badge keeps one fixed size at every score. Score only changes
+   the badge color (restoring the original score palette); size/padding/font
+   no longer grow or shrink with points. */
 .task-score-badge{
   --task-badge-size:16px;
   --task-badge-pad:4px;
@@ -1345,7 +1346,6 @@ body.signed-out #title-input{ visibility:hidden; }
   user-select:none;
   -webkit-user-select:none;
   color:#fff;
-  background:#64748b;
   border:1px solid rgba(255,255,255,.68);
   box-shadow:0 1px 3px rgba(0,0,0,.28);
   font-variant-numeric:tabular-nums;
@@ -1359,23 +1359,14 @@ body.signed-out #title-input{ visibility:hidden; }
   outline:2px solid rgba(255,255,255,.75);
   outline-offset:1px;
 }
-.task-score-badge.score-very-low{
-  --task-badge-size:14px; --task-badge-pad:3px; --task-badge-font:7px;
-}
-.task-score-badge.score-low{
-  --task-badge-size:16px; --task-badge-pad:4px; --task-badge-font:8px;
-}
-.task-score-badge.score-medium{
-  --task-badge-size:18px; --task-badge-pad:4px; --task-badge-font:8.5px;
-}
-.task-score-badge.score-strong{
-  --task-badge-size:20px; --task-badge-pad:5px; --task-badge-font:9px;
-}
-.task-score-badge.score-high{
-  --task-badge-size:22px; --task-badge-pad:5px; --task-badge-font:10px;
-}
+.task-score-badge.score-very-low{ background:#64748b; }
+.task-score-badge.score-low{ background:#0ea5e9; }
+.task-score-badge.score-medium{ background:#22a06b; }
+.task-score-badge.score-strong{ background:#d9a21b; }
+.task-score-badge.score-high{ background:#f97316; }
 .task-score-badge.score-very-high{
-  --task-badge-size:24px; --task-badge-pad:6px; --task-badge-font:10.5px;
+  background:#ef4444;
+  box-shadow:0 1px 3px rgba(0,0,0,.28),0 0 0 2px rgba(239,68,68,.16),0 0 7px rgba(239,68,68,.6);
 }
 
 /* Selection ring: an outline sitting outside the box (not a border-color
