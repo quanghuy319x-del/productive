@@ -6488,8 +6488,17 @@
   function stripAffirmationCommas(s) {
     return (s || "").replace(/[,，、]/g, " ").replace(/\s+/g, " ");
   }
+  // v459: Vietnamese tone/diacritic marks never count as typing errors.
+  // NFD removes marks such as ̀/́/̉/̃/̣/̂/̆/̛;
+  // Vietnamese đ/Đ is a separate letter, so fold it to d as well.
   function normalizeAffirmationText(s) {
-    return stripAffirmationCommas(s).trim().toLocaleLowerCase("vi");
+    return stripAffirmationCommas(s)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .trim()
+      .toLocaleLowerCase("vi");
   }
 
   // The "Brainstorm" note-typing score task — reached from the same
@@ -24396,12 +24405,15 @@
     const target = a.target || AFFIRMATION_TARGET;
     const count = Math.min(a.count || 0, target);
     const quote = a.quote || "";
-    const chars = Array.from(stripAffirmationCommas(quote).trim());
-    const typed = Array.from(stripAffirmationCommas(typedRaw).replace(/^\s+/, ""));
+    // Use the exact same accent-insensitive normalization for live progress
+    // as for Enter/submission, so a different Vietnamese tone never flashes
+    // the progress bar red while the user is typing.
+    const chars = Array.from(normalizeAffirmationText(quote));
+    const typed = Array.from(normalizeAffirmationText(typedRaw).replace(/^\s+/, ""));
     let correctCount = 0;
     let hitMismatch = false;
     for (let i = 0; i < typed.length && !hitMismatch; i++) {
-      if (i < chars.length && typed[i].toLocaleLowerCase("vi") === chars[i].toLocaleLowerCase("vi")) {
+      if (i < chars.length && typed[i] === chars[i]) {
         correctCount++;
       } else {
         hitMismatch = true;
