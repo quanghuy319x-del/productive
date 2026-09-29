@@ -5914,25 +5914,6 @@
     return { done, total, pct: total ? done / total : 0 };
   }
 
-  // v406: compact task markers inside table/calendar cells need a literal
-  // count of completed checklist items, not the weighted nodeTaskProgress()
-  // score (which can include star weight, timer minutes, affirmation wins,
-  // and commented links). A task with subtasks contributes its subtasks;
-  // a task without subtasks contributes itself.
-  function taskItemCounts(host) {
-    let done = 0, total = 0;
-    getNodeTasks(host).forEach((t) => {
-      const subs = getTaskSubtasks(t);
-      if (subs.length) {
-        total += subs.length;
-        done += subs.filter(s => s.done).length;
-      } else {
-        total += 1;
-        if (t.done) done += 1;
-      }
-    });
-    return { done, total };
-  }
   // How "done" a single task is, as a 0–1 fraction: a task with subtasks
   // is as done as its subtasks are (partial credit counts), otherwise
   // it's a flat 1 or 0 from its own checkbox.
@@ -10166,26 +10147,26 @@
       });
       strip.appendChild(linkIcon);
     });
-    // v406: keep a cell's task marker the same compact square size as its
-    // other icons. The number of completed task/subtask checklist items is
-    // shown in the standard count badge, rather than a wide "done/total"
-    // pill that consumes several icon slots.
-    const cellTaskItems = taskItemCounts(a);
-    if (cellTaskItems.total) {
+    // v407: the badge shows this cell's real progress POINTS, using the
+    // same weighted scoring as nodeTaskProgress(): starred work, completed
+    // subtasks/tasks, affirmation wins, logged timer minutes, and commented
+    // links all contribute exactly as they do everywhere else.
+    const cellTaskProg = nodeTaskProgress(a);
+    if (cellTaskProg.total) {
       const taskEl = document.createElement("span");
       taskEl.className = "node-table-cell-icon node-table-cell-tasks" +
-        (cellTaskItems.done >= cellTaskItems.total ? " done" : "");
+        (cellTaskProg.pct >= 1 ? " done" : "");
       taskEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l2 2 4-4M7 15h2M13 15h4"/></svg>';
-      taskEl.title = `${cellTaskItems.done} of ${cellTaskItems.total} task/subtask items done — click to open, drag onto a node or cell to move them there (hold Alt to copy)`;
+      taskEl.title = `${cellTaskProg.done} / ${cellTaskProg.total} points — click to open tasks, drag onto a node or cell to move them there (hold Alt to copy)`;
       taskEl.draggable = true;
       taskEl.addEventListener("click", (e) => { e.stopPropagation(); openTasksModal(node.id, r, c); });
       taskEl.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
       armMarkerTouchDrag(taskEl, node, "tasks", { sourceR: r, sourceC: c });
       taskEl.addEventListener("dragend", endMarkerDrag);
-      if (cellTaskItems.done > 0) {
+      if (cellTaskProg.done > 0) {
         const doneBadge = document.createElement("span");
         doneBadge.className = "node-marker-count node-table-cell-task-count";
-        doneBadge.textContent = String(cellTaskItems.done);
+        doneBadge.textContent = String(cellTaskProg.done);
         taskEl.appendChild(doneBadge);
       }
       strip.appendChild(taskEl);

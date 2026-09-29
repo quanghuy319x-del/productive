@@ -599,8 +599,8 @@
     if (hasNotes) add(12);
     for (let i = 0; i < urlCount; i++) add(12);
 
-    // v406: tasks are now a square checklist icon with a corner count
-    // badge, so they consume one normal marker slot instead of a wide pill.
+    // v407: the square checklist icon's corner badge now shows weighted
+    // progress points, but its footprint is still one normal marker slot.
     if (taskTotal) add(12);
     if (hasAffirmation) add(12);
     if (hasTimer) add(40);
