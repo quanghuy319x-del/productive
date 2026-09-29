@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=439">
+<link rel="stylesheet" href="style.css?v=440">
 </head>
 <body>
 <div id="app">
@@ -569,6 +569,7 @@
       <button type="button" id="note-nav-templates" class="note-nav-btn" title="Templates — save this note as a template, or insert a saved one" aria-label="Note templates">📋</button>
       <button type="button" id="note-nav-favorite" class="note-nav-btn item-star-btn" title="Add to favorites" aria-label="Add to favorites">☆</button>
       <button type="button" id="note-nav-folder" class="note-nav-btn" title="Move to folder" aria-label="Move to folder">📁</button>
+      <button type="button" id="note-nav-info" class="note-nav-btn" title="Note info" aria-label="Note info">i</button>
       <button type="button" id="note-nav-delete" class="note-nav-btn note-nav-btn-danger" title="Delete this note">🗑</button>
       <button type="button" id="note-font-minus" class="note-nav-btn" title="Smaller text">−</button>
       <button type="button" id="note-font-plus" class="note-nav-btn" title="Bigger text">+</button>
@@ -842,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "439";
+  const APP_VERSION = "440";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -870,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "439"') && !document.documentElement.dataset.v439Reloaded) {
+      if (fresh.includes('const APP_VERSION = "440"') && !document.documentElement.dataset.v440Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v439Reloaded = "1";
+          document.documentElement.dataset.v440Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -889,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=439"></script>
-<script src="phase2-layout.js?v=439"></script>
+<script src="phase1-editors.js?v=440"></script>
+<script src="phase2-layout.js?v=440"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -927,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=439"></script>
+<script src="app.js?v=440"></script>
 <script>
 (() => {
   function insertText(editor, text) {
