@@ -10078,6 +10078,7 @@
         if (span.rowSpan > 1) td.rowSpan = span.rowSpan;
         if (span.colSpan > 1) td.colSpan = span.colSpan;
         if (a.fillColor) td.style.background = a.fillColor;
+        if (cellAttachHasAny(a)) td.classList.add("has-cell-icons");
         if (state.cellRange && state.cellRange.nodeId === node.id &&
             r >= state.cellRange.r0 && r <= state.cellRange.r1 &&
             c >= state.cellRange.c0 && c <= state.cellRange.c1) {
