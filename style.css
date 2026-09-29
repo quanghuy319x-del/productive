@@ -7304,7 +7304,7 @@ kbd{
 }
 
 
-/* v451: Note, DRC and Brainstorm share one phone top-row interaction.
+/* v452: Note, DRC and Brainstorm share one phone top-row interaction.
    Back always remains visible; all other actions use tap-to-reveal + 5s timeout. */
 #note-nav-close{display:none!important;}
 @media (max-width:640px) and (any-pointer:coarse){
