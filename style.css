@@ -945,11 +945,26 @@ body.signed-out #title-input{ visibility:hidden; }
   box-shadow: inset 0 0 0 2px #2f6df6;
   background: rgba(255,255,255,0.48);
 }
-.node-table-calendar .node-table-cell-icons{
-  right: 4px;
-  bottom: 3px;
-  padding: 0;
-  justify-content: flex-end;
+.node-table-calendar .calendar-day-cell .node-table-cell-icons{
+  /* v403: calendar date cells keep their icons in normal flow and wrap
+     onto extra rows. This lets the cell grow to fit any number of markers
+     instead of clipping the tail of one long absolute-positioned strip. */
+  position: static;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 0 4px 2px;
+  justify-content: center;
+  align-content: flex-start;
+  flex-wrap: wrap;
+}
+.node-table-calendar .calendar-day-cell.has-cell-icons .node-table-cell-text{
+  /* Keep a one-row icon cell as compact as before; extra height is only
+     added when the icon strip actually wraps. */
+  min-height: 24px;
+  padding-bottom: 4px;
 }
 /* The editable text part of a cell — everything the plain <td> rule used
    to be, just scoped to this inner div now that the icon strip below

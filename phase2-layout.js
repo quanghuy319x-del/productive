@@ -563,6 +563,59 @@
   // v400: cell attachment icons are overlaid compactly in the bottom-right
   // corner instead of consuming a permanent row under every cell.
   const TABLE_CELL_ICON_STRIP_H = 0;
+
+  // v403: calendar cells are the one table type where an attachment strip
+  // may contain many independent markers (especially links). The renderer
+  // wraps those markers inside the date tile, so the layout pass needs a
+  // conservative width estimate in order to grow that calendar row too.
+  // Normal tables keep v400's compact absolute overlay behavior.
+  function calendarCellIconWidth(a) {
+    if (!a || typeof a !== "object") return 0;
+
+    const photoCount = Array.isArray(a.images) && a.images.length
+      ? a.images.length
+      : (a.image ? 1 : 0);
+    const shownPhotos = photoCount > 4 ? 1 : photoCount;
+    const hasNotes = !!((Array.isArray(a.notes) && a.notes.length) || a.note);
+    const urlCount = Array.isArray(a.urls) && a.urls.length
+      ? a.urls.length
+      : (a.url ? 1 : 0);
+
+    const tasks = Array.isArray(a.tasks) ? a.tasks : [];
+    const legacyTask = !!(a.task && a.task.text);
+    const taskTotal = tasks.length || (legacyTask ? 1 : 0);
+    const taskDone = tasks.length
+      ? tasks.filter(t => t && t.done).length
+      : (legacyTask && a.task.done ? 1 : 0);
+
+    const hasAffirmation = !!(a.affirmation && Number(a.affirmation.wins || 0) > 0);
+    const hasTimer = Number(a.timePlayedSec || 0) > 0;
+    const hasBrainstorm = !!(a.brainstorm && (a.brainstorm.text || a.brainstorm.html));
+
+    let width = 0;
+    const add = (w) => {
+      if (width > 0) width += 1; // same 1px flex gap as CSS
+      width += w;
+    };
+
+    // Square markers with borders are up to ~12px wide in the real DOM.
+    for (let i = 0; i < shownPhotos; i++) add(12);
+    if (hasNotes) add(12);
+    for (let i = 0; i < urlCount; i++) add(12);
+
+    // Tasks/timer are pills rather than square markers. Slightly
+    // overestimate them so node._h never ends up smaller than the DOM row.
+    if (taskTotal) {
+      const label = `✓${taskDone}/${taskTotal}`;
+      add(Math.max(20, label.length * 5 + 8));
+    }
+    if (hasAffirmation) add(12);
+    if (hasTimer) add(40);
+    if (hasBrainstorm) add(12);
+
+    return width;
+  }
+
   function computeTableBox(node) {
     measureCtx.font = `400 12.5px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const cells = node.table.cells;
@@ -592,6 +645,30 @@
         const h = Math.max(TABLE_CELL_MIN_H, lines.length * TABLE_CELL_LINE_H + TABLE_CELL_PAD_Y) + TABLE_CELL_ICON_STRIP_H;
         colWidths[c] = Math.max(colWidths[c], w);
         rowHeights[r] = Math.max(rowHeights[r], h);
+      }
+    }
+
+    if (node.table.calendar && Array.isArray(node.table.attach)) {
+      // v403: after the real column widths are known, work out how many
+      // wrapped icon rows each date cell needs. The corresponding table row
+      // grows to the tallest date cell, keeping every marker inside both the
+      // tile and the node border.
+      for (let r = 2; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const a = node.table.attach[r] && node.table.attach[r][c];
+          const iconWidth = calendarCellIconWidth(a);
+          if (!iconWidth) continue;
+
+          const usableW = Math.max(24, (colWidths[c] || TABLE_CELL_MIN_W * widthScale) - 8);
+          const iconRows = Math.max(1, Math.ceil(iconWidth / usableW));
+          const iconStripH = iconRows * 12 + Math.max(0, iconRows - 1) + 2;
+          const cellText = (cells[r] && cells[r][c]) || "";
+          const textLines = wrapText(cellText, maxTextW);
+          const textH = Math.max(26, textLines.length * 18 + 8);
+
+          // +2 accounts for the calendar tile's top/bottom border.
+          rowHeights[r] = Math.max(rowHeights[r], textH + iconStripH + 2);
+        }
       }
     }
 
