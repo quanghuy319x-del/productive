@@ -1112,8 +1112,8 @@ body.signed-out #title-input{ visibility:hidden; }
    the cell's sole Task List marker and stays pinned to the cell corner. */
 .node-table-cell-score-badge{
   position:absolute;
-  top:3px;
-  right:3px;
+  top:-4px;
+  right:-4px;
   z-index:6;
   min-width:16px;
   height:16px;
