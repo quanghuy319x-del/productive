@@ -1015,10 +1015,10 @@ body.signed-out #title-input{ visibility:hidden; }
   padding-bottom: 12px;
 }
 .node-table-cell:has(.node-table-cell-score-badge) .node-table-cell-text{
-  padding-right: 24px;
+  padding-right: 32px;
 }
 .node-table-calendar .calendar-day-cell:has(.node-table-cell-score-badge) .node-table-cell-text{
-  padding-right: 24px;
+  padding-right: 32px;
 }
 .node-table-cell-icon{
   width: 10px;
@@ -1107,23 +1107,21 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-table-cell-brainstorm svg{ width: 70%; height: 70%; }
 
-/* v412: restore the task/score badge styling that v410 accidentally
-   removed together with the old redundant task-icon CSS. The badge is
-   the cell's sole Task List marker and stays pinned to the cell corner. */
-.node-table-cell-score-badge{
-  position:absolute;
-  top:3px;
-  right:3px;
-  z-index:6;
-  min-width:16px;
-  height:16px;
-  padding:0 4px;
+/* v418: Tasks use one shared score badge on nodes and table/calendar
+   cells. Score controls BOTH color and physical size. */
+.task-score-badge{
+  --task-badge-size:16px;
+  --task-badge-pad:4px;
+  --task-badge-font:8px;
+  min-width:var(--task-badge-size);
+  height:var(--task-badge-size);
+  padding:0 var(--task-badge-pad);
   box-sizing:border-box;
   border-radius:999px;
   display:flex;
   align-items:center;
   justify-content:center;
-  font-size:8px;
+  font-size:var(--task-badge-font);
   font-weight:900;
   line-height:1;
   pointer-events:auto;
@@ -1134,24 +1132,40 @@ body.signed-out #title-input{ visibility:hidden; }
   border:1px solid rgba(255,255,255,.68);
   box-shadow:0 1px 3px rgba(0,0,0,.28);
   font-variant-numeric:tabular-nums;
+  transition:transform .12s ease, filter .12s ease;
 }
-.node-table-cell-score-badge:hover,
-.node-table-cell-score-badge:focus-visible{
+.node-table-cell-score-badge{ position:absolute; top:3px; right:3px; z-index:6; }
+.node-task-score-badge{ position:absolute; top:-7px; right:-7px; z-index:7; }
+.task-score-badge:hover,
+.task-score-badge:focus-visible{
   transform:scale(1.1);
   outline:2px solid rgba(255,255,255,.75);
   outline-offset:1px;
 }
-.node-table-cell-score-badge.score-very-low{ background:#64748b; }
-.node-table-cell-score-badge.score-low{ background:#0ea5e9; }
-.node-table-cell-score-badge.score-medium{ background:#22a06b; }
-.node-table-cell-score-badge.score-strong{ background:#d9a21b; }
-.node-table-cell-score-badge.score-high{ background:#f97316; }
-.node-table-cell-score-badge.score-very-high{
+.task-score-badge.score-very-low{
+  --task-badge-size:14px; --task-badge-pad:3px; --task-badge-font:7px;
+  background:#64748b;
+}
+.task-score-badge.score-low{
+  --task-badge-size:16px; --task-badge-pad:4px; --task-badge-font:8px;
+  background:#0ea5e9;
+}
+.task-score-badge.score-medium{
+  --task-badge-size:18px; --task-badge-pad:4px; --task-badge-font:8.5px;
+  background:#22a06b;
+}
+.task-score-badge.score-strong{
+  --task-badge-size:20px; --task-badge-pad:5px; --task-badge-font:9px;
+  background:#d9a21b;
+}
+.task-score-badge.score-high{
+  --task-badge-size:22px; --task-badge-pad:5px; --task-badge-font:10px;
+  background:#f97316;
+}
+.task-score-badge.score-very-high{
+  --task-badge-size:24px; --task-badge-pad:6px; --task-badge-font:10.5px;
   background:#ef4444;
-  box-shadow:
-    0 1px 3px rgba(0,0,0,.28),
-    0 0 0 2px rgba(239,68,68,.16),
-    0 0 7px rgba(239,68,68,.6);
+  box-shadow:0 1px 3px rgba(0,0,0,.28),0 0 0 2px rgba(239,68,68,.16),0 0 7px rgba(239,68,68,.6);
 }
 
 /* Selection ring: an outline sitting outside the box (not a border-color
@@ -1622,62 +1636,7 @@ body.signed-out #title-input{ visibility:hidden; }
   font-size: 8px;
 }
 
-/* Bold task-progress bar + percentage, rendered in normal flow below the
-   text/photos (see renderNode) so the box always fully encloses them.
-   Fills left-to-right as tasks get checked off in the tasks modal, and
-   the whole row doubles as a click target to reopen that modal. */
-.node-progress-row{
-  display:flex;
-  align-items:center;
-  gap: 6px;
-  width: 100%;
-  margin-top: 6px;
-  cursor:pointer;
-  pointer-events:auto;
-  flex: none;
-}
-.node-progress-track{
-  display:block;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(127,127,127,0.25);
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
-  overflow:hidden;
-}
-.node-progress-fill{
-  display:block;
-  height:100%;
-  background: linear-gradient(90deg, #5ee6a8, #33b3f0);
-  box-shadow: 0 0 7px rgba(51,179,240,0.6);
-  border-radius: 999px;
-  transition: width .18s ease;
-}
-.node-progress-fill.done{
-  background: linear-gradient(90deg, #ffd76a, #f5a25c);
-  box-shadow: 0 0 8px rgba(245,162,92,0.7);
-}
-.node-progress-pct{
-  flex: none;
-  font-size: 11px;
-  font-weight: 800;
-  color: #33b3f0;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
-}
-.node-progress-pct.done{ color: #f5a25c; }
-
-/* Used on level-1 nodes instead of plain colored text: a small dark chip
-   behind the percentage so it stays readable sitting directly on an
-   arbitrary, possibly light, branch color. */
-.node-progress-pct-chip{
-  color: #ffffff;
-  background: rgba(0,0,0,0.38);
-  padding: 1px 6px;
-  border-radius: 999px;
-  line-height: 1.5;
-}
+/* v418: node task progress bars were replaced by the shared score badge. */
 
 .node-collapse{
   position:absolute;

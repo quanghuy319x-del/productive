@@ -761,17 +761,8 @@
       stripH = 5 /* margin-top */ + rows * thumb + (rows - 1) * gap;
     }
 
-    // Reserve room for the task-progress bar + percentage label, which
-    // render in normal flow below the text/photos (see renderNode) so the
-    // box always fully encloses them instead of floating over the label.
-    // A minimum width is enforced too, so the bar+label row always has
-    // enough room to sit comfortably even on a short one-word node.
-    const taskProgForBox = nodeTaskProgress(node);
-    let barH = 0, barMinW = 0;
-    if (taskProgForBox.total) {
-      barH = 6 /* margin-top */ + 8 /* bar height */;
-      barMinW = 56 /* track */ + 6 /* gap */ + 30 /* "100%" label */ + padX;
-    }
+    // v418: Tasks use a floating score badge, so progress no longer
+    // consumes width/height in the node layout box.
 
     // Reserve room for the root node's live clock block (current time,
     // UTC/US/UK world clocks, weekday+date, lunar date — see
@@ -782,8 +773,8 @@
     const clockW = depth === 0 && !isClockHidden() ? ROOT_CLOCK_W + padX : 0;
     const clockH = depth === 0 && !isClockHidden() ? ROOT_CLOCK_H : 0;
 
-    node._w = Math.max(w, stripW + padX, barMinW, clockW);
-    node._h = h + stripH + barH + clockH;
+    node._w = Math.max(w, stripW + padX, clockW);
+    node._h = h + stripH + clockH;
     node._lines = lines;
     return { w: node._w, h: node._h };
   }

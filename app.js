@@ -10099,7 +10099,7 @@
     if (!prog || !hasTasks) return null;
     const points = Math.max(0, Number(prog.done) || 0);
     const badge = document.createElement("span");
-    badge.className = "node-table-cell-score-badge score-" + cellScoreBand(points);
+    badge.className = "task-score-badge node-table-cell-score-badge score-" + cellScoreBand(points);
     badge.textContent = String(points);
     badge.title = `${points} progress points${prog.total ? ` / ${prog.total} total` : ""} — click to open Tasks`;
     badge.setAttribute("role", "button");
@@ -11207,52 +11207,35 @@
       div.appendChild(strip);
     }
 
-    if (taskProg.total && node.id !== state.editingId) {
-      const row = document.createElement("span");
-      row.className = "node-progress-row";
-      row.addEventListener("mousedown", (e) => { e.stopPropagation(); });
-      row.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
-      row.addEventListener("click", (e) => { e.stopPropagation(); openTasksModal(node.id); });
-      row.title = `${taskProg.done} of ${taskProg.total} tasks done — drag onto another node to move the tasks there (hold Alt to copy)`;
-      row.draggable = true;
-      row.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks"));
-      armMarkerTouchDrag(row, node, "tasks");
-      row.addEventListener("dragend", endMarkerDrag);
-
-      const track = document.createElement("span");
-      track.className = "node-progress-track";
-      const fill = document.createElement("span");
-      fill.className = "node-progress-fill" + (taskProg.pct >= 1 ? " done" : "");
-      fill.style.width = Math.round(taskProg.pct * 100) + "%";
-      track.appendChild(fill);
-
-      const pctLabel = document.createElement("span");
-      pctLabel.className = "node-progress-pct" + (taskProg.pct >= 1 ? " done" : "");
-      pctLabel.textContent = String(taskProg.done);
-
-      // On a level-1 node (the solid-filled branch pill) the bar sits on
-      // top of an arbitrary branch color, so it can't rely on a fixed
-      // teal/gold or a same-hue tint — either washes out depending on the
-      // branch color. Instead the track is a neutral dark groove and the
-      // fill a bright, near-opaque bar, which reads clearly as "progress"
-      // against any branch color the same way a scrubber reads against
-      // colorful album art. The % label gets its own small dark chip
-      // behind it (rather than colored text sitting directly on the pill)
-      // so it stays legible no matter how light or saturated the branch
-      // color is.
-      if (depth === 1 && color) {
-        track.style.background = "rgba(0,0,0,0.32)";
-        track.style.boxShadow = "inset 0 1px 3px rgba(0,0,0,0.45)";
-        fill.style.background = taskProg.pct >= 1
-          ? "linear-gradient(90deg, #ffe8ab, #ffc98a)"
-          : "rgba(255,255,255,0.92)";
-        fill.style.boxShadow = "0 0 5px rgba(255,255,255,0.35)";
-        pctLabel.classList.add("node-progress-pct-chip");
-      }
-
-      row.appendChild(track);
-      row.appendChild(pctLabel);
-      div.appendChild(row);
+    // v418: Node Tasks use the same score badge as table/calendar cells.
+    // Score controls both color and size; click opens Tasks and drag keeps
+    // the old task-move behavior from the removed progress bar.
+    if (getNodeTasks(node).length && node.id !== state.editingId) {
+      const points = Math.max(0, Number(taskProg.done) || 0);
+      const badge = document.createElement("span");
+      badge.className = "task-score-badge node-task-score-badge score-" + cellScoreBand(points);
+      badge.textContent = String(points);
+      badge.title = `${points} progress points${taskProg.total ? ` / ${taskProg.total} total` : ""} — click to open Tasks; drag onto another node to move the tasks there (hold Alt to copy)`;
+      badge.setAttribute("role", "button");
+      badge.setAttribute("tabindex", "0");
+      badge.setAttribute("aria-label", `Open Tasks — ${points} progress points`);
+      const openTasks = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openTasksModal(node.id);
+      };
+      badge.addEventListener("mousedown", (e) => e.stopPropagation());
+      badge.addEventListener("pointerdown", (e) => e.stopPropagation());
+      badge.addEventListener("click", openTasks);
+      badge.addEventListener("dblclick", (e) => e.stopPropagation());
+      badge.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") openTasks(e);
+      });
+      badge.draggable = true;
+      badge.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks"));
+      armMarkerTouchDrag(badge, node, "tasks");
+      badge.addEventListener("dragend", endMarkerDrag);
+      div.appendChild(badge);
     }
 
     function beginNodeDrag(e) {
@@ -11381,7 +11364,7 @@
         text += node.textContent;
       } else if (node.nodeName === "BR") {
         text += "\n";
-      } else if (node.nodeType === 1 && (node.classList.contains("node-collapse") || node.classList.contains("node-badge") || node.classList.contains("node-photo-strip") || node.classList.contains("node-progress-row"))) {
+      } else if (node.nodeType === 1 && (node.classList.contains("node-collapse") || node.classList.contains("node-badge") || node.classList.contains("node-photo-strip") || node.classList.contains("node-task-score-badge"))) {
         // These are UI overlays (collapse toggle, child-count badge, note
         // icon, photo thumbnail) rendered inside the node box, not part of
         // the typed text — skip them or their glyphs (e.g. "–") get
