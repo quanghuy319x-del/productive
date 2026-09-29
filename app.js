@@ -9724,6 +9724,24 @@
     openNoteModal(node.id, undefined, null, null, { r, c });
   }
 
+  // v417: Every table/calendar cell may own one DRC note of its own.
+  // Reuse the same note editor + DRC template as node-level DRC, but keep
+  // the note inside this cell's attach record. Reopening jumps to the
+  // existing DRC instead of creating duplicates.
+  function openCellDRCModal(node, r, c) {
+    if (!requireSignIn()) return;
+    const notes = getCellNotes(getCellAttach(node, r, c));
+    const existingDRCIndex = notes.findIndex(isDRCNote);
+    openNoteModal(
+      node.id,
+      existingDRCIndex >= 0 ? existingDRCIndex : undefined,
+      null,
+      null,
+      { r, c },
+      existingDRCIndex < 0
+    );
+  }
+
   // Native prompt for adding a new URL to a cell — appends it to the
   // cell's `urls` array, then immediately asks for an optional display
   // name too. Exactly the node-level addNodeUrl flow above, just scoped
@@ -9929,6 +9947,11 @@
     }
     {
       items.push(["🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c)]);
+    }
+    {
+      const drcFilled = getCellNotes(a).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
+      const label = drcFilled > 0 ? `DRC (${drcFilled} filled in)…` : "DRC…";
+      items.push([label, () => openCellDRCModal(node, r, c)]);
     }
     // "Merge cells" only shows up once a multi-cell rectangle is actually
     // selected in this same table (see state.cellRange/handleTableCellClick,
@@ -10186,6 +10209,22 @@
       noteIcon.addEventListener("dragend", endMarkerDrag);
       strip.appendChild(noteIcon);
     }
+    // v417: If a cell contains DRC alongside other notes, keep a dedicated
+    // DRC marker visible so the cell's DRC is always one click away. A
+    // DRC-only cell already uses the DRC image in the generic note marker
+    // above, so avoid drawing the same icon twice in that case.
+    {
+      const notes = getCellNotes(a);
+      const drcIndex = notes.findIndex(isDRCNote);
+      if (drcIndex >= 0 && !notes.every(isDRCNote)) {
+        const drcIcon = document.createElement("span");
+        drcIcon.className = "node-table-cell-icon node-table-cell-note node-table-cell-drc";
+        drcIcon.innerHTML = NODE_DRC_ICON_IMG;
+        drcIcon.title = "DRC — click to open this cell's DRC.";
+        drcIcon.addEventListener("click", () => openNoteModal(node.id, drcIndex, null, null, { r, c }));
+        strip.appendChild(drcIcon);
+      }
+    }
     // One icon per link (instead of a single icon), same treatment as
     // the node-level link markers (see renderNode) — each link is
     // independently visible, clickable, and editable via right-click.
@@ -10262,7 +10301,7 @@
       const addBtn = document.createElement("span");
       addBtn.className = "node-table-cell-icon node-table-cell-add";
       addBtn.textContent = "+";
-      addBtn.title = "Add a photo, note, link, task, timer, affirmation game, or brainstorm to this cell";
+      addBtn.title = "Add a photo, note, link, task, timer, affirmation game, brainstorm, or DRC to this cell";
       addBtn.addEventListener("click", (e) => openCellAddMenu(node, r, c, e.clientX, e.clientY));
       strip.appendChild(addBtn);
     }
@@ -17707,7 +17746,9 @@
       if (drcOwner && (drcOwner.text || "").trim().toUpperCase() === "DRC" && !getTaskNotes(drcOwner).length) {
         taskId = null;
         subtaskId = null;
-        cellPos = null;
+        // v417: A task/subtask named DRC inside a table/calendar cell
+        // redirects to that cell's own DRC. Keep cellPos so it does not
+        // accidentally jump to the parent node's DRC.
         photoId = null;
         forceDRCTemplate = true;
       }
