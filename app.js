@@ -9911,11 +9911,7 @@
     const items = [];
     items.push(["Add photo…", () => openCellPhotoPicker(node, r, c)]);
     if (cellHasImages(a)) {
-      // No cell-aware openPhotoModal yet (see the deferred item on
-      // generalizing photoModalState to carry r/c) — until that lands,
-      // this just opens the first photo in a new tab, same as clicking a
-      // thumbnail does, so the menu at least has an entry here matching
-      // the node menu's "View photo(s)…" for parity.
+      // Same shared photo viewer as a node, scoped to this cell host.
       const cellPhotos = getCellPhotos(a);
       items.push([cellPhotos.length > 1 ? "View photo(s)…" : "View photo…", () => openCellPhotoModal(node.id, r, c, 0)]);
     }
@@ -14697,9 +14693,8 @@
   // Syncs the ☆/★ favorite button to whichever video is currently loaded
   // (see openVideoModal) — hidden when this video's commentCtx doesn't
   // carry favorite accessors (shouldn't normally happen, since every
-  // caller of openLinkSmart for a node-level URL supplies them; only a
-  // cell-scoped link omits them, and those never reach the video modal
-  // today, but this stays defensive rather than assuming so).
+  // caller of openLinkSmart for a stored node/cell URL supplies them;
+  // this stays defensive for ad-hoc callers without favorite accessors).
   function renderVideoModalFavorite() {
     if (!videoModalCommentCtx || !videoModalCommentCtx.getFavorite) {
       videoModalFavoriteBtn.style.display = "none";
@@ -16192,7 +16187,15 @@
     e.stopPropagation();
     if (!photoModalState) return;
     const nodeId = photoModalState.nodeId;
+    const cellPos = photoModalState.cellPos
+      ? { nodeId, r: photoModalState.cellPos.r, c: photoModalState.cellPos.c }
+      : null;
     closePhotoModal();
+    if (cellPos) {
+      state.selectedCell = cellPos;
+      state.cellRangeAnchor = cellPos;
+      state.cellRange = null;
+    }
     focusNodeInCanvas(nodeId);
   });
   photoModalFavorite.addEventListener("click", (e) => {
@@ -24139,9 +24142,10 @@
     return noteHtmlFromRaw(getBrainstormText(host));
   }
 
-  // v322: one Brainstorm per node. A Brainstorm may live on the node itself,
-  // a table cell, task, or subtask, but no second Brainstorm can be created
-  // anywhere else inside the same node. Existing content always remains openable.
+  // v421: node and cell are independent Brainstorm content hosts. The
+  // node's one-Brainstorm rule still absorbs legacy task/subtask Brainstorms
+  // belonging to that node, while every table/calendar cell owns its own
+  // single Brainstorm and is never migrated into the parent node.
   function nodeBrainstormOwner(node) {
     if (!node) return null;
     const hasContent = (host) => {
@@ -24149,12 +24153,6 @@
       return !!(b && ((b.text || "").trim() || (b.html || "").trim()));
     };
     if (hasContent(node)) return node;
-    if (node.table && Array.isArray(node.table.cells)) {
-      for (const row of node.table.cells) {
-        if (!Array.isArray(row)) continue;
-        for (const cell of row) if (hasContent(cell)) return cell;
-      }
-    }
     const tasks = getNodeTasks(node);
     for (const task of tasks) {
       if (hasContent(task)) return task;
@@ -24166,9 +24164,10 @@
   }
 
   function openBrainstormModal(nodeId, r, c, taskId, subtaskId) {
-    // v402: Calendar cells are an intentional exception to the normal
-    // one-Brainstorm-per-node rule. Every individual calendar cell may own
-    // exactly one Brainstorm of its own, backed by that cell's note list.
+    // v421: every table/calendar cell is a mini-node content host and owns
+    // exactly one Brainstorm of its own. A Brainstorm-prefixed task/subtask
+    // inside that cell opens this same shared cell Brainstorm, mirroring the
+    // one-Brainstorm-per-node rule for tasks/subtasks on a normal node.
     const node = findNode(nodeId);
     if (!node) return;
 
@@ -26370,8 +26369,8 @@
     return btn;
   }
 
-  // Lists every node-level note across the whole map (see getNodeNotes)
-  // in one place — versus the Favorites browser above, which only shows
+  // Lists every note across node and cell content hosts in one place —
+  // versus the Favorites browser above, which only shows
   // the subset you've starred. Sortable by date (most recently touched
   // first — see captureActiveNote for where updatedAt/createdAt get
   // set), favorite status, or alphabetically by the note's own preview
