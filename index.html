@@ -890,6 +890,42 @@ if ("serviceWorker" in navigator) {
 </script>
 <script src="phase1-editors.js?v=389"></script>
 <script src="phase2-layout.js?v=389"></script>
+<script>
+/* v389 mobile OAuth guard: background prompt=none must never navigate away
+   from Branchline. Explicit user-triggered OAuth remains unchanged. */
+(() => {
+  let patched = false;
+  const patch = () => {
+    if (patched || !window.google?.accounts?.oauth2?.initTokenClient) return false;
+    const oauth2 = window.google.accounts.oauth2;
+    const originalInit = oauth2.initTokenClient.bind(oauth2);
+    oauth2.initTokenClient = (config) => {
+      const client = originalInit(config);
+      const originalRequest = client.requestAccessToken.bind(client);
+      client.requestAccessToken = (opts = {}) => {
+        if (opts.prompt === "none") {
+          queueMicrotask(() => {
+            if (typeof config.error_callback === "function") {
+              config.error_callback({ type: "silent_auth_disabled" });
+            } else if (typeof config.callback === "function") {
+              config.callback({ error: "interaction_required" });
+            }
+          });
+          return;
+        }
+        return originalRequest(opts);
+      };
+      return client;
+    };
+    patched = true;
+    return true;
+  };
+  if (!patch()) {
+    const timer = setInterval(() => { if (patch()) clearInterval(timer); }, 25);
+    setTimeout(() => clearInterval(timer), 15000);
+  }
+})();
+</script>
 <script src="app.js?v=389"></script>
 <script>
 (() => {
