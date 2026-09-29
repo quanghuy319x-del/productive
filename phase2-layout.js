@@ -560,7 +560,9 @@
   // task icons + the "+" add button (see buildCellIconStrip) — always
   // reserved, even on an empty cell, so a cell's height doesn't jump
   // around as attachments are added/removed.
-  const TABLE_CELL_ICON_STRIP_H = 18;
+  // v400: cell attachment icons are overlaid compactly in the bottom-right
+  // corner instead of consuming a permanent row under every cell.
+  const TABLE_CELL_ICON_STRIP_H = 0;
   function computeTableBox(node) {
     measureCtx.font = `400 12.5px -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif`;
     const cells = node.table.cells;
@@ -574,6 +576,11 @@
     const widthScale = 2;
     const colWidths = new Array(cols).fill(TABLE_CELL_MIN_W * widthScale);
     const rowHeights = new Array(rows).fill(TABLE_CELL_MIN_H + TABLE_CELL_ICON_STRIP_H);
+    if (node.table.calendar) {
+      if (rows > 0) rowHeights[0] = Math.max(rowHeights[0], 38);
+      if (rows > 1) rowHeights[1] = Math.max(rowHeights[1], 22);
+      for (let r = 2; r < rows; r++) rowHeights[r] = Math.max(rowHeights[r], 40);
+    }
     const maxTextW = TABLE_CELL_MAX_W - TABLE_CELL_PAD_X;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
