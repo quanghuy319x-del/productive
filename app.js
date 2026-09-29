@@ -10247,7 +10247,17 @@
         const drcIcon = document.createElement("span");
         drcIcon.className = "node-table-cell-icon node-table-cell-note node-table-cell-drc";
         drcIcon.innerHTML = NODE_DRC_ICON_IMG;
-        drcIcon.title = "DRC — click to open this cell's DRC.";
+        drcIcon.title = "DRC — click to open; drag onto a node or cell to move (hold Alt to copy).";
+        // v423: this dedicated DRC marker used to be only a visual shortcut.
+        // Its inner <img> could therefore start a browser-native image drag,
+        // showing a preview but carrying no Branchline marker payload — so
+        // dropping it did not move the DRC at all. Make it a real single-note
+        // marker and move exactly this DRC note, not the cell's other notes.
+        drcIcon.draggable = true;
+        drcIcon.addEventListener("dragstart", (e) =>
+          startMarkerDrag(e, node, "note-single", { noteIndex: drcIndex, sourceR: r, sourceC: c }));
+        armMarkerTouchDrag(drcIcon, node, "note-single", { noteIndex: drcIndex, sourceR: r, sourceC: c });
+        drcIcon.addEventListener("dragend", endMarkerDrag);
         drcIcon.addEventListener("click", () => openNoteModal(node.id, drcIndex, null, null, { r, c }));
         strip.appendChild(drcIcon);
       }
