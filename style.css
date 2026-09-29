@@ -1106,6 +1106,54 @@ body.signed-out #title-input{ visibility:hidden; }
   color: #f9a8d4;
 }
 .node-table-cell-brainstorm svg{ width: 70%; height: 70%; }
+
+/* v412: restore the task/score badge styling that v410 accidentally
+   removed together with the old redundant task-icon CSS. The badge is
+   the cell's sole Task List marker and stays pinned to the cell corner. */
+.node-table-cell-score-badge{
+  position:absolute;
+  top:3px;
+  right:3px;
+  z-index:6;
+  min-width:16px;
+  height:16px;
+  padding:0 4px;
+  box-sizing:border-box;
+  border-radius:999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:8px;
+  font-weight:900;
+  line-height:1;
+  pointer-events:auto;
+  cursor:pointer;
+  user-select:none;
+  -webkit-user-select:none;
+  color:#fff;
+  border:1px solid rgba(255,255,255,.68);
+  box-shadow:0 1px 3px rgba(0,0,0,.28);
+  font-variant-numeric:tabular-nums;
+}
+.node-table-cell-score-badge:hover,
+.node-table-cell-score-badge:focus-visible{
+  transform:scale(1.1);
+  outline:2px solid rgba(255,255,255,.75);
+  outline-offset:1px;
+}
+.node-table-cell-score-badge.score-very-low{ background:#64748b; }
+.node-table-cell-score-badge.score-low{ background:#0ea5e9; }
+.node-table-cell-score-badge.score-medium{ background:#22a06b; }
+.node-table-cell-score-badge.score-strong{ background:#d9a21b; }
+.node-table-cell-score-badge.score-high{ background:#f97316; }
+.node-table-cell-score-badge.score-very-high{
+  background:#ef4444;
+  box-shadow:
+    0 1px 3px rgba(0,0,0,.28),
+    0 0 0 2px rgba(239,68,68,.16),
+    0 0 7px rgba(239,68,68,.6);
+}
+
 /* Selection ring: an outline sitting outside the box (not a border-color
    change) so it stays visible no matter the node's own fill/border color —
    e.g. a depth-1 node whose border is already the same hue as its fill. */
