@@ -5036,6 +5036,18 @@
   function cellAttachHasAny(a) {
     return !!(a && (a.image || (a.images && a.images.length) || a.note || (a.notes && a.notes.length) || a.url || (a.urls && a.urls.length) || (a.tasks && a.tasks.length) || (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) || a.timePlayedSec || (a.brainstorm && a.brainstorm.text)));
   }
+  function cellAttachHasStripIcon(a) {
+    // v410: tasks no longer render a second icon in the bottom strip.
+    // Their top-right score badge IS the task marker.
+    return !!(a && (
+      a.image || (a.images && a.images.length) ||
+      a.note || (a.notes && a.notes.length) ||
+      a.url || (a.urls && a.urls.length) ||
+      (a.affirmation && (a.affirmation.wins || a.affirmation.quote)) ||
+      a.timePlayedSec ||
+      (a.brainstorm && a.brainstorm.text)
+    ));
+  }
 
   // A handful of features (the affirmation typing game, the countdown
   // "time played" timer) originally only ever lived on a whole node —
@@ -10083,6 +10095,16 @@
     badge.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") openTasks(e);
     });
+
+    // The badge is now the ONLY task marker in a cell. Keep the old task
+    // icon's drag behavior here so node↔cell / cell↔cell task moves still work.
+    if (hasTasks) {
+      badge.draggable = true;
+      badge.title += " — drag to move tasks (hold Alt to copy)";
+      badge.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(badge, node, "tasks", { sourceR: r, sourceC: c });
+      badge.addEventListener("dragend", endMarkerDrag);
+    }
     return badge;
   }
 
@@ -10188,22 +10210,6 @@
       });
       strip.appendChild(linkIcon);
     });
-    // v408: keep the task icon compact; the numeric progress score itself
-    // is rendered separately at the cell's top-right corner below.
-    const cellTaskProg = nodeTaskProgress(a);
-    if (cellTaskProg.total) {
-      const taskEl = document.createElement("span");
-      taskEl.className = "node-table-cell-icon node-table-cell-tasks" +
-        (cellTaskProg.pct >= 1 ? " done" : "");
-      taskEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l2 2 4-4M7 15h2M13 15h4"/></svg>';
-      taskEl.title = `${cellTaskProg.done} / ${cellTaskProg.total} points — click to open tasks, drag onto a node or cell to move them there (hold Alt to copy)`;
-      taskEl.draggable = true;
-      taskEl.addEventListener("click", (e) => { e.stopPropagation(); openTasksModal(node.id, r, c); });
-      taskEl.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
-      armMarkerTouchDrag(taskEl, node, "tasks", { sourceR: r, sourceC: c });
-      taskEl.addEventListener("dragend", endMarkerDrag);
-      strip.appendChild(taskEl);
-    }
     const cellAffirmationWins = nodeAffirmationWins(a);
     if (cellAffirmationWins) {
       // Same checkmark-with-count marker as the node-level strip (see
@@ -10423,7 +10429,7 @@
         if (span.rowSpan > 1) td.rowSpan = span.rowSpan;
         if (span.colSpan > 1) td.colSpan = span.colSpan;
         if (a.fillColor) td.style.background = a.fillColor;
-        if (cellAttachHasAny(a)) td.classList.add("has-cell-icons");
+        if (cellAttachHasStripIcon(a)) td.classList.add("has-cell-icons");
         if (state.cellRange && state.cellRange.nodeId === node.id &&
             r >= state.cellRange.r0 && r <= state.cellRange.r1 &&
             c >= state.cellRange.c0 && c <= state.cellRange.c1) {

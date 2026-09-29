@@ -581,9 +581,6 @@
       ? a.urls.length
       : (a.url ? 1 : 0);
 
-    const tasks = Array.isArray(a.tasks) ? a.tasks : [];
-    const legacyTask = !!(a.task && a.task.text);
-    const taskTotal = tasks.length || (legacyTask ? 1 : 0);
     const hasAffirmation = !!(a.affirmation && Number(a.affirmation.wins || 0) > 0);
     const hasTimer = Number(a.timePlayedSec || 0) > 0;
     const hasBrainstorm = !!(a.brainstorm && (a.brainstorm.text || a.brainstorm.html));
@@ -599,10 +596,8 @@
     if (hasNotes) add(12);
     for (let i = 0; i < urlCount; i++) add(12);
 
-    // v408: the square checklist icon remains one normal marker slot.
-    // The weighted numeric score badge is absolutely positioned at the
-    // cell's top-right corner, so it consumes no icon-strip width.
-    if (taskTotal) add(12);
+    // v410: tasks use only the absolutely-positioned top-right score badge,
+    // so they consume no bottom-strip width at all.
     if (hasAffirmation) add(12);
     if (hasTimer) add(40);
     if (hasBrainstorm) add(12);
