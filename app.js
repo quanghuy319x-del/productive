@@ -19266,6 +19266,14 @@
   // just clears it instead — closing the marker down to zero without
   // leaving the editor in a no-notes-open state.
   function deleteActiveNote() {
+    // v456: destructive top-row action always requires explicit confirmation.
+    // This is the one shared Note editor, so the same guard covers Note, DRC
+    // and Brainstorm on both mouse and touch devices.
+    const active = noteWorkingList[noteActiveIndex];
+    const kind = active && active.kind === "brainstorm"
+      ? "Brainstorm"
+      : ((active && String(active.title || "").trim().toUpperCase() === "DRC") ? "DRC" : "Note");
+    if (!window.confirm(`Delete this ${kind}? This cannot be undone.`)) return;
     captureActiveNote();
     if (noteWorkingList.length <= 1) {
       noteWorkingList[0].title = "";
