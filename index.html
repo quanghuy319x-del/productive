@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=446">
+<link rel="stylesheet" href="style.css?v=447">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "446";
+  const APP_VERSION = "447";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "446"') && !document.documentElement.dataset.v446Reloaded) {
+      if (fresh.includes('const APP_VERSION = "447"') && !document.documentElement.dataset.v447Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v446Reloaded = "1";
+          document.documentElement.dataset.v447Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=446"></script>
-<script src="phase2-layout.js?v=446"></script>
+<script src="phase1-editors.js?v=447"></script>
+<script src="phase2-layout.js?v=447"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=446"></script>
+<script src="app.js?v=447"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1302,6 +1302,50 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
     button.addEventListener("pointerdown", suppressOpeningKeyboard, true);
     button.addEventListener("touchstart", suppressOpeningKeyboard, {capture:true, passive:true});
   });
+})();
+</script>
+
+<script>
+/* v447 — Phone Note: Back stays visible; tap the note to reveal top actions.
+   Hide them again after 5s without a top-action tap. */
+(() => {
+  const phone = () => matchMedia('(max-width:640px) and (any-pointer:coarse)').matches;
+  const modal = document.getElementById('note-modal');
+  const card = modal?.querySelector('.note-modal-card');
+  const row = card?.querySelector('.note-nav-row');
+  if (!modal || !card || !row) return;
+  let hideTimer = 0;
+  const cancelTimer = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; } };
+  const hide = () => { cancelTimer(); if (phone()) card.classList.add('phone-note-nav-collapsed'); };
+  const arm = () => {
+    cancelTimer();
+    if (!phone() || card.classList.contains('phone-note-nav-collapsed')) return;
+    hideTimer = setTimeout(hide, 5000);
+  };
+  const reveal = () => {
+    if (!phone()) return;
+    card.classList.remove('phone-note-nav-collapsed');
+    arm();
+  };
+  // Start compact whenever the Note is opened; desktop is untouched.
+  const observer = new MutationObserver(() => {
+    if (!phone()) { cancelTimer(); card.classList.remove('phone-note-nav-collapsed'); return; }
+    if (!modal.classList.contains('hidden')) hide(); else cancelTimer();
+  });
+  observer.observe(modal, {attributes:true, attributeFilter:['class']});
+  if (phone()) hide();
+  card.addEventListener('pointerdown', (event) => {
+    if (!phone()) return;
+    const button = event.target.closest('.note-nav-btn');
+    if (button) {
+      if (button.id !== 'note-nav-back' && button.id !== 'note-nav-close') {
+        if (card.classList.contains('phone-note-nav-collapsed')) reveal(); else arm();
+      }
+      return;
+    }
+    // Tapping anywhere in the Note/editor reveals the actions.
+    reveal();
+  }, true);
 })();
 </script>
 </body>
