@@ -11536,16 +11536,36 @@
 
   function addCalendarChild(parentId) {
     if (!requireSignIn()) return null;
-    const raw = prompt("Calendar month (MM/YY)", "");
-    if (raw === null) return null;
-    const m = raw.trim().match(/^(0?[1-9]|1[0-2])\/(\d{2}|\d{4})$/);
-    if (!m) { alert("Enter month as MM/YY, for example 09/26."); return null; }
-    const month = Number(m[1]);
-    let year = Number(m[2]);
-    if (year < 100) year += 2000;
-
     const parent = findNode(parentId);
     if (!parent) return null;
+
+    const raw = prompt("Calendar month (MM/YY) — leave empty for automatic", "");
+    if (raw === null) return null;
+
+    let month, year;
+    const entered = raw.trim();
+    if (!entered) {
+      // Empty input is context-aware:
+      // - from a calendar node, continue with the next month;
+      // - from any other node, create the current month.
+      if (parent.table && parent.table.calendar) {
+        const baseMonth = Number(parent.table.calendarMonth) || (new Date().getMonth() + 1);
+        const baseYear = Number(parent.table.calendarYear) || new Date().getFullYear();
+        const next = new Date(baseYear, baseMonth, 1); // JS month is 0-based; baseMonth => next month
+        month = next.getMonth() + 1;
+        year = next.getFullYear();
+      } else {
+        const now = new Date();
+        month = now.getMonth() + 1;
+        year = now.getFullYear();
+      }
+    } else {
+      const m = entered.match(/^(0?[1-9]|1[0-2])\/(\d{2}|\d{4})$/);
+      if (!m) { alert("Enter month as MM/YY, for example 09/26, or leave it empty."); return null; }
+      month = Number(m[1]);
+      year = Number(m[2]);
+      if (year < 100) year += 2000;
+    }
     pushUndo();
     const n = newNode("");
     if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
