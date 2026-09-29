@@ -894,6 +894,7 @@ body.signed-out #title-input{ visibility:hidden; }
   background: rgba(255,255,255,0.38);
 }
 .node-table-calendar .calendar-title-cell .node-table-cell-text{
+  box-sizing: border-box;
   min-height: 30px;
   padding: 4px 10px;
   font-size: 14px;
@@ -905,6 +906,7 @@ body.signed-out #title-input{ visibility:hidden; }
   background: transparent;
 }
 .node-table-calendar .calendar-weekday-cell .node-table-cell-text{
+  box-sizing: border-box;
   min-height: 18px;
   padding: 1px 4px 2px;
   font-size: 10px;
@@ -920,6 +922,7 @@ body.signed-out #title-input{ visibility:hidden; }
   overflow: hidden;
 }
 .node-table-calendar .calendar-day-cell .node-table-cell-text{
+  box-sizing: border-box;
   min-height: 38px;
   padding: 4px 6px;
   display: flex;
@@ -943,8 +946,10 @@ body.signed-out #title-input{ visibility:hidden; }
   background: rgba(255,255,255,0.48);
 }
 .node-table-calendar .node-table-cell-icons{
-  padding: 0 6px 4px;
-  justify-content: center;
+  right: 4px;
+  bottom: 3px;
+  padding: 0;
+  justify-content: flex-end;
 }
 /* The editable text part of a cell — everything the plain <td> rule used
    to be, just scoped to this inner div now that the icon strip below
@@ -973,17 +978,30 @@ body.signed-out #title-input{ visibility:hidden; }
    always visible; the trailing "+" tile (see .node-table-cell-add
    below) only fades in on hover so an empty cell doesn't show a
    permanent "+" badge. */
+.node-table-cell{
+  position: relative;
+}
 .node-table-cell-icons{
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 6px 3px;
-  flex-wrap: wrap;
-  min-height: 14px;
+  justify-content: flex-end;
+  gap: 1px;
+  padding: 0;
+  flex-wrap: nowrap;
+  min-height: 0;
+  max-width: calc(100% - 6px);
+}
+.node-table-cell-icons:empty{ display:none; }
+.node-table-cell.has-cell-icons .node-table-cell-text{
+  padding-bottom: 12px;
 }
 .node-table-cell-icon{
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   flex: 0 0 auto;
   border-radius: 2px;
   cursor: pointer;
