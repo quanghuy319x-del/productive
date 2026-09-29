@@ -7164,18 +7164,6 @@
     map._affirmationMigrated = true;
   }
 
-  function sampleMindMap() {
-    const m = newMindMap("Welcome to Branchline");
-    const c1 = newNode("Try Tab to add a child");
-    const c2 = newNode("Try Enter to add a sibling");
-    const c3 = newNode("Double-click to rename");
-    const c4 = newNode("Right-click for more actions");
-    const g1 = newNode("Deeper branches fade in style");
-    c1.children.push(g1);
-    m.root.children.push(c1, c2, c3, c4);
-    return m;
-  }
-
   /* ---------------- app state ---------------- */
 
   const state = {
@@ -27922,14 +27910,8 @@
             console.warn("Recovery photo sharing migration skipped", e);
           }
 
-          if (activeMaps().length === 0) {
-            const sample = sampleMindMap();
-            await DB.put(sample);
-            await FolderDB.save(sample);
-            await DriveDB.save(sample);
-            state.maps.push(sample);
-          }
-
+          // v458: an empty account stays empty. Never auto-create or upload
+          // the old "Welcome to Branchline" sample map.
           updateFolderUI();
           updateDriveUI();
           renderSidebar();
