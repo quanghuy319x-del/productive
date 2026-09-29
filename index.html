@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=448">
+<link rel="stylesheet" href="style.css?v=449">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "448";
+  const APP_VERSION = "449";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "448"') && !document.documentElement.dataset.v448Reloaded) {
+      if (fresh.includes('const APP_VERSION = "449"') && !document.documentElement.dataset.v449Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v448Reloaded = "1";
+          document.documentElement.dataset.v449Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=448"></script>
-<script src="phase2-layout.js?v=448"></script>
+<script src="phase1-editors.js?v=449"></script>
+<script src="phase2-layout.js?v=449"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=448"></script>
+<script src="app.js?v=449"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1306,67 +1306,70 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
-/* v448 — Phone Note: Back stays visible; tap the note to reveal top actions.
-   Hide them again after 5s without a top-action tap. */
+/* v449 — Phone Note: first touch reveals actions only; second touch may activate.
+   Actions stay visible for 5s after reveal / action use. */
 (() => {
   const phone = () => matchMedia('(max-width:640px) and (any-pointer:coarse)').matches;
   const modal = document.getElementById('note-modal');
   const card = modal?.querySelector('.note-modal-card');
   const row = card?.querySelector('.note-nav-row');
   if (!modal || !card || !row) return;
+
   let hideTimer = 0;
-  const cancelTimer = () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = 0; } };
-  const hide = () => { cancelTimer(); if (phone()) card.classList.add('phone-note-nav-collapsed'); };
+  let suppressClickUntil = 0;
+  const cancelTimer = () => {
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = 0;
+  };
+  const hide = () => {
+    cancelTimer();
+    if (phone()) card.classList.add('phone-note-nav-collapsed');
+  };
   const arm = () => {
     cancelTimer();
     if (!phone() || card.classList.contains('phone-note-nav-collapsed')) return;
     hideTimer = setTimeout(hide, 5000);
   };
-  const reveal = () => {
-    if (!phone()) return;
+  const revealOnly = (event) => {
+    suppressClickUntil = performance.now() + 800;
+    event.preventDefault();
+    event.stopImmediatePropagation();
     card.classList.remove('phone-note-nav-collapsed');
     arm();
   };
-  // Start compact whenever the Note is opened; desktop is untouched.
+
   const observer = new MutationObserver(() => {
-    if (!phone()) { cancelTimer(); card.classList.remove('phone-note-nav-collapsed'); return; }
-    if (!modal.classList.contains('hidden')) hide(); else cancelTimer();
+    if (!phone()) {
+      cancelTimer();
+      card.classList.remove('phone-note-nav-collapsed');
+      return;
+    }
+    if (modal.classList.contains('hidden')) cancelTimer();
+    else hide();
   });
   observer.observe(modal, {attributes:true, attributeFilter:['class']});
   if (phone()) hide();
+
+  // Capture before any existing Note handlers. A hidden bar consumes the
+  // entire first gesture, so no newly revealed control can receive it.
   card.addEventListener('pointerdown', (event) => {
     if (!phone()) return;
-    const collapsed = card.classList.contains('phone-note-nav-collapsed');
     const button = event.target.closest('.note-nav-btn');
+    if (button?.id === 'note-nav-back') return;
 
-    // Safety: while actions are hidden, the first touch is reveal-only.
-    // Swallow the whole gesture so the same touch can never click a newly
-    // revealed button underneath the finger. Back is the only exception.
-    if (collapsed && (!button || button.id !== 'note-nav-back')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      card.dataset.revealOnly = '1';
-      reveal();
-      setTimeout(() => { card.dataset.revealOnly = ''; }, 700);
+    if (card.classList.contains('phone-note-nav-collapsed')) {
+      revealOnly(event);
       return;
     }
-
-    if (button) {
-      if (button.id !== 'note-nav-back' && button.id !== 'note-nav-close') arm();
-      return;
-    }
-    reveal();
+    if (button) arm();
   }, true);
 
-  // Also swallow the synthetic click produced by a reveal-only touch.
+  // Some Android browsers still synthesize click after a cancelled pointer.
+  // Suppress only that first gesture; do not change/collapse the bar here.
   card.addEventListener('click', (event) => {
-    if (!phone()) return;
-    if (event.detail === 0) return;
-    if (card.dataset.revealOnly === '1') {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      card.dataset.revealOnly = '';
-    }
+    if (!phone() || performance.now() >= suppressClickUntil) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
   }, true);
 })();
 </script>
