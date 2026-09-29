@@ -10282,20 +10282,28 @@
         strip.appendChild(thumb);
       }
     }
-    if (cellHasNotes(a)) {
-      const noteIcon = document.createElement("span");
-      noteIcon.className = "node-table-cell-icon node-table-cell-note";
+    {
       const notes = getCellNotes(a);
-      // A cell whose notes are all DRC notes gets the DRC image, same as a
-      // node's own DRC marker.
-      noteIcon.innerHTML = notes.every(isDRCNote) ? NODE_DRC_ICON_IMG : (notes.every(isPlanNote) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
-      noteIcon.title = (notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0])) + " — drag onto a node or cell to move (hold Alt to copy)";
-      noteIcon.draggable = true;
-      noteIcon.addEventListener("click", () => editCellNote(node, r, c));
-      noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes", { sourceR: r, sourceC: c }));
-      armMarkerTouchDrag(noteIcon, node, "notes", { sourceR: r, sourceC: c });
-      noteIcon.addEventListener("dragend", endMarkerDrag);
-      strip.appendChild(noteIcon);
+      // v425: Brainstorm is a Note variant in storage, but it has its own
+      // dedicated 🧠 marker below. A Brainstorm-only cell must therefore not
+      // also render the generic Note icon, otherwise one Brainstorm appears
+      // as two separate markers. Mixed cells still keep the generic Note
+      // marker for their other note content plus the dedicated brain.
+      const brainstormOnly = notes.length > 0 && notes.every(isBrainstormNote);
+      if (notes.length && !brainstormOnly) {
+        const noteIcon = document.createElement("span");
+        noteIcon.className = "node-table-cell-icon node-table-cell-note";
+        // A cell whose notes are all DRC notes gets the DRC image, same as a
+        // node's own DRC marker.
+        noteIcon.innerHTML = notes.every(isDRCNote) ? NODE_DRC_ICON_IMG : (notes.every(isPlanNote) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
+        noteIcon.title = (notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0])) + " — drag onto a node or cell to move (hold Alt to copy)";
+        noteIcon.draggable = true;
+        noteIcon.addEventListener("click", () => editCellNote(node, r, c));
+        noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes", { sourceR: r, sourceC: c }));
+        armMarkerTouchDrag(noteIcon, node, "notes", { sourceR: r, sourceC: c });
+        noteIcon.addEventListener("dragend", endMarkerDrag);
+        strip.appendChild(noteIcon);
+      }
     }
     // v417: If a cell contains DRC alongside other notes, keep a dedicated
     // DRC marker visible so the cell's DRC is always one click away. A
