@@ -1045,6 +1045,122 @@ body.signed-out #title-input{ visibility:hidden; }
   box-shadow: inset 0 0 0 2px #2f6df6;
   background: #f7f7ef;
 }
+/* Minimal — almost typography-only: no outer card, no day fills,
+   faint separators and a stronger today marker. */
+.node-table-calendar.calendar-style-minimal{
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+.node-table-calendar.calendar-style-minimal .calendar-title-cell{
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+}
+.node-table-calendar.calendar-style-minimal .calendar-weekday-cell{
+  background: transparent;
+  border-color: transparent !important;
+}
+.node-table-calendar.calendar-style-minimal .calendar-weekday-cell .node-table-cell-text{
+  color: currentColor !important;
+  opacity: .56;
+  font-weight: 700;
+}
+.node-table-calendar.calendar-style-minimal .calendar-day-cell{
+  background: transparent;
+  border-color: transparent !important;
+  border-bottom-color: color-mix(in srgb, currentColor 13%, transparent) !important;
+  border-radius: 0;
+}
+.node-table-calendar.calendar-style-minimal .calendar-day-cell:has(.node-table-cell-text:focus){
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.node-table-calendar.calendar-style-minimal .calendar-outside-month{
+  background: transparent;
+  opacity: .22;
+}
+.node-table-calendar.calendar-style-minimal .calendar-today{
+  border: 0 !important;
+  box-shadow: inset 0 -2px 0 #2f6df6;
+  background: rgba(47,109,246,.07);
+}
+
+/* Dark — self-contained dark calendar that stays readable even on a light map. */
+.node-table-calendar.calendar-style-dark{
+  background: #171a21;
+  box-shadow: 0 5px 18px rgba(0,0,0,.30);
+  color: #eef2f7;
+}
+.node-table-calendar.calendar-style-dark td{
+  color: #eef2f7;
+}
+.node-table-calendar.calendar-style-dark .calendar-title-cell{
+  background: #20242d;
+  border-color: rgba(255,255,255,.11);
+}
+.node-table-calendar.calendar-style-dark .calendar-weekday-cell{
+  background: #1b1f27;
+  border-color: rgba(255,255,255,.08) !important;
+}
+.node-table-calendar.calendar-style-dark .calendar-weekday-cell .node-table-cell-text{
+  color: rgba(238,242,247,.64) !important;
+}
+.node-table-calendar.calendar-style-dark .calendar-day-cell{
+  background: #191d25;
+  border-color: rgba(255,255,255,.09) !important;
+}
+.node-table-calendar.calendar-style-dark .calendar-day-cell:has(.node-table-cell-text:focus){
+  background: #242a35;
+}
+.node-table-calendar.calendar-style-dark .calendar-outside-month{
+  background: #14171d;
+  opacity: .34;
+}
+.node-table-calendar.calendar-style-dark .calendar-today{
+  border-color: #6ea2ff !important;
+  box-shadow: inset 0 0 0 2px #6ea2ff;
+  background: #202b3d;
+}
+
+/* Pastel — soft planner look with alternating gentle day tones. */
+.node-table-calendar.calendar-style-pastel{
+  background: #f3eef7;
+  box-shadow: 0 4px 14px rgba(79,60,96,.16);
+  color: #3d3545;
+}
+.node-table-calendar.calendar-style-pastel td{
+  color: #3d3545;
+}
+.node-table-calendar.calendar-style-pastel .calendar-title-cell{
+  background: #ebe2f3;
+  border-color: rgba(80,55,96,.18);
+}
+.node-table-calendar.calendar-style-pastel .calendar-weekday-cell{
+  background: #f6f1fa;
+  border-color: rgba(80,55,96,.12) !important;
+}
+.node-table-calendar.calendar-style-pastel .calendar-weekday-cell .node-table-cell-text{
+  color: rgba(61,53,69,.62) !important;
+}
+.node-table-calendar.calendar-style-pastel .calendar-day-cell{
+  background: #fbf8fd;
+  border-color: rgba(80,55,96,.13) !important;
+}
+.node-table-calendar.calendar-style-pastel tr:nth-child(even) .calendar-day-cell{
+  background: #f9f4fb;
+}
+.node-table-calendar.calendar-style-pastel .calendar-day-cell:has(.node-table-cell-text:focus){
+  background: #fffafd;
+}
+.node-table-calendar.calendar-style-pastel .calendar-outside-month{
+  background: #eee7f3;
+  opacity: .42;
+}
+.node-table-calendar.calendar-style-pastel .calendar-today{
+  border-color: #9b6ed8 !important;
+  box-shadow: inset 0 0 0 2px #9b6ed8;
+  background: #efe5fb;
+}
 .node-table-calendar .calendar-day-cell .node-table-cell-icons{
   /* v403: calendar date cells keep their icons in normal flow and wrap
      onto extra rows. This lets the cell grow to fit any number of markers

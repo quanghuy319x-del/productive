@@ -10814,7 +10814,7 @@
     const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
 
     const table = document.createElement("table");
-    const calendarStyles = ["classic", "transparent", "glass", "paper"];
+    const calendarStyles = ["classic", "transparent", "glass", "paper", "minimal", "dark", "pastel"];
     const calendarStyle = calendarStyles.includes(node.table.calendarStyle)
       ? node.table.calendarStyle
       : "classic";
@@ -13063,7 +13063,10 @@
           ["classic", "Classic"],
           ["transparent", "Transparent"],
           ["glass", "Glass"],
-          ["paper", "Paper"]
+          ["paper", "Paper"],
+          ["minimal", "Minimal"],
+          ["dark", "Dark"],
+          ["pastel", "Pastel"]
         ];
         const currentCalendarStyle = calendarStyleOptions.some(([key]) => key === node.table.calendarStyle)
           ? node.table.calendarStyle
