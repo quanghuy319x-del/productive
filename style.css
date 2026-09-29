@@ -7304,7 +7304,7 @@ kbd{
 }
 
 
-/* v448: phone Note/DRC top controls are tap-to-reveal. Back and Close
+/* v449: phone Note/DRC top controls are tap-to-reveal. Back and Close
    remain visible at all times; the middle gap becomes the reveal target. */
 @media (max-width:640px) and (any-pointer:coarse){
   #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
@@ -7322,7 +7322,7 @@ kbd{
 }
 
 
-/* v448: Back replaces Close. Phone Note actions auto-collapse after inactivity. */
+/* v449: Back replaces Close. Phone Note actions auto-collapse after inactivity. */
 #note-nav-close{display:none!important;}
 @media (max-width:640px) and (any-pointer:coarse){
   #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
