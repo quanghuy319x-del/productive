@@ -21156,9 +21156,11 @@
       setPhoneNoteNavExpanded(noteCard.classList.contains("phone-note-nav-collapsed"));
     });
   }
+  // v453: phone Note/DRC/Brainstorm top actions are now owned by the
+  // shared 5-second reveal controller in index.html. Do not collapse them
+  // again when the same reveal touch lands on the title/editor.
   [noteTitleInput, noteTextarea].forEach((el) => {
     if (!el) return;
-    el.addEventListener("pointerdown", () => setPhoneNoteNavExpanded(false));
   });
 
   $("#note-nav-close").addEventListener("click", closeNoteModal);
