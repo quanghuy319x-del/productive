@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=453">
+<link rel="stylesheet" href="style.css?v=454">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "453";
+  const APP_VERSION = "454";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "453"') && !document.documentElement.dataset.v453Reloaded) {
+      if (fresh.includes('const APP_VERSION = "454"') && !document.documentElement.dataset.v454Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v453Reloaded = "1";
+          document.documentElement.dataset.v454Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=453"></script>
-<script src="phase2-layout.js?v=453"></script>
+<script src="phase1-editors.js?v=454"></script>
+<script src="phase2-layout.js?v=454"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=453"></script>
+<script src="app.js?v=454"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1306,70 +1306,59 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
-/* v453 — One shared phone editor path for Note / DRC / Brainstorm.
-   All three open through note-modal; first touch reveals, second activates. */
+/* v454 — One shared editor interaction for PC + touch.
+   Note / DRC / Brainstorm all use note-modal. Back stays visible; first
+   pointer press reveals actions only, second activates; auto-hide after 5s. */
 (() => {
-  const phone = () => matchMedia('(max-width:640px) and (any-pointer:coarse)').matches;
+  const modal = document.getElementById('note-modal');
+  const card = modal?.querySelector('.note-modal-card');
+  if (!modal || !card || !card.querySelector('.note-nav-row')) return;
 
-  function install(modalId, backId) {
-    const modal = document.getElementById(modalId);
-    const card = modal?.querySelector('.note-modal-card');
-    if (!modal || !card || !card.querySelector('.note-nav-row')) return;
+  let hideTimer = 0;
+  let suppressClickUntil = 0;
+  const cancelTimer = () => {
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = 0;
+  };
+  const hide = () => {
+    cancelTimer();
+    card.classList.add('phone-note-nav-collapsed');
+  };
+  const arm = () => {
+    cancelTimer();
+    if (card.classList.contains('phone-note-nav-collapsed')) return;
+    hideTimer = setTimeout(hide, 5000);
+  };
+  const revealOnly = (event) => {
+    suppressClickUntil = performance.now() + 600;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    card.classList.remove('phone-note-nav-collapsed');
+    arm();
+  };
 
-    let hideTimer = 0;
-    let suppressClickUntil = 0;
-    const cancelTimer = () => {
-      if (hideTimer) clearTimeout(hideTimer);
-      hideTimer = 0;
-    };
-    const hide = () => {
-      cancelTimer();
-      if (phone()) card.classList.add('phone-note-nav-collapsed');
-    };
-    const arm = () => {
-      cancelTimer();
-      if (!phone() || card.classList.contains('phone-note-nav-collapsed')) return;
-      hideTimer = setTimeout(hide, 5000);
-    };
-    const revealOnly = (event) => {
-      suppressClickUntil = performance.now() + 800;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      card.classList.remove('phone-note-nav-collapsed');
-      arm();
-    };
+  const observer = new MutationObserver(() => {
+    if (modal.classList.contains('hidden')) cancelTimer();
+    else hide();
+  });
+  observer.observe(modal, {attributes:true, attributeFilter:['class']});
+  hide();
 
-    const observer = new MutationObserver(() => {
-      if (!phone()) {
-        cancelTimer();
-        card.classList.remove('phone-note-nav-collapsed');
-        return;
-      }
-      if (modal.classList.contains('hidden')) cancelTimer();
-      else hide();
-    });
-    observer.observe(modal, {attributes:true, attributeFilter:['class']});
-    if (phone()) hide();
+  card.addEventListener('pointerdown', (event) => {
+    const button = event.target.closest('.note-nav-btn');
+    if (button?.id === 'note-nav-back') return;
+    if (card.classList.contains('phone-note-nav-collapsed')) {
+      revealOnly(event);
+      return;
+    }
+    if (button) arm();
+  }, true);
 
-    card.addEventListener('pointerdown', (event) => {
-      if (!phone()) return;
-      const button = event.target.closest('.note-nav-btn');
-      if (button?.id === backId) return;
-      if (card.classList.contains('phone-note-nav-collapsed')) {
-        revealOnly(event);
-        return;
-      }
-      if (button) arm();
-    }, true);
-
-    card.addEventListener('click', (event) => {
-      if (!phone() || performance.now() >= suppressClickUntil) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }, true);
-  }
-
-  install('note-modal', 'note-nav-back');
+  card.addEventListener('click', (event) => {
+    if (performance.now() >= suppressClickUntil) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
 })();
 </script>
 </body>
