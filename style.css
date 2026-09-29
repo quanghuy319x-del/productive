@@ -7131,23 +7131,25 @@ kbd{
   font-weight: 600;
 }
 
-/* Selected stays visible after click/right-click; focus-within is stronger
-   while the contenteditable text really owns keyboard focus. Outline only:
-   never overwrite a calendar style/fill-color background or today's shadow. */
+/* v433: Selected/focused cells keep the blue focus ring, but draw it as
+   an inset shadow instead of CSS outline. Edge/Chromium can fragment an
+   outline painted directly on a table-cell (<td>) and show two stray
+   horizontal blue lines through the cell while its contenteditable owns
+   focus. The inset ring paints as one clean rounded rectangle. */
 .node-table-cell.cell-selected{
-  outline: 1.5px solid rgba(47,109,246,.72);
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px rgba(47,109,246,.72);
 }
 .node-table-cell:focus-within{
-  outline: 2.5px solid #2f6df6;
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: inset 0 0 0 2.5px #2f6df6;
 }
 .node-table-cell.cell-selected:focus-within{
-  outline-width: 3px;
+  box-shadow: inset 0 0 0 3px #2f6df6;
 }
 .node-table-cell.range-selected{
-  outline: 2px solid #33b3f0;
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: inset 0 0 0 2px #33b3f0;
 }
 .node-table-cell.marker-drop-target{
   outline: 2px dashed #33b3f0 !important;
