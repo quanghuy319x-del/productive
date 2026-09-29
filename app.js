@@ -7229,10 +7229,12 @@
   // right-click/long-press menu in the app).
   function resetContextMenu() {
     ctxMenu.innerHTML = "";
-    // The popup is shared by node/task/link/cell menus. Clear this marker
-    // first so the larger touch typography applies only to a node menu.
+    // The popup is shared by node/task/link/cell menus. Clear specialized
+    // sizing/skin markers before building the next menu.
     ctxMenu.classList.remove("node-context-menu");
     ctxMenu.classList.remove("subtask-context-menu");
+    ctxMenu.classList.remove("cell-context-menu");
+    ctxMenu.scrollTop = 0;
     ctxMenu.classList.remove("hidden");
   }
 
@@ -10291,156 +10293,210 @@
   function openCellAddMenu(node, r, c, x, y) {
     if (!requireSignIn()) return;
     resetContextMenu();
+    ctxMenu.classList.add("cell-context-menu");
     const a = getCellAttach(node, r, c);
-    const items = [];
-    items.push(["Add photo…", () => openCellPhotoPicker(node, r, c)]);
+
+    const addSection = (title) => {
+      if (ctxMenu.childElementCount) {
+        const sep = document.createElement("div");
+        sep.className = "ctx-sep";
+        ctxMenu.appendChild(sep);
+      }
+      const head = document.createElement("div");
+      head.className = "ctx-item ctx-item-header cell-menu-header";
+      const span = document.createElement("span");
+      span.className = "ctx-item-label";
+      span.textContent = title;
+      head.appendChild(span);
+      ctxMenu.appendChild(head);
+    };
+
+    const addItem = (label, fn, opts) => {
+      const o = opts || {};
+      const it = document.createElement("div");
+      it.className = "ctx-item" + (o.disabled ? " disabled" : "") + (o.danger ? " danger" : "");
+      const labelSpan = document.createElement("span");
+      labelSpan.className = "ctx-item-label";
+      labelSpan.textContent = label;
+      it.appendChild(labelSpan);
+      if (o.hint) {
+        const hint = document.createElement("span");
+        hint.className = "cell-menu-hint";
+        hint.textContent = o.hint;
+        it.appendChild(hint);
+      }
+      if (!o.disabled) {
+        it.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeContextMenu();
+          fn();
+        });
+      }
+      ctxMenu.appendChild(it);
+    };
+
+    // Clipboard lives at the top so it is always visible without scrolling.
+    addSection("Clipboard");
+    addItem("📋 Copy all icons", () => copyAllIconsFromHost(a));
+    addItem("📥 Paste all icons", () => pasteAllIconsToHost(a), {
+      disabled: !allIconsClipboard,
+      hint: allIconsClipboard ? "" : "empty"
+    });
+
+    addSection("Content");
+    addItem("🖼 Add photo…", () => openCellPhotoPicker(node, r, c));
     if (cellHasImages(a)) {
-      // Same shared photo viewer as a node, scoped to this cell host.
       const cellPhotos = getCellPhotos(a);
-      items.push([cellPhotos.length > 1 ? "View photo(s)…" : "View photo…", () => openCellPhotoModal(node.id, r, c, 0)]);
+      addItem(cellPhotos.length > 1 ? "👁 View photos…" : "👁 View photo…", () => openCellPhotoModal(node.id, r, c, 0));
+      addItem("🗑 Remove all photos", () => {
+        pushUndo();
+        const removedCellIds = getCellPhotoIds(a).slice();
+        a.images = null;
+        a.image = null;
+        removedCellIds.forEach(id => { if (!String(id).startsWith("data:")) deletePhotoRecord(id); });
+        renderAll();
+        persist();
+      }, { danger: true });
     }
-    if (cellHasImages(a)) items.push(["Remove all photos", () => {
-      pushUndo();
-      const removedCellIds = getCellPhotoIds(a).slice();
-      a.images = null;
-      a.image = null;
-      removedCellIds.forEach(id => { if (!String(id).startsWith("data:")) deletePhotoRecord(id); });
-      renderAll();
-      persist();
-    }]);
-    items.push([cellHasNotes(a) ? "Edit note…" : "Add note…", () => editCellNote(node, r, c)]);
-    if (cellHasNotes(a)) items.push(["Remove note", () => { pushUndo(); a.note = null; a.notes = null; renderAll(); persist(); }]);
-    items.push(["Add link…", () => addCellUrl(node, r, c)]);
-    {
-      // Full task list for this cell — the exact same modal a node's
-      // "Tasks…" menu entry opens (see openTasksModal), just scoped to
-      // this cell's own attach record instead of the node.
-      const prog = nodeTaskProgress(a);
-      const label = prog.total ? `Tasks… (${prog.done}/${prog.total})` : "Add tasks…";
-      items.push([label, () => openTasksModal(node.id, r, c)]);
+
+    addItem(cellHasNotes(a) ? `📝 Notes (${getCellNotes(a).length})…` : "📝 Add note…", () => editCellNote(node, r, c));
+    if (cellHasNotes(a)) {
+      addItem("🗑 Remove all notes", () => {
+        pushUndo();
+        a.note = null;
+        a.notes = null;
+        a.brainstorm = null;
+        renderAll();
+        persist();
+      }, { danger: true });
     }
-    {
-      const played = getNodeTimePlayed(a);
-      const label = played ? `Timer — ${formatTimePlayed(played)}…` : "Add timer…";
-      items.push([label, () => openTimerModal(node.id, r, c)]);
-      if (played) items.push(["Remove timer", () => { pushUndo(); a.timePlayedSec = 0; renderAll(); persist(); }]);
+    addItem("🔗 Add link…", () => addCellUrl(node, r, c));
+
+    const prog = nodeTaskProgress(a);
+    addItem(prog.total ? `✓ Tasks (${prog.done}/${prog.total})…` : "✓ Add tasks…", () => openTasksModal(node.id, r, c));
+
+    const played = getNodeTimePlayed(a);
+    addItem(played ? `⏱ Timer — ${formatTimePlayed(played)}…` : "⏱ Add timer…", () => openTimerModal(node.id, r, c));
+    if (played) {
+      addItem("Remove timer", () => {
+        pushUndo();
+        a.timePlayedSec = 0;
+        renderAll();
+        persist();
+      }, { danger: true });
     }
-    {
-      const wins = nodeAffirmationWins(a);
-      const label = wins ? `🎮 Affirmation game (✓ ${wins})` : "🎮 Affirmation game";
-      items.push([label, () => openAffirmationGame(node.id, r, c)]);
-    }
-    {
-      items.push(["🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c)]);
-    }
-    {
-      const drcFilled = getCellNotes(a).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
-      const label = drcFilled > 0 ? `DRC (${drcFilled} filled in)…` : "DRC…";
-      items.push([label, () => openCellDRCModal(node, r, c)]);
-    }
-    items.push(["📋 Copy all icons", () => copyAllIconsFromHost(a)]);
-    items.push(["📥 Paste all icons", () => pasteAllIconsToHost(a)]);
-    // "Merge cells" only shows up once a multi-cell rectangle is actually
-    // selected in this same table (see state.cellRange/handleTableCellClick,
-    // set by shift-clicking a second cell) — merging folds that whole
-    // rectangle into the cell this menu was opened on, whichever one that
-    // is, since mergeCellRange always uses the rectangle's own top-left
-    // corner as the origin regardless of which cell you clicked. "Unmerge"
-    // instead shows up whenever this cell is already part of an existing
-    // merge (see getCellMerge), letting a merged block be split back
-    // apart from any of its cells' own "+" menu.
+
+    const wins = nodeAffirmationWins(a);
+    addItem(wins ? `🎮 Affirmation (✓ ${wins})` : "🎮 Affirmation game", () => openAffirmationGame(node.id, r, c));
+    addItem("🧠 Brainstorm…", () => openBrainstormModal(node.id, r, c));
+
+    const drcFilled = getCellNotes(a).filter(n => isDRCNote(n) && drcNoteIsFilled(n)).length;
+    addItem(drcFilled > 0 ? `📋 DRC (${drcFilled} filled)…` : "📋 DRC…", () => openCellDRCModal(node, r, c));
+
+    addSection("Cell");
     if (state.cellRange && state.cellRange.nodeId === node.id &&
         (state.cellRange.r1 > state.cellRange.r0 || state.cellRange.c1 > state.cellRange.c0)) {
       const rr = state.cellRange;
       const mergeRows = rr.r1 - rr.r0 + 1, mergeCols = rr.c1 - rr.c0 + 1;
-      items.push([`Merge cells (${mergeRows}×${mergeCols})`, () => {
+      addItem(`Merge cells (${mergeRows}×${mergeCols})`, () => {
         pushUndo();
         mergeCellRange(node, rr.r0, rr.c0, rr.r1, rr.c1);
         state.cellRange = null;
         renderAll();
         persist();
-      }]);
+      });
     }
     const currentMerge = getCellMerge(node, r, c);
     if (currentMerge && (currentMerge.r1 > currentMerge.r0 || currentMerge.c1 > currentMerge.c0)) {
-      items.push(["Unmerge cells", () => { pushUndo(); unmergeCellAt(node, r, c); renderAll(); persist(); }]);
+      addItem("Unmerge cells", () => {
+        pushUndo();
+        unmergeCellAt(node, r, c);
+        renderAll();
+        persist();
+      });
     }
-    items.forEach(([label, fn]) => {
-      const it = document.createElement("div");
-      it.className = "ctx-item";
-      const labelSpan = document.createElement("span");
-      labelSpan.className = "ctx-item-label";
-      labelSpan.textContent = label;
-      it.appendChild(labelSpan);
-      it.addEventListener("click", (e) => { e.stopPropagation(); closeContextMenu(); fn(); });
-      ctxMenu.appendChild(it);
-    });
 
-    // Same swatch picker as a node's own "Node color"/"Branch color" row
-    // (see openContextMenu) — stored on this cell's attach record instead,
-    // so filling one cell doesn't touch the rest of the table (see the
-    // cell-building loop's td.style.background, and note the fill is
-    // painted on the whole merged block's single <td> when this cell is
-    // part of one — see cellSpan/isMergeOrigin).
+    addSection("Appearance");
+
+    const fillLabel = document.createElement("div");
+    fillLabel.className = "ctx-item cell-menu-subhead";
+    fillLabel.textContent = "Fill color";
+    ctxMenu.appendChild(fillLabel);
     {
-      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
-      const label = document.createElement("div");
-      label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Fill color";
-      ctxMenu.appendChild(label);
-      const sw = document.createElement("div"); sw.className = "ctx-swatches";
+      const swatchRow = document.createElement("div");
+      swatchRow.className = "ctx-swatches";
       const resetSwatch = document.createElement("span");
       resetSwatch.className = "ctx-swatch ctx-swatch-reset" + (!a.fillColor ? " active" : "");
       resetSwatch.title = "Default";
-      resetSwatch.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fillColor = null; closeContextMenu(); renderAll(); persist(); });
-      sw.appendChild(resetSwatch);
+      resetSwatch.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pushUndo();
+        a.fillColor = null;
+        closeContextMenu();
+        renderAll();
+        persist();
+      });
+      swatchRow.appendChild(resetSwatch);
       PALETTE.forEach(c => {
         const s = document.createElement("span");
         s.className = "ctx-swatch" + (a.fillColor === c ? " active" : "");
         s.style.background = c;
-        s.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fillColor = c; closeContextMenu(); renderAll(); persist(); });
-        sw.appendChild(s);
+        s.addEventListener("click", (e) => {
+          e.stopPropagation();
+          pushUndo();
+          a.fillColor = c;
+          closeContextMenu();
+          renderAll();
+          persist();
+        });
+        swatchRow.appendChild(s);
       });
-      ctxMenu.appendChild(sw);
+      ctxMenu.appendChild(swatchRow);
     }
 
-    // Same per-cell text-color override as a node's own "Font color" row
-    // (see openContextMenu) — stored on this cell's attach record instead
-    // of the node, so recoloring one cell's text doesn't touch the rest
-    // of the table (see the cell-building loop's textEl.style.color).
+    const fontLabel = document.createElement("div");
+    fontLabel.className = "ctx-item cell-menu-subhead";
+    fontLabel.textContent = "Font color";
+    ctxMenu.appendChild(fontLabel);
     {
-      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
-      const label = document.createElement("div");
-      label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Font color";
-      ctxMenu.appendChild(label);
-      const sw = document.createElement("div"); sw.className = "ctx-swatches";
+      const swatchRow = document.createElement("div");
+      swatchRow.className = "ctx-swatches";
       const resetSwatch = document.createElement("span");
       resetSwatch.className = "ctx-swatch ctx-swatch-reset" + (!a.fontColor ? " active" : "");
       resetSwatch.title = "Default";
-      resetSwatch.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fontColor = null; closeContextMenu(); renderAll(); persist(); });
-      sw.appendChild(resetSwatch);
+      resetSwatch.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pushUndo();
+        a.fontColor = null;
+        closeContextMenu();
+        renderAll();
+        persist();
+      });
+      swatchRow.appendChild(resetSwatch);
       PALETTE.forEach(c => {
         const s = document.createElement("span");
         s.className = "ctx-swatch" + (a.fontColor === c ? " active" : "");
         s.style.background = c;
-        s.addEventListener("click", (e) => { e.stopPropagation(); pushUndo(); a.fontColor = c; closeContextMenu(); renderAll(); persist(); });
-        sw.appendChild(s);
+        s.addEventListener("click", (e) => {
+          e.stopPropagation();
+          pushUndo();
+          a.fontColor = c;
+          closeContextMenu();
+          renderAll();
+          persist();
+        });
+        swatchRow.appendChild(s);
       });
-      ctxMenu.appendChild(sw);
+      ctxMenu.appendChild(swatchRow);
     }
 
-    // Left/center/right alignment for this cell's text — stored on the
-    // cell's attach record (a.align: null means the default left align,
-    // same "null = default" convention fillColor/fontColor use above)
-    // so aligning one cell never touches the rest of the table.
+    const alignLabel = document.createElement("div");
+    alignLabel.className = "ctx-item cell-menu-subhead";
+    alignLabel.textContent = "Text align";
+    ctxMenu.appendChild(alignLabel);
     {
-      const sep = document.createElement("div"); sep.className = "ctx-sep"; ctxMenu.appendChild(sep);
-      const label = document.createElement("div");
-      label.className = "ctx-item"; label.style.cursor = "default";
-      label.textContent = "Text align";
-      ctxMenu.appendChild(label);
-      const row = document.createElement("div"); row.className = "ctx-align-row";
+      const row = document.createElement("div");
+      row.className = "ctx-align-row";
       [["left", "Left"], ["center", "Center"], ["right", "Right"]].forEach(([val, txt]) => {
         const btn = document.createElement("div");
         const isActive = (a.align || "left") === val;
@@ -10462,7 +10518,7 @@
     positionContextMenu(x, y);
   }
 
-  // The row of small icons under a cell's text — one per attachment it
+  // The row of small icons under a cell's text — one per attachment it  // The row of small icons under a cell's text — one per attachment it
   // currently holds (photo/note/link/task), plus a trailing "+" to add
   // more. Mirrors the node-level photo/note/link strip (see renderNode)
   // at a smaller scale, and reads/writes node.table.attach[r][c] instead
@@ -10873,6 +10929,10 @@
         if (span.colSpan > 1) td.colSpan = span.colSpan;
         if (a.fillColor) td.style.background = a.fillColor;
         if (cellAttachHasStripIcon(a)) td.classList.add("has-cell-icons");
+        if (state.selectedCell && state.selectedCell.nodeId === node.id &&
+            state.selectedCell.r === r && state.selectedCell.c === c) {
+          td.classList.add("cell-selected");
+        }
         if (state.cellRange && state.cellRange.nodeId === node.id &&
             r >= state.cellRange.r0 && r <= state.cellRange.r1 &&
             c >= state.cellRange.c0 && c <= state.cellRange.c1) {
@@ -10898,8 +10958,15 @@
           }
         });
         td.addEventListener("contextmenu", (e) => {
-          e.preventDefault(); e.stopPropagation();
+          e.preventDefault();
+          e.stopPropagation();
           if (!requireSignIn()) return;
+          state.selectedId = node.id;
+          state.selectedCell = { nodeId: node.id, r, c };
+          state.cellRangeAnchor = { nodeId: node.id, r, c };
+          document.querySelectorAll(".node-table-cell.cell-selected")
+            .forEach(el => el.classList.remove("cell-selected"));
+          td.classList.add("cell-selected");
           openCellAddMenu(node, r, c, e.clientX, e.clientY);
         });
 
@@ -11030,6 +11097,12 @@
     state.cellRange = null;
     selectNode(node.id, { nodeId: node.id, r, c });
     // Keep selection visuals current without replacing the table DOM.
+    document.querySelectorAll(".node-table-cell.cell-selected")
+      .forEach(el => el.classList.remove("cell-selected"));
+    const liveCell = nodesLayer.querySelector(
+      `.node[data-id="${node.id}"] .node-table-cell[data-r="${r}"][data-c="${c}"]`
+    );
+    if (liveCell) liveCell.classList.add("cell-selected");
     document.querySelectorAll(".node-table-cell.range-selected").forEach(el => el.classList.remove("range-selected"));
   }
 

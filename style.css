@@ -7090,3 +7090,89 @@ kbd{
     line-height:1;
   }
 }
+
+
+/* v430 — rebuilt cell context menu + persistent cell focus state. */
+.ctx-menu.cell-context-menu{
+  min-width: 236px;
+  max-width: min(330px, calc(100vw - 16px));
+}
+.ctx-menu.cell-context-menu .cell-menu-header{
+  cursor: default;
+  padding-top: 7px;
+  padding-bottom: 4px;
+  min-height: auto;
+  background: transparent !important;
+}
+.ctx-menu.cell-context-menu .cell-menu-header .ctx-item-label{
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.ctx-menu.cell-context-menu .cell-menu-subhead{
+  cursor: default;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  padding-bottom: 4px;
+  background: transparent !important;
+}
+.ctx-menu.cell-context-menu .ctx-item.disabled{
+  opacity: .38;
+  cursor: default;
+  background: transparent !important;
+}
+.cell-menu-hint{
+  flex: none;
+  margin-left: 10px;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Selected stays visible after click/right-click; focus-within is stronger
+   while the contenteditable text really owns keyboard focus. Outline only:
+   never overwrite a calendar style/fill-color background or today's shadow. */
+.node-table-cell.cell-selected{
+  outline: 1.5px solid rgba(47,109,246,.72);
+  outline-offset: -2px;
+}
+.node-table-cell:focus-within{
+  outline: 2.5px solid #2f6df6;
+  outline-offset: -2px;
+}
+.node-table-cell.cell-selected:focus-within{
+  outline-width: 3px;
+}
+.node-table-cell.range-selected{
+  outline: 2px solid #33b3f0;
+  outline-offset: -2px;
+}
+.node-table-cell.marker-drop-target{
+  outline: 2px dashed #33b3f0 !important;
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse){
+  .ctx-menu.cell-context-menu{
+    min-width: min(310px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    padding: 8px;
+    max-height: min(78vh, 580px);
+  }
+  .ctx-menu.cell-context-menu .ctx-item:not(.cell-menu-header):not(.cell-menu-subhead){
+    font-size: 15px;
+    line-height: 1.25;
+    min-height: 44px;
+    padding: 10px 12px;
+    box-sizing: border-box;
+  }
+  .ctx-menu.cell-context-menu .cell-menu-header .ctx-item-label{
+    font-size: 11px;
+  }
+  .ctx-menu.cell-context-menu .cell-menu-subhead{
+    font-size: 12px;
+    padding: 8px 12px 4px;
+  }
+}
