@@ -566,7 +566,13 @@
     const cells = node.table.cells;
     const rows = cells.length;
     const cols = Math.max(1, ...cells.map(r => r.length));
-    const colWidths = new Array(cols).fill(TABLE_CELL_MIN_W);
+
+    // v399: table cells are intentionally 2× wider. Make the layout engine
+    // own that width instead of doubling only the rendered <col>, otherwise
+    // the visual table becomes wider than node._w and spills through the
+    // node border.
+    const widthScale = 2;
+    const colWidths = new Array(cols).fill(TABLE_CELL_MIN_W * widthScale);
     const rowHeights = new Array(rows).fill(TABLE_CELL_MIN_H + TABLE_CELL_ICON_STRIP_H);
     const maxTextW = TABLE_CELL_MAX_W - TABLE_CELL_PAD_X;
     for (let r = 0; r < rows; r++) {
@@ -574,12 +580,24 @@
         const cellText = (cells[r] && cells[r][c]) || "";
         const lines = wrapText(cellText, maxTextW);
         const widest = Math.max(0, ...lines.map(l => measureW(l)));
-        const w = clamp(Math.ceil(widest) + TABLE_CELL_PAD_X, TABLE_CELL_MIN_W, TABLE_CELL_MAX_W);
+        const baseW = clamp(Math.ceil(widest) + TABLE_CELL_PAD_X, TABLE_CELL_MIN_W, TABLE_CELL_MAX_W);
+        const w = baseW * widthScale;
         const h = Math.max(TABLE_CELL_MIN_H, lines.length * TABLE_CELL_LINE_H + TABLE_CELL_PAD_Y) + TABLE_CELL_ICON_STRIP_H;
         colWidths[c] = Math.max(colWidths[c], w);
         rowHeights[r] = Math.max(rowHeights[r], h);
       }
     }
+
+    if (node.table.calendar) {
+      // Calendar uses border-collapse:separate, 4px border-spacing and 8px
+      // table padding. Include those real CSS dimensions in node._w/_h.
+      const SPACING = 4;
+      const TABLE_PAD = 8;
+      const tableW = colWidths.reduce((a, b) => a + b, 0) + (cols + 1) * SPACING + TABLE_PAD * 2;
+      const tableH = rowHeights.reduce((a, b) => a + b, 0) + (rows + 1) * SPACING + TABLE_PAD * 2;
+      return { tableW, tableH, colWidths, rowHeights };
+    }
+
     const BORDER = 1;
     const tableW = colWidths.reduce((a, b) => a + b, 0) + (cols + 1) * BORDER;
     const tableH = rowHeights.reduce((a, b) => a + b, 0) + (rows + 1) * BORDER;
