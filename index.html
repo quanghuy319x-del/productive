@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=454">
+<link rel="stylesheet" href="style.css?v=455">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "454";
+  const APP_VERSION = "455";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "454"') && !document.documentElement.dataset.v454Reloaded) {
+      if (fresh.includes('const APP_VERSION = "455"') && !document.documentElement.dataset.v455Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v454Reloaded = "1";
+          document.documentElement.dataset.v455Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=454"></script>
-<script src="phase2-layout.js?v=454"></script>
+<script src="phase1-editors.js?v=455"></script>
+<script src="phase2-layout.js?v=455"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=454"></script>
+<script src="app.js?v=455"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1306,13 +1306,14 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
-/* v454 — One shared editor interaction for PC + touch.
-   Note / DRC / Brainstorm all use note-modal. Back stays visible; first
-   pointer press reveals actions only, second activates; auto-hide after 5s. */
+/* v455 — Shared Note/DRC/Brainstorm top-row reveal.
+   Only the top row may reveal hidden actions. Editing/title/body never reveals
+   them; typing keeps the row compact. Revealed actions auto-hide after 5s. */
 (() => {
   const modal = document.getElementById('note-modal');
   const card = modal?.querySelector('.note-modal-card');
-  if (!modal || !card || !card.querySelector('.note-nav-row')) return;
+  const row = card?.querySelector('.note-nav-row');
+  if (!modal || !card || !row) return;
 
   let hideTimer = 0;
   let suppressClickUntil = 0;
@@ -1344,7 +1345,8 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   observer.observe(modal, {attributes:true, attributeFilter:['class']});
   hide();
 
-  card.addEventListener('pointerdown', (event) => {
+  // Hidden controls can be revealed ONLY by touching/clicking the top row.
+  row.addEventListener('pointerdown', (event) => {
     const button = event.target.closest('.note-nav-btn');
     if (button?.id === 'note-nav-back') return;
     if (card.classList.contains('phone-note-nav-collapsed')) {
@@ -1354,11 +1356,21 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
     if (button) arm();
   }, true);
 
-  card.addEventListener('click', (event) => {
+  row.addEventListener('click', (event) => {
     if (performance.now() >= suppressClickUntil) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   }, true);
+
+  // Editing should keep controls out of the way rather than reveal them.
+  const title = document.getElementById('note-title');
+  const body = document.getElementById('note-textarea');
+  [title, body].forEach((el) => {
+    if (!el) return;
+    el.addEventListener('pointerdown', hide, true);
+    el.addEventListener('focus', hide, true);
+    el.addEventListener('input', hide, true);
+  });
 })();
 </script>
 </body>
