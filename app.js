@@ -9894,7 +9894,7 @@
       // thumbnail does, so the menu at least has an entry here matching
       // the node menu's "View photo(s)…" for parity.
       const cellPhotos = getCellPhotos(a);
-      items.push([cellPhotos.length > 1 ? "View photo(s)…" : "View photo…", () => window.open(cellPhotos[0], "_blank", "noopener")]);
+      items.push([cellPhotos.length > 1 ? "View photo(s)…" : "View photo…", () => openCellPhotoModal(node.id, r, c, 0)]);
     }
     if (cellHasImages(a)) items.push(["Remove all photos", () => {
       pushUndo();
@@ -10137,7 +10137,10 @@
         thumb.style.backgroundImage = `url("${cachedThumb || fullSrc}")`;
         thumb.draggable = true;
         thumb.addEventListener("dragend", endMarkerDrag);
-        thumb.addEventListener("click", (e) => { e.stopPropagation(); window.open(fullSrc, "_blank", "noopener"); });
+        thumb.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openCellPhotoModal(node.id, r, c, i);
+        });
         if (overflow) {
           thumb.title = `${cellImages.length} photos — click to view the first, drag to move them all onto a node or cell (hold Alt to copy)`;
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photos", { sourceR: r, sourceC: c }));
@@ -15203,8 +15206,27 @@
     else pasteUrlOntoNode(state.selectedId, url);
   });
 
-  // Gallery state for the lightbox — which node's photos, and which index.
+  // Gallery state for the lightbox — which node/cell's photos, and which index.
   let photoModalState = null;
+
+  // v416: the shared photo viewer can now point at either a normal node or
+  // one table/calendar cell. Both store photos and per-photo metadata in
+  // the same fields, so all viewer tools can operate on this generic host.
+  function photoModalHost() {
+    if (!photoModalState || photoModalState.noteMode) return null;
+    const node = findNode(photoModalState.nodeId);
+    if (!node) return null;
+    const pos = photoModalState.cellPos;
+    return pos ? getCellAttach(node, pos.r, pos.c) : node;
+  }
+  function photoModalIds() {
+    const host = photoModalHost();
+    return host ? getNodeImageIds(host) : [];
+  }
+  function photoModalImages() {
+    const host = photoModalHost();
+    return host ? getNodeImages(host) : [];
+  }
   const photoModalPrev = $("#photo-modal-prev");
   const photoModalNext = $("#photo-modal-next");
   const photoModalCount = $("#photo-modal-count");
@@ -15442,7 +15464,7 @@
     if (!photoModalState) return null;
     const images = photoModalState.noteMode
       ? photoModalState.images
-      : getNodeImages(findNode(photoModalState.nodeId));
+      : photoModalImages();
     return images[photoModalState.index] || null;
   }
 
@@ -15544,9 +15566,9 @@
       commitNotesToNode();
       if (oldId) deletePhotoRecord(oldId);
     } else {
-      const liveNode = findNode(photoModalState.nodeId);
+      const liveNode = photoModalHost();
       const liveIds = getNodeImageIds(liveNode);
-      if (!liveIds.length) return;
+      if (!liveNode || !liveIds.length) return;
       pushUndo();
       const newId = addPhotoRecord(outUrl, { noDedupe: true });
       const oldId = liveIds[photoModalState.index];
@@ -15726,10 +15748,31 @@
     resetPhotoZoom();
   });
 
+  // Cells use this exact same viewer through openCellPhotoModal(), including
+  // prev/next, zoom, crop, text/combine, tags, comments, favorite and delete.
   // `tagGroup` (optional): { label, items: [{nodeId, id}, ...] }. When
   // present, the modal's prev/next step through every photo sharing that
   // tag across the whole map instead of just this node's own photos —
   // used when opening a photo from the tag browser's "Go to node".
+  function openCellPhotoModal(nodeId, r, c, index) {
+    const node = findNode(nodeId);
+    if (!node || !node.table) return;
+    const host = getCellAttach(node, r, c);
+    const images = getNodeImages(host);
+    if (!images.length) return;
+    photoModalState = {
+      nodeId,
+      cellPos: { r, c },
+      index: clamp(index || 0, 0, images.length - 1),
+      tagGroup: null,
+      tagIndex: 0,
+      ret: takeViewerReturn() || underlyingModalReturn(),
+    };
+    resetPhotoZoom();
+    renderPhotoModal();
+    zoomModalOpen(photoModal);
+  }
+
   function openPhotoModal(nodeId, index, tagGroup) {
     const node = findNode(nodeId);
     const images = getNodeImages(node);
@@ -15758,10 +15801,10 @@
     if (!photoModalState) return;
     photoModalBack.title = viewerBackTitle(photoModalState.ret);
     photoModalBack.setAttribute("aria-label", photoModalBack.title);
-    const liveNode = photoModalState.noteMode ? null : findNode(photoModalState.nodeId);
+    const liveNode = photoModalState.noteMode ? null : photoModalHost();
     const images = photoModalState.noteMode
       ? photoModalState.images
-      : getNodeImages(liveNode);
+      : photoModalImages();
     if (!images.length) { closePhotoModal(); return; }
     if (photoModalState.index >= images.length) photoModalState.index = images.length - 1;
 
@@ -15774,12 +15817,19 @@
     if (!visibleSrc && !photoModalState.noteMode && liveNode && state.current && DriveDB.signedIn) {
       const visibleId = getNodeImageIds(liveNode)[photoModalState.index];
       const expectedNodeId = photoModalState.nodeId;
+      const expectedCellPos = photoModalState.cellPos
+        ? { r: photoModalState.cellPos.r, c: photoModalState.cellPos.c }
+        : null;
       const expectedIndex = photoModalState.index;
       if (visibleId) {
         DriveDB.hydratePhotoById(state.current, visibleId, { forceIndex: true })
           .then((ok) => {
             if (!ok || !photoModalState || photoModalState.noteMode) return;
-            if (photoModalState.nodeId !== expectedNodeId || photoModalState.index !== expectedIndex) return;
+            const livePos = photoModalState.cellPos || null;
+            if (photoModalState.nodeId !== expectedNodeId ||
+                photoModalState.index !== expectedIndex ||
+                (!!livePos !== !!expectedCellPos) ||
+                (livePos && expectedCellPos && (livePos.r !== expectedCellPos.r || livePos.c !== expectedCellPos.c))) return;
             renderPhotoModal();
             try { renderAll(); } catch (e) {}
           })
@@ -15787,7 +15837,7 @@
       }
     }
     const group = photoModalState.tagGroup;
-    photoModalGoto.classList.toggle("hidden", !group);
+    photoModalGoto.classList.toggle("hidden", !group && !photoModalState.cellPos);
     if (group) {
       const n = group.items.length;
       const multi = n > 1;
@@ -15837,7 +15887,7 @@
   // the same id the Photos browser files it under.
   function updatePhotoModalFolderUI() {
     if (!photoModalFolder || !photoModalState || photoModalState.noteMode) return;
-    const node = findNode(photoModalState.nodeId);
+    const node = photoModalHost();
     const id = node && getNodeImageIds(node)[photoModalState.index];
     // Hidden once starred — same reasoning as the Photos browser's own
     // rows: syncPhotosFavoriteFolderAssignments (which runs the next
@@ -15858,8 +15908,8 @@
   // photo's star showing on a different photo.
   function renderPhotoModalFavorite() {
     if (!photoModalState || photoModalState.noteMode) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = getNodeImageIds(node)[photoModalState.index];
+    const node = photoModalHost();
+    const id = node && getNodeImageIds(node)[photoModalState.index];
     const fav = getPhotoFavorite(node, id);
     photoModalFavorite.textContent = fav ? "★" : "☆";
     photoModalFavorite.classList.toggle("favorited", fav);
@@ -15902,8 +15952,8 @@
   // comment showing under a different photo.
   function renderPhotoModalComment() {
     if (!photoModalState || photoModalState.noteMode) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = getNodeImageIds(node)[photoModalState.index];
+    const node = photoModalHost();
+    const id = node && getNodeImageIds(node)[photoModalState.index];
     const comment = getPhotoComment(node, id);
     photoModalCommentInput.value = comment;
     // The comment box stays collapsed by default (see .photo-modal-
@@ -15922,8 +15972,8 @@
   // typing" behavior as the video modal's comment box.
   function savePhotoModalComment() {
     if (!photoModalState || photoModalState.noteMode) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = getNodeImageIds(node)[photoModalState.index];
+    const node = photoModalHost();
+    const id = node && getNodeImageIds(node)[photoModalState.index];
     if (!node || !id) return;
     if (getPhotoComment(node, id) === photoModalCommentInput.value.trim()) return;
     pushUndo();
@@ -15958,8 +16008,8 @@
   // photos as you step through the gallery.
   function renderPhotoModalTags() {
     if (!photoModalState) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = getNodeImageIds(node)[photoModalState.index];
+    const node = photoModalHost();
+    const id = node && getNodeImageIds(node)[photoModalState.index];
     photoModalTagChips.innerHTML = "";
     getPhotoTags(node, id).forEach((tag) => {
       const chip = document.createElement("span");
@@ -16024,6 +16074,7 @@
         const idx = getNodeImageIds(node).indexOf(it.id);
         if (idx < 0) continue;
         photoModalState.nodeId = it.nodeId;
+        photoModalState.cellPos = null;
         photoModalState.index = idx;
         break;
       }
@@ -16035,7 +16086,7 @@
       if (photoModalState.nodeId !== prevNodeId) focusNodeInCanvas(photoModalState.nodeId);
       return;
     }
-    const images = getNodeImages(findNode(photoModalState.nodeId));
+    const images = photoModalImages();
     if (!images.length) return;
     photoModalState.index = (photoModalState.index + delta + images.length) % images.length;
     resetPhotoZoom();
@@ -16060,8 +16111,8 @@
   photoModalFavorite.addEventListener("click", (e) => {
     e.stopPropagation();
     if (!photoModalState || photoModalState.noteMode) return;
-    const node = findNode(photoModalState.nodeId);
-    const id = getNodeImageIds(node)[photoModalState.index];
+    const node = photoModalHost();
+    const id = node && getNodeImageIds(node)[photoModalState.index];
     if (!node || !id) return;
     pushUndo();
     togglePhotoFavorite(node, id);
@@ -16090,7 +16141,7 @@
     photoModalFolder.addEventListener("click", (e) => {
       e.stopPropagation();
       if (!photoModalState || photoModalState.noteMode) return;
-      const node = findNode(photoModalState.nodeId);
+      const node = photoModalHost();
       const id = node && getNodeImageIds(node)[photoModalState.index];
       if (!id) return;
       openFolderMovePopover(photoModalFolder, photosFolderMgr, id, updatePhotoModalFolderUI);
@@ -16099,7 +16150,7 @@
   photoModalDelete.addEventListener("click", (e) => {
     e.stopPropagation();
     if (!photoModalState || photoModalState.noteMode) return;
-    const node = findNode(photoModalState.nodeId);
+    const node = photoModalHost();
     if (!node) return;
     const ids = getNodeImageIds(node);
     if (!ids.length) return;
@@ -16243,7 +16294,7 @@
         if (active) { applyTagSuggestion(active.textContent); return; }
       }
       if (!photoModalState) return;
-      const node = findNode(photoModalState.nodeId);
+      const node = photoModalHost();
       const id = node ? getNodeImageIds(node)[photoModalState.index] : null;
       if (!node || !id) return;
       const clean = (photoModalTagInput.value || "").trim();
@@ -16290,7 +16341,7 @@
   function startCrop() {
     if (cropping || !photoModalState) return;
     resetPhotoZoom();
-    const node = findNode(photoModalState.nodeId);
+    const node = photoModalHost();
     const images = getNodeImages(node);
     const src = images[photoModalState.index];
     if (!src) return;
@@ -16421,9 +16472,9 @@
       const isPng = src.startsWith("data:image/png");
       const croppedUrl = encodePhotoCanvas(canvas, isPng ? "image/png" : "image/jpeg", sw * sh, 1.0);
 
-      const liveNode = findNode(photoModalState.nodeId);
+      const liveNode = photoModalHost();
       const liveIds = getNodeImageIds(liveNode);
-      if (liveIds.length) {
+      if (liveNode && liveIds.length) {
         pushUndo();
         // A crop replaces the photo's actual bytes, so it gets a new id
         // (the old id/record is retired) — its tags carry over onto the
@@ -16471,7 +16522,7 @@
     // its images live only in photoModalState.images, taken straight from
     // the note's own <img> elements — so read from there instead of the
     // node's attached-photo list.
-    const node = photoModalState.noteMode ? null : findNode(photoModalState.nodeId);
+    const node = photoModalState.noteMode ? null : photoModalHost();
     const images = photoModalState.noteMode ? photoModalState.images : getNodeImages(node);
     const src = images[photoModalState.index];
     if (!src) return;
@@ -17061,9 +17112,9 @@
         commitNotesToNode();
         if (oldId) deletePhotoRecord(oldId);
       } else {
-        const liveNode = findNode(photoModalState.nodeId);
+        const liveNode = photoModalHost();
         const liveIds = getNodeImageIds(liveNode);
-        if (liveIds.length) {
+        if (liveNode && liveIds.length) {
           pushUndo();
           const newId = addPhotoRecord(outUrl, { noDedupe: true });
           const oldId = liveIds[photoModalState.index];
