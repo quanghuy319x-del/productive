@@ -7304,43 +7304,25 @@ kbd{
 }
 
 
-/* v450: phone Note/DRC top controls are tap-to-reveal. Back and Close
-   remain visible at all times; the middle gap becomes the reveal target. */
-@media (max-width:640px) and (any-pointer:coarse){
-  #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
-  .note-nav-btn:not(#note-nav-back):not(#note-nav-close){
-    display:none!important;
-  }
-  #note-modal .note-nav-row .note-nav-gap{
-    min-height:34px;
-    cursor:pointer;
-    touch-action:manipulation;
-  }
-  #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row{
-    margin-bottom:6px;
-  }
-}
-
-
-/* v450: Back replaces Close. Phone Note actions auto-collapse after inactivity. */
+/* v451: Note, DRC and Brainstorm share one phone top-row interaction.
+   Back always remains visible; all other actions use tap-to-reveal + 5s timeout. */
 #note-nav-close{display:none!important;}
 @media (max-width:640px) and (any-pointer:coarse){
   #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
-  .note-nav-btn:not(#note-nav-back){display:none!important;}
-}
-
-
-/* v450: Brainstorm uses the same safe tap-to-reveal top row as Note. */
-@media (max-width:640px) and (any-pointer:coarse){
+  .note-nav-btn:not(#note-nav-back),
   #brainstorm-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
   .note-nav-btn:not(#brainstorm-back){
     display:none!important;
   }
+
+  #note-modal .note-nav-row .note-nav-gap,
   #brainstorm-modal .note-nav-row .note-nav-gap{
     min-height:34px;
     cursor:pointer;
     touch-action:manipulation;
   }
+
+  #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row,
   #brainstorm-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row{
     margin-bottom:6px;
   }
