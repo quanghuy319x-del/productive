@@ -534,7 +534,7 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 }
 .cloud-sync-pill[data-state="verified"]{ color:#6fd08c; border-color:rgba(111,208,140,.45); }
 .cloud-sync-pill[data-state="syncing"]{ color:#e8c15a; border-color:rgba(232,193,90,.45); }
-.cloud-sync-pill[data-state="warning"]{ color:#ffb455; border-color:rgba(255,180,84,.5); }
+.cloud-sync-pill[data-state="warning"]{ color:#ffb456; border-color:rgba(255,180,84,.5); }
 .cloud-sync-pill[data-state="error"]{ color:var(--danger); border-color:rgba(255,107,107,.5); }
 .cloud-sync-pill:hover{ color:var(--text); border-color:#3a4054; }
 
@@ -6076,7 +6076,7 @@ kbd{
 .sync-modal-hero[data-state="syncing"]{ border-color:rgba(232,193,90,.5); }
 .sync-modal-hero[data-state="syncing"] strong{ color:#e8c15a; }
 .sync-modal-hero[data-state="warning"]{ border-color:rgba(255,180,84,.55); }
-.sync-modal-hero[data-state="warning"] strong{ color:#ffb455; }
+.sync-modal-hero[data-state="warning"] strong{ color:#ffb456; }
 .sync-modal-hero[data-state="error"]{ border-color:rgba(255,107,107,.55); }
 .sync-modal-hero[data-state="error"] strong{ color:var(--danger); }
 .sync-modal-grid{
@@ -7304,7 +7304,7 @@ kbd{
 }
 
 
-/* v455: Note, DRC and Brainstorm share one phone top-row interaction.
+/* v456: Note, DRC and Brainstorm share one phone top-row interaction.
    Back always remains visible; all other actions use tap-to-reveal + 5s timeout. */
 #note-nav-close{display:none!important;}
 @media (max-width:640px) and (any-pointer:coarse){
@@ -7329,7 +7329,7 @@ kbd{
 }
 
 
-/* v455: identical top-row visibility on mouse and touch devices. */
+/* v456: identical top-row visibility on mouse and touch devices. */
 #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
 .note-nav-btn:not(#note-nav-back){
   display:none!important;
