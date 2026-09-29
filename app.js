@@ -9325,6 +9325,11 @@
   // A tap still behaves exactly like the marker's normal click action.
   let touchMarkerDrag = null;
   let suppressMarkerClickUntil = 0;
+  // v435: phone marker dragging follows the same hold-before-drag rule as
+  // whole-node dragging. A quick swipe that starts on an icon should pan the
+  // map; only a deliberate hold can arm moving that icon.
+  const TOUCH_MARKER_DRAG_HOLD_MS = TOUCH_DRAG_HOLD_MS;
+  const TOUCH_MARKER_DRAG_CANCEL_DIST = TOUCH_DRAG_CANCEL_DIST;
   const TOUCH_MARKER_DRAG_DIST = 7;
 
   function armMarkerTouchDrag(el, node, type, extra) {
@@ -9336,19 +9341,38 @@
     el.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "touch" || e.button !== 0) return;
       e.stopPropagation();
+
+      // Cancel any stale pending marker gesture before arming this one.
+      cleanupTouchMarkerDrag();
+
+      const pointerId = e.pointerId;
       touchMarkerDrag = {
-        pointerId: e.pointerId,
+        pointerId,
         sourceEl: el,
         payload: makeMarkerDragPayload(node, type, extra),
         startX: e.clientX,
         startY: e.clientY,
         x: e.clientX,
         y: e.clientY,
+        holdReady: false,
         active: false,
         target: null,
-        ghost: null
+        ghost: null,
+        timer: null
       };
-      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+
+      // Do NOT capture the pointer yet. While this timer is pending a swipe
+      // must still be allowed to turn into canvas pan. Pointer capture only
+      // begins after the deliberate hold completes.
+      touchMarkerDrag.timer = setTimeout(() => {
+        const d = touchMarkerDrag;
+        if (!d || d.pointerId !== pointerId) return;
+        if (activePointers.size > 1) { cleanupTouchMarkerDrag(); return; }
+        d.timer = null;
+        d.holdReady = true;
+        try { d.sourceEl.setPointerCapture(pointerId); } catch (_) {}
+        try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) {}
+      }, TOUCH_MARKER_DRAG_HOLD_MS);
     });
   }
 
@@ -9388,6 +9412,7 @@
   function cleanupTouchMarkerDrag() {
     const d = touchMarkerDrag;
     if (!d) return;
+    if (d.timer) clearTimeout(d.timer);
     if (d.sourceEl) d.sourceEl.classList.remove("marker-dragging");
     if (d.ghost && d.ghost.remove) d.ghost.remove();
     clearMarkerDropHighlights();
@@ -9399,9 +9424,23 @@
     const d = touchMarkerDrag;
     if (!d || e.pointerId !== d.pointerId) return;
     d.x = e.clientX; d.y = e.clientY;
+    const dx = d.x - d.startX, dy = d.y - d.startY;
+    const dist = Math.hypot(dx, dy);
+
+    // Finger moved before the minimum hold completed: this is a map swipe,
+    // not an icon drag. Cancel the marker gesture and hand the same movement
+    // to the canvas pan path from the original touch-down coordinates.
+    if (!d.holdReady) {
+      if (dist < TOUCH_MARKER_DRAG_CANCEL_DIST) return;
+      const startX = d.startX, startY = d.startY;
+      suppressMarkerClickUntil = Date.now() + 500;
+      cleanupTouchMarkerDrag();
+      startPan(startX, startY);
+      return;
+    }
+
     if (!d.active) {
-      const dx = d.x - d.startX, dy = d.y - d.startY;
-      if (Math.hypot(dx, dy) < TOUCH_MARKER_DRAG_DIST) return;
+      if (dist < TOUCH_MARKER_DRAG_DIST) return;
       if (!requireSignIn()) { cleanupTouchMarkerDrag(); return; }
       d.active = true;
       markerDragState = d.payload;
