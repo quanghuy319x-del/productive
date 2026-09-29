@@ -1100,23 +1100,24 @@ body.signed-out #title-input{ visibility:hidden; }
   color: #f9a8d4;
 }
 .node-table-cell-brainstorm svg{ width: 70%; height: 70%; }
-/* Cell-scale "done/total" pill for a cell's task list — same gradient
-   family as the node-level .node-progress-fill bar (see that block
-   below), just condensed to a single small chip since a cell has no
-   room for a full progress bar. */
+/* v406: cell task list uses the same small square icon + corner count
+   badge language as the other attachment markers. The badge is the raw
+   number of completed tasks/subtasks; total stays in the tooltip. */
 .node-table-cell-tasks{
   position: relative;
-  width: auto;
-  min-width: 12px;
-  padding: 0 3px;
+  width: 10px;
+  min-width: 10px;
+  height: 10px;
+  padding: 0;
   background: rgba(51, 179, 240, 0.18);
   border: 1px solid rgba(51, 179, 240, 0.55);
-  border-radius: 999px;
+  border-radius: 3px;
   color: #33b3f0;
-  font-weight: 800;
-  font-size: 8px;
-  line-height: 1.4;
-  white-space: nowrap;
+  line-height: 1;
+}
+.node-table-cell-tasks svg{
+  width: 82%;
+  height: 82%;
 }
 .node-table-cell-tasks:hover{ background: rgba(51, 179, 240, 0.32); }
 .node-table-cell-tasks.done{
@@ -1125,6 +1126,14 @@ body.signed-out #title-input{ visibility:hidden; }
   color: #f5a25c;
 }
 .node-table-cell-tasks.done:hover{ background: rgba(255, 215, 106, 0.35); }
+.node-table-cell-task-count{
+  right: -5px;
+  top: -6px;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 2px;
+  font-size: 7px;
+}
 
 /* Selection ring: an outline sitting outside the box (not a border-color
    change) so it stays visible no matter the node's own fill/border color —
