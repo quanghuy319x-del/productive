@@ -576,14 +576,24 @@
       ? a.images.length
       : (a.image ? 1 : 0);
     const shownPhotos = photoCount > 4 ? 1 : photoCount;
-    const hasNotes = !!((Array.isArray(a.notes) && a.notes.length) || a.note);
+    const notes = Array.isArray(a.notes) && a.notes.length
+      ? a.notes
+      : (a.note ? [{ title: "", html: a.note }] : []);
+    const isBrainstorm = (n) => !!(n && (
+      n.kind === "brainstorm" ||
+      String(n.title || "").trim().toLowerCase() === "brainstorm"
+    ));
+    const noteIconCount = notes.filter(n => !isBrainstorm(n)).length;
     const urlCount = Array.isArray(a.urls) && a.urls.length
       ? a.urls.length
       : (a.url ? 1 : 0);
 
     const hasAffirmation = !!(a.affirmation && Number(a.affirmation.wins || 0) > 0);
     const hasTimer = Number(a.timePlayedSec || 0) > 0;
-    const hasBrainstorm = !!(a.brainstorm && (a.brainstorm.text || a.brainstorm.html));
+    const hasBrainstorm = !!(
+      (a.brainstorm && (a.brainstorm.text || a.brainstorm.html)) ||
+      notes.some(isBrainstorm)
+    );
 
     let width = 0;
     const add = (w) => {
@@ -593,7 +603,7 @@
 
     // Square markers with borders are up to ~12px wide in the real DOM.
     for (let i = 0; i < shownPhotos; i++) add(12);
-    if (hasNotes) add(12);
+    for (let i = 0; i < noteIconCount; i++) add(12);
     for (let i = 0; i < urlCount; i++) add(12);
 
     // v410: tasks use only the absolutely-positioned top-right score badge,

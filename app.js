@@ -9474,7 +9474,7 @@
   // fall out of the same code as the original node→node case.
   function completeMarkerDrop(targetId, copy, targetR, targetC) {
     if (!markerDragState) return;
-    const { type, sourceNodeId, photoIndex, overflowFrom, sourceR, sourceC } = markerDragState;
+    const { type, sourceNodeId, photoIndex, overflowFrom, sourceR, sourceC, sourceTaskId, sourceSubtaskId } = markerDragState;
     const hasTargetCell = targetR != null && targetC != null;
     const hasSourceCell = sourceR != null && sourceC != null;
     // Dropping something exactly back where it came from is a no-op —
@@ -9491,6 +9491,8 @@
     const source = hasSourceCell ? getCellAttach(sourceNode, sourceR, sourceC) : sourceNode;
     const target = hasTargetCell ? getCellAttach(targetNode, targetR, targetC) : targetNode;
     if (!source || !target) return;
+    const sourceTarget = { nodeId: sourceNodeId, r: sourceR, c: sourceC };
+    const targetTarget = { nodeId: targetId, r: targetR, c: targetC };
 
     if (type === "tasks") {
       const srcTasks = getNodeTasks(source);
@@ -9503,7 +9505,66 @@
           }))
         : srcTasks;
       target.tasks = getNodeTasks(target).concat(carried);
-      if (!copy) source.tasks = [];
+      if (!copy) {
+        source.tasks = [];
+        if (focusTimer && sameTarget(focusTimer.target, sourceTarget)) focusTimer.target = targetTarget;
+        if (focusJustCompleted && sameTarget(focusJustCompleted.target, sourceTarget)) focusJustCompleted.target = targetTarget;
+      }
+    } else if (type === "affirmation") {
+      const srcAff = getNodeAffirmation(source);
+      if (!srcAff) return;
+      pushUndo();
+      const srcCopy = JSON.parse(JSON.stringify(srcAff));
+      const dstAff = getNodeAffirmation(target);
+      if (!dstAff) {
+        target.affirmation = srcCopy;
+      } else {
+        const dstActive = !!(dstAff.quote || dstAff.count);
+        target.affirmation = Object.assign({}, srcCopy, dstAff, {
+          wins: (Number(dstAff.wins) || 0) + (Number(srcCopy.wins) || 0),
+          quote: dstActive ? dstAff.quote : srcCopy.quote,
+          count: dstActive ? dstAff.count : srcCopy.count,
+          target: dstActive ? dstAff.target : srcCopy.target,
+        });
+      }
+      if (!copy) source.affirmation = null;
+    } else if (type === "timer") {
+      const srcSeconds = getNodeTimePlayed(source);
+      if (!srcSeconds) return;
+      pushUndo();
+      target.timePlayedSec = getNodeTimePlayed(target) + srcSeconds;
+      if (!copy) {
+        source.timePlayedSec = 0;
+        if (nodeTimer && sameTarget(nodeTimer.target, sourceTarget)) nodeTimer.target = targetTarget;
+        if (nodeTimerJustCompleted && sameTarget(nodeTimerJustCompleted, sourceTarget)) nodeTimerJustCompleted = targetTarget;
+        if (timerEditingId && sameTarget(timerEditingId, sourceTarget)) timerEditingId = targetTarget;
+      }
+    } else if (type === "task-notes") {
+      const srcTask = getNodeTasks(source).find(t => t.id === sourceTaskId);
+      if (!srcTask) return;
+      const srcOwner = sourceSubtaskId
+        ? getTaskSubtasks(srcTask).find(s => s.id === sourceSubtaskId)
+        : srcTask;
+      if (!srcOwner) return;
+      const srcNotes = getTaskNotes(srcOwner).slice();
+      if (!srcNotes.length) return;
+      const dstNotes = getNodeNotes(target).slice();
+      if (srcNotes.some(isBrainstormNote) &&
+          (dstNotes.some(isBrainstormNote) || hasBrainstormContent(target))) return;
+      if (srcNotes.some(isDRCNote) && dstNotes.some(isDRCNote)) return;
+      pushUndo();
+      const carried = copy
+        ? srcNotes.map(n => Object.assign({}, JSON.parse(JSON.stringify(n)), {
+            id: uid(), createdAt: Date.now(), updatedAt: Date.now()
+          }))
+        : srcNotes;
+      target.notes = dstNotes.concat(carried);
+      target.note = "";
+      if (carried.some(isBrainstormNote)) syncBrainstormMirrorFromNotes(target);
+      if (!copy) {
+        srcOwner.notes = [];
+        srcOwner.note = "";
+      }
     } else if (type === "photos") {
       const srcIds = getNodeImageIds(source);
       if (!srcIds.length) return;
@@ -9571,17 +9632,21 @@
         carried.forEach(id => { setPhotoTags(source, id, null); setPhotoNotes(source, id, null); setPhotoComment(source, id, null); setPhotoTimestamp(source, id, null); });
       }
     } else if (type === "notes") {
-      // A cell's notes move as one unit, since a cell shows a single
-      // combined note icon rather than one icon per note (contrast
-      // "note-single", used for the node-level per-note icons).
-      const srcNotes = getNodeNotes(source);
+      const srcNotes = getNodeNotes(source).slice();
       if (!srcNotes.length) return;
+      const dstNotes = getNodeNotes(target).slice();
+      if (srcNotes.some(isBrainstormNote) &&
+          (dstNotes.some(isBrainstormNote) || hasBrainstormContent(target))) return;
+      if (srcNotes.some(isDRCNote) && dstNotes.some(isDRCNote)) return;
       pushUndo();
-      target.notes = getNodeNotes(target).concat(srcNotes);
+      const carried = copy
+        ? srcNotes.map(n => Object.assign({}, JSON.parse(JSON.stringify(n)), {
+            id: uid(), createdAt: Date.now(), updatedAt: Date.now()
+          }))
+        : srcNotes;
+      target.notes = dstNotes.concat(carried);
       target.note = "";
-      // Keep Brainstorm's legacy host.brainstorm mirror aligned if a bulk
-      // note move happened to include the Brainstorm note.
-      if (srcNotes.some(isBrainstormNote)) syncBrainstormMirrorFromNotes(target);
+      if (carried.some(isBrainstormNote)) syncBrainstormMirrorFromNotes(target);
       if (!copy) {
         source.notes = [];
         source.note = "";
@@ -9639,17 +9704,23 @@
         }
       }
     } else if (type === "note-single") {
-      // A single note, dragged by its index in the source's notes — same
-      // shape as the "photo" single-thumbnail case above, since each note
-      // now has its own icon rather than one shared icon for the lot.
       const { noteIndex } = markerDragState;
       const srcNotes = getNodeNotes(source);
       if (noteIndex == null || noteIndex < 0 || noteIndex >= srcNotes.length) return;
       const movedNote = srcNotes[noteIndex];
+      const dstNotes = getNodeNotes(target).slice();
+      if (isBrainstormNote(movedNote) &&
+          (dstNotes.some(isBrainstormNote) || hasBrainstormContent(target))) return;
+      if (isDRCNote(movedNote) && dstNotes.some(isDRCNote)) return;
       pushUndo();
-      target.notes = getNodeNotes(target).concat([movedNote]);
+      const carriedNote = copy
+        ? Object.assign({}, JSON.parse(JSON.stringify(movedNote)), {
+            id: uid(), createdAt: Date.now(), updatedAt: Date.now()
+          })
+        : movedNote;
+      target.notes = dstNotes.concat([carriedNote]);
       target.note = "";
-      if (isBrainstormNote(movedNote)) syncBrainstormMirrorFromNotes(target);
+      if (isBrainstormNote(carriedNote)) syncBrainstormMirrorFromNotes(target);
       if (!copy) {
         const remaining = srcNotes.slice();
         remaining.splice(noteIndex, 1);
@@ -10284,52 +10355,28 @@
     }
     {
       const notes = getCellNotes(a);
-      // v425: Brainstorm is a Note variant in storage, but it has its own
-      // dedicated 🧠 marker below. A Brainstorm-only cell must therefore not
-      // also render the generic Note icon, otherwise one Brainstorm appears
-      // as two separate markers. Mixed cells still keep the generic Note
-      // marker for their other note content plus the dedicated brain.
-      const brainstormOnly = notes.length > 0 && notes.every(isBrainstormNote);
-      if (notes.length && !brainstormOnly) {
+      // v427: a cell is a mini-node: one visible Note/DRC/Plan marker
+      // represents exactly one note and moving it moves only that note.
+      // Brainstorm is skipped because its dedicated 🧠 marker below owns it.
+      notes.forEach((n, i) => {
+        if (isBrainstormNote(n)) return;
         const noteIcon = document.createElement("span");
-        noteIcon.className = "node-table-cell-icon node-table-cell-note";
-        // A cell whose notes are all DRC notes gets the DRC image, same as a
-        // node's own DRC marker.
-        noteIcon.innerHTML = notes.every(isDRCNote) ? NODE_DRC_ICON_IMG : (notes.every(isPlanNote) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
-        noteIcon.title = (notes.length > 1 ? `Notes (${notes.length})…` : notePreviewText(notes[0])) + " — drag onto a node or cell to move (hold Alt to copy)";
+        noteIcon.className = "node-table-cell-icon node-table-cell-note" +
+          (isDRCNote(n) ? " node-table-cell-drc" : "");
+        noteIcon.innerHTML = isDRCNote(n)
+          ? NODE_DRC_ICON_IMG
+          : (isPlanNote(n) ? NODE_PLAN_ICON_IMG : CELL_NOTE_ICON_SVG);
+        noteIcon.title = (isDRCNote(n)
+          ? (drcNoteIsFilled(n) ? "DRC — filled in" : "DRC — not filled in yet")
+          : notePreviewText(n)) + " — drag onto a node or cell to move (hold Alt to copy)";
         noteIcon.draggable = true;
-        noteIcon.addEventListener("click", () => editCellNote(node, r, c));
-        noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes", { sourceR: r, sourceC: c }));
-        armMarkerTouchDrag(noteIcon, node, "notes", { sourceR: r, sourceC: c });
+        noteIcon.addEventListener("dragstart", (e) =>
+          startMarkerDrag(e, node, "note-single", { noteIndex: i, sourceR: r, sourceC: c }));
+        armMarkerTouchDrag(noteIcon, node, "note-single", { noteIndex: i, sourceR: r, sourceC: c });
         noteIcon.addEventListener("dragend", endMarkerDrag);
+        noteIcon.addEventListener("click", () => openNoteModal(node.id, i, null, null, { r, c }));
         strip.appendChild(noteIcon);
-      }
-    }
-    // v417: If a cell contains DRC alongside other notes, keep a dedicated
-    // DRC marker visible so the cell's DRC is always one click away. A
-    // DRC-only cell already uses the DRC image in the generic note marker
-    // above, so avoid drawing the same icon twice in that case.
-    {
-      const notes = getCellNotes(a);
-      const drcIndex = notes.findIndex(isDRCNote);
-      if (drcIndex >= 0 && !notes.every(isDRCNote)) {
-        const drcIcon = document.createElement("span");
-        drcIcon.className = "node-table-cell-icon node-table-cell-note node-table-cell-drc";
-        drcIcon.innerHTML = NODE_DRC_ICON_IMG;
-        drcIcon.title = "DRC — click to open; drag onto a node or cell to move (hold Alt to copy).";
-        // v423: this dedicated DRC marker used to be only a visual shortcut.
-        // Its inner <img> could therefore start a browser-native image drag,
-        // showing a preview but carrying no Branchline marker payload — so
-        // dropping it did not move the DRC at all. Make it a real single-note
-        // marker and move exactly this DRC note, not the cell's other notes.
-        drcIcon.draggable = true;
-        drcIcon.addEventListener("dragstart", (e) =>
-          startMarkerDrag(e, node, "note-single", { noteIndex: drcIndex, sourceR: r, sourceC: c }));
-        armMarkerTouchDrag(drcIcon, node, "note-single", { noteIndex: drcIndex, sourceR: r, sourceC: c });
-        drcIcon.addEventListener("dragend", endMarkerDrag);
-        drcIcon.addEventListener("click", () => openNoteModal(node.id, drcIndex, null, null, { r, c }));
-        strip.appendChild(drcIcon);
-      }
+      });
     }
     // One icon per link (instead of a single icon), same treatment as
     // the node-level link markers (see renderNode) — each link is
@@ -10363,12 +10410,15 @@
     });
     const cellAffirmationWins = nodeAffirmationWins(a);
     if (cellAffirmationWins) {
-      // Same checkmark-with-count marker as the node-level strip (see
-      // renderNode) — click jumps straight into a new round for this cell.
       const affIcon = document.createElement("span");
       affIcon.className = "node-table-cell-icon node-table-cell-affirmation";
       affIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg>';
-      affIcon.title = `Affirmation game — ${cellAffirmationWins} round${cellAffirmationWins === 1 ? "" : "s"} completed. Click to play again.`;
+      affIcon.title = `Affirmation game — ${cellAffirmationWins} round${cellAffirmationWins === 1 ? "" : "s"} completed — click to play; drag to move (hold Alt to copy)`;
+      affIcon.draggable = true;
+      affIcon.addEventListener("dragstart", (e) =>
+        startMarkerDrag(e, node, "affirmation", { sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(affIcon, node, "affirmation", { sourceR: r, sourceC: c });
+      affIcon.addEventListener("dragend", endMarkerDrag);
       affIcon.addEventListener("click", () => openAffirmationGame(node.id, r, c));
       if (cellAffirmationWins > 1) {
         const affCount = document.createElement("span");
@@ -10380,11 +10430,14 @@
     }
     const cellTimePlayed = getNodeTimePlayed(a);
     if (cellTimePlayed) {
-      // Same "logged time" badge as the node-level strip (see renderNode)
-      // — click opens the timer modal for this cell.
       const tbadge = document.createElement("span");
       tbadge.className = "node-table-cell-icon node-table-cell-timer";
-      tbadge.title = `${formatTimePlayed(cellTimePlayed)} logged — click to add more`;
+      tbadge.title = `${formatTimePlayed(cellTimePlayed)} logged — click to add more; drag to move (hold Alt to copy)`;
+      tbadge.draggable = true;
+      tbadge.addEventListener("dragstart", (e) =>
+        startMarkerDrag(e, node, "timer", { sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(tbadge, node, "timer", { sourceR: r, sourceC: c });
+      tbadge.addEventListener("dragend", endMarkerDrag);
       tbadge.addEventListener("click", () => openTimerModal(node.id, r, c));
       const tlabel = document.createElement("span");
       tlabel.textContent = formatTimePlayed(cellTimePlayed);
@@ -11116,6 +11169,12 @@
           const titleSuffix = noteTitle ? ` — ${noteTitle.length > 40 ? noteTitle.slice(0, 39) + "…" : noteTitle}` : "";
           taskNoteIcon.title = `Task "${t.text || "(untitled task)"}"${titleSuffix}`;
         }
+        taskNoteIcon.title += " — drag onto a node or cell to move this task's note(s) (hold Alt to copy)";
+        taskNoteIcon.draggable = true;
+        taskNoteIcon.addEventListener("dragstart", (e) =>
+          startMarkerDrag(e, node, "task-notes", { sourceTaskId: t.id }));
+        armMarkerTouchDrag(taskNoteIcon, node, "task-notes", { sourceTaskId: t.id });
+        taskNoteIcon.addEventListener("dragend", endMarkerDrag);
         taskNoteIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openNoteModal(node.id, undefined, null, t.id);
@@ -11146,6 +11205,12 @@
           const titleSuffix = noteTitle ? ` — ${noteTitle.length > 40 ? noteTitle.slice(0, 39) + "…" : noteTitle}` : "";
           subtaskNoteIcon.title = `Subtask "${s.text || "(untitled subtask)"}" (in "${t.text || "(untitled task)"}")${titleSuffix}`;
         }
+        subtaskNoteIcon.title += " — drag onto a node or cell to move this subtask's note(s) (hold Alt to copy)";
+        subtaskNoteIcon.draggable = true;
+        subtaskNoteIcon.addEventListener("dragstart", (e) =>
+          startMarkerDrag(e, node, "task-notes", { sourceTaskId: t.id, sourceSubtaskId: s.id }));
+        armMarkerTouchDrag(subtaskNoteIcon, node, "task-notes", { sourceTaskId: t.id, sourceSubtaskId: s.id });
+        subtaskNoteIcon.addEventListener("dragend", endMarkerDrag);
         subtaskNoteIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openNoteModal(node.id, undefined, null, t.id, undefined, false, s.id);
@@ -11215,18 +11280,14 @@
       });
 
       if (affirmationWins) {
-        // One checkmark cell with an incrementing count badge once there's
-        // more than one round completed — a single completed round is
-        // just the checkmark, no redundant "1" — rather than a stack of
-        // icons per win. This is the one place in the strip that still
-        // uses a numeric badge at all (games track a running score, not
-        // a count of attached items, so it isn't in the same category as
-        // the links/notes/photos "how many things are here" badges).
-        // Click it to jump straight into a new round.
         const affIcon = document.createElement("span");
         affIcon.className = "node-photo-thumb node-affirmation-marker";
         affIcon.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg>';
-        affIcon.title = `Affirmation game — ${affirmationWins} round${affirmationWins === 1 ? "" : "s"} completed. Click to play again.`;
+        affIcon.title = `Affirmation game — ${affirmationWins} round${affirmationWins === 1 ? "" : "s"} completed — click to play; drag to move (hold Alt to copy)`;
+        affIcon.draggable = true;
+        affIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "affirmation"));
+        armMarkerTouchDrag(affIcon, node, "affirmation");
+        affIcon.addEventListener("dragend", endMarkerDrag);
         affIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openAffirmationGame(node.id);
@@ -11294,14 +11355,13 @@
       }
 
       if (timePlayed) {
-        // Same small cell size/box as a photo thumbnail (see below) rather
-        // than its own wider pill — just the total's text, no clock icon,
-        // with the cell's own border traced into a little alarm-clock
-        // silhouette (round face + two angled "ears" up top) so it still
-        // reads as a timer at a glance without needing an icon inside it.
         const tbadge = document.createElement("span");
         tbadge.className = "node-photo-thumb node-timer-badge";
-        tbadge.title = `${formatTimePlayed(timePlayed)} logged — click to add more`;
+        tbadge.title = `${formatTimePlayed(timePlayed)} logged — click to add more; drag to move (hold Alt to copy)`;
+        tbadge.draggable = true;
+        tbadge.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "timer"));
+        armMarkerTouchDrag(tbadge, node, "timer");
+        tbadge.addEventListener("dragend", endMarkerDrag);
         tbadge.addEventListener("mousedown", (e) => { e.stopPropagation(); });
         tbadge.addEventListener("pointerdown", (e) => { e.stopPropagation(); });
         tbadge.addEventListener("click", (e) => { e.stopPropagation(); openTimerModal(node.id); });
