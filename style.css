@@ -1201,6 +1201,13 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-table-cell-text:focus{
   background: rgba(255,255,255,0.10);
+  outline:none !important;
+  border:none !important;
+  box-shadow:none !important;
+}
+.node-table-cell-text:focus-visible{
+  outline:none !important;
+  box-shadow:none !important;
 }
 
 /* The photo/note/link/task strip under a cell's text (see
@@ -7145,29 +7152,41 @@ kbd{
   font-weight: 600;
 }
 
-/* v433: Selected/focused cells keep the blue focus ring, but draw it as
-   an inset shadow instead of CSS outline. Edge/Chromium can fragment an
-   outline painted directly on a table-cell (<td>) and show two stray
-   horizontal blue lines through the cell while its contenteditable owns
-   focus. The inset ring paints as one clean rounded rectangle. */
-.node-table-cell.cell-selected{
-  outline: none;
-  box-shadow: inset 0 0 0 1.5px rgba(47,109,246,.72);
-}
-.node-table-cell:focus-within{
-  outline: none;
-  box-shadow: inset 0 0 0 2.5px #2f6df6;
-}
-.node-table-cell.cell-selected:focus-within{
-  box-shadow: inset 0 0 0 3px #2f6df6;
-}
+/* v439: draw cell selection/focus as one overlay border instead of an
+   inset box-shadow on the <td>. Chromium can paint an inset table-cell
+   shadow as separate top/bottom horizontal bands inside the cell. */
+.node-table-cell.cell-selected,
+.node-table-cell:focus-within,
 .node-table-cell.range-selected{
-  outline: none;
-  box-shadow: inset 0 0 0 2px #33b3f0;
+  outline:none;
+  box-shadow:none;
+}
+.node-table-cell.cell-selected::after,
+.node-table-cell:focus-within::after,
+.node-table-cell.range-selected::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  box-sizing:border-box;
+  border-radius:inherit;
+  pointer-events:none;
+  z-index:5;
+}
+.node-table-cell.cell-selected::after{
+  border:1.5px solid rgba(47,109,246,.72);
+}
+.node-table-cell:focus-within::after{
+  border:2.5px solid #2f6df6;
+}
+.node-table-cell.cell-selected:focus-within::after{
+  border-width:3px;
+}
+.node-table-cell.range-selected::after{
+  border:2px solid #33b3f0;
 }
 .node-table-cell.marker-drop-target{
-  outline: 2px dashed #33b3f0 !important;
-  outline-offset: -2px;
+  outline:2px dashed #33b3f0 !important;
+  outline-offset:-2px;
 }
 
 @media (pointer: coarse){
