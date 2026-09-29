@@ -10032,7 +10032,11 @@
     const colgroup = document.createElement("colgroup");
     colWidths.forEach((w) => {
       const col = document.createElement("col");
-      col.style.width = w + "px";
+      // Calendar width must be visibly 2x even when compute/layout cached
+      // the older column width. Apply the multiplier at the actual <col>.
+      const renderedW = node.table.calendar ? Math.max(w * 2, 120) : Math.max(w * 2, 120);
+      col.style.width = renderedW + "px";
+      col.style.minWidth = renderedW + "px";
       colgroup.appendChild(col);
     });
     table.appendChild(colgroup);
