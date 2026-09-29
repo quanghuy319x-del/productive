@@ -1251,7 +1251,11 @@ body.signed-out #title-input{ visibility:hidden; }
 .node-table-cell-icon svg{ width: 100%; height: 100%; }
 .node-table-cell-icon:hover{ transform: scale(1.2); }
 .node-table-cell-icon.marker-dragging{ opacity: .4; transform: none; }
+/* v437: the photo overflow-count badge must be positioned relative to
+   the thumbnail itself, not the whole calendar/table cell. */
 .node-table-cell-photo{
+  position: relative;
+  overflow: visible;
   border: 1px solid rgba(0,0,0,0.35);
 }
 .node-table-cell-task{
