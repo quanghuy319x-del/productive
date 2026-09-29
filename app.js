@@ -10171,13 +10171,15 @@
       renderAll();
       return;
     }
-    const alreadySelected = !state.cellRange && state.selectedCell &&
-      state.selectedCell.nodeId === node.id && state.selectedCell.r === r && state.selectedCell.c === c;
+    // A normal click does not need a full canvas rebuild. Re-rendering
+    // here destroys the contentEditable element after the browser has
+    // placed its caret, which is why the text cursor could flash and
+    // immediately disappear on the first click into a different cell.
     state.cellRangeAnchor = { nodeId: node.id, r, c };
     state.cellRange = null;
     selectNode(node.id, { nodeId: node.id, r, c });
-    if (alreadySelected) return;
-    renderAll();
+    // Keep selection visuals current without replacing the table DOM.
+    document.querySelectorAll(".node-table-cell.range-selected").forEach(el => el.classList.remove("range-selected"));
   }
 
 
