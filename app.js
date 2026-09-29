@@ -17959,6 +17959,107 @@
   const noteNavInfo = $("#note-nav-info");
   const noteNavDelete = $("#note-nav-delete");
 
+  // v444: immediate crash/F5 safety for Note/DRC typing. The canonical map
+  // and Drive save remain debounced for phone performance, but every editor
+  // mutation also writes one small local recovery record synchronously.
+  // Only one Note editor can be open at a time, so a single rolling record is
+  // enough. It is restored only when it is newer than the canonical note.
+  const NOTE_CRASH_DRAFT_KEY = "branchline_note_crash_draft_v1";
+
+  function noteCrashDraftContext() {
+    return {
+      mapId: state.current && state.current.id || null,
+      nodeId: noteEditingId || null,
+      photoId: noteEditingPhotoId || null,
+      taskId: noteEditingTaskId || null,
+      subtaskId: noteEditingSubtaskId || null,
+      r: noteEditingCellPos && noteEditingCellPos.r != null ? noteEditingCellPos.r : null,
+      c: noteEditingCellPos && noteEditingCellPos.c != null ? noteEditingCellPos.c : null
+    };
+  }
+
+  function noteCrashDraftMatchesContext(draft) {
+    if (!draft) return false;
+    const ctx = noteCrashDraftContext();
+    return draft.mapId === ctx.mapId &&
+      draft.nodeId === ctx.nodeId &&
+      (draft.photoId || null) === ctx.photoId &&
+      (draft.taskId || null) === ctx.taskId &&
+      (draft.subtaskId || null) === ctx.subtaskId &&
+      (draft.r == null ? null : Number(draft.r)) === ctx.r &&
+      (draft.c == null ? null : Number(draft.c)) === ctx.c;
+  }
+
+  function saveNoteCrashDraftNow() {
+    if (!noteEditingId || noteModal.classList.contains("hidden")) return;
+    const current = noteWorkingList[noteActiveIndex];
+    if (!current) return;
+    try {
+      const node = findNode(noteEditingId);
+      const taskHost = noteEditingCellPos && node
+        ? getCellAttach(node, noteEditingCellPos.r, noteEditingCellPos.c)
+        : node;
+      const subtaskOwner = noteEditingSubtaskId ? noteEditingNoteOwner(taskHost) : null;
+      const title = noteEditingSubtaskId
+        ? (((subtaskOwner && subtaskOwner.text) || "").trim())
+        : noteTitleInput.value;
+      const html = stripNotePhotoSrcForStorage(
+        noteTextarea.classList.contains("drc-cards")
+          ? drcStripCardMarkup(noteTextarea.innerHTML)
+          : noteTextarea.innerHTML
+      );
+      const ctx = noteCrashDraftContext();
+      localStorage.setItem(NOTE_CRASH_DRAFT_KEY, JSON.stringify({
+        v: 1,
+        ...ctx,
+        noteId: current.id || null,
+        title,
+        html,
+        createdAt: current.createdAt || Date.now(),
+        savedAt: Date.now()
+      }));
+    } catch (e) {
+      // Recovery journaling is best-effort; normal autosave still runs.
+    }
+  }
+
+  function restoreNoteCrashDraftIfNewer() {
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(NOTE_CRASH_DRAFT_KEY) || "null"); }
+    catch (e) { draft = null; }
+    if (!noteCrashDraftMatchesContext(draft) || !draft.savedAt) return false;
+
+    let idx = draft.noteId
+      ? noteWorkingList.findIndex(n => n.id === draft.noteId)
+      : -1;
+
+    if (idx >= 0) {
+      const current = noteWorkingList[idx];
+      const canonicalTs = Math.max(Number(current.updatedAt) || 0, Number(current.createdAt) || 0);
+      if (Number(draft.savedAt) <= canonicalTs) return false;
+      current.title = draft.title || "";
+      current.html = draft.html || "";
+      current.updatedAt = Number(draft.savedAt) || Date.now();
+      if (!current.createdAt) current.createdAt = Number(draft.createdAt) || current.updatedAt;
+    } else {
+      // Covers a crash immediately after starting a brand-new note, before
+      // the 900ms canonical autosave had time to create its marker/list entry.
+      if (!(draft.title && String(draft.title).trim()) && !(draft.html && String(draft.html).trim())) return false;
+      noteWorkingList.push({
+        id: draft.noteId || uid(),
+        title: draft.title || "",
+        html: draft.html || "",
+        createdAt: Number(draft.createdAt) || Number(draft.savedAt) || Date.now(),
+        updatedAt: Number(draft.savedAt) || Date.now()
+      });
+      idx = noteWorkingList.length - 1;
+    }
+
+    noteActiveIndex = idx;
+    try { showToast("Recovered unsaved note typing"); } catch (e) {}
+    return true;
+  }
+
   // ---- Note editor undo/redo ----
   // Kept separate from the map-level undo/redo (pushUndo/undo, for
   // structural changes to nodes) since this is a much finer-grained,
@@ -18533,6 +18634,7 @@
       noteActiveIndex = wantsNew ? noteWorkingList.length - 1
         : clamp(index == null ? noteWorkingList.length - 1 : index, 0, noteWorkingList.length - 1);
     }
+    restoreNoteCrashDraftIfNewer();
     loadNoteIntoEditor();
     // A photo's note is really a caption/comment on that photo, viewed
     // right after (or over) the photo itself, so it benefits from more
@@ -19219,6 +19321,9 @@
   // commitNotesToNode() captures the full HTML at that point, rather than
   // scheduleNoteAutosave() serializing the entire note on every keypress.
   function scheduleNoteAutosave() {
+    // Crash/F5 protection happens immediately on every mutation; the heavier
+    // canonical map/Drive save below stays debounced for smooth phone typing.
+    saveNoteCrashDraftNow();
     clearTimeout(noteSaveTimer);
     noteSaveTimer = setTimeout(() => {
       noteSaveTimer = null;
