@@ -18041,6 +18041,9 @@
         beginMutation();
         a.notes = cleaned.length ? cleaned : null;
         a.note = null;
+        // Calendar-cell Brainstorms use the same lightweight mirror as the
+        // node-level Brainstorm marker, but the mirror lives on this cell.
+        syncBrainstormMirrorFromNotes(a);
         persist();
       }
       return;
@@ -23588,10 +23591,40 @@
   }
 
   function openBrainstormModal(nodeId, r, c, taskId, subtaskId) {
-    // v359: Brainstorm no longer owns an editor/toolbar. Migrate legacy
-    // content once, then open the ordinary Note editor.
+    // v402: Calendar cells are an intentional exception to the normal
+    // one-Brainstorm-per-node rule. Every individual calendar cell may own
+    // exactly one Brainstorm of its own, backed by that cell's note list.
     const node = findNode(nodeId);
     if (!node) return;
+
+    if (r != null && c != null && node.table && node.table.calendar) {
+      const host = getCellAttach(node, r, c);
+      const notes = getCellNotes(host).slice();
+      let index = notes.findIndex(isBrainstormNote);
+      if (index < 0) {
+        const legacyHtml = hasBrainstormContent(host) ? getBrainstormHtml(host) : "";
+        pushUndo();
+        notes.push({
+          id: uid(),
+          title: "",
+          html: legacyHtml,
+          kind: "brainstorm",
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+        host.notes = notes;
+        host.note = null;
+        syncBrainstormMirrorFromNotes(host);
+        persist();
+        index = notes.length - 1;
+      }
+      openNoteModal(nodeId, index, null, null, { r, c });
+      return;
+    }
+
+    // Normal nodes keep the existing single Brainstorm shared by the node.
+    // v359: Brainstorm no longer owns an editor/toolbar. Migrate legacy
+    // content once, then open the ordinary Note editor.
     const owner = nodeBrainstormOwner(node);
     if (owner && owner !== node && !hasBrainstormContent(node)) {
       node.brainstorm = JSON.parse(JSON.stringify(getNodeBrainstorm(owner) || { text: "", html: "" }));
