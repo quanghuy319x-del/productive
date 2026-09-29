@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=456">
+<link rel="stylesheet" href="style.css?v=457">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "456";
+  const APP_VERSION = "457";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "456"') && !document.documentElement.dataset.v456Reloaded) {
+      if (fresh.includes('const APP_VERSION = "457"') && !document.documentElement.dataset.v457Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v456Reloaded = "1";
+          document.documentElement.dataset.v457Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=456"></script>
-<script src="phase2-layout.js?v=456"></script>
+<script src="phase1-editors.js?v=457"></script>
+<script src="phase2-layout.js?v=457"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=456"></script>
+<script src="app.js?v=457"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1306,7 +1306,7 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
-/* v456 — Shared Note/DRC/Brainstorm top-row reveal.
+/* v457 — Shared Note/DRC/Brainstorm top-row reveal.
    Only the top row may reveal hidden actions. Editing/title/body never reveals
    them; typing keeps the row compact. Revealed actions auto-hide after 5s. */
 (() => {
