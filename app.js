@@ -9579,7 +9579,65 @@
       pushUndo();
       target.notes = getNodeNotes(target).concat(srcNotes);
       target.note = "";
-      if (!copy) { source.notes = []; source.note = ""; }
+      // Keep Brainstorm's legacy host.brainstorm mirror aligned if a bulk
+      // note move happened to include the Brainstorm note.
+      if (srcNotes.some(isBrainstormNote)) syncBrainstormMirrorFromNotes(target);
+      if (!copy) {
+        source.notes = [];
+        source.note = "";
+        if (srcNotes.some(isBrainstormNote)) syncBrainstormMirrorFromNotes(source);
+      }
+    } else if (type === "brainstorm") {
+      // v424: the dedicated pink brain represents exactly one Brainstorm
+      // content host. Move that Brainstorm alone, not the cell's other notes.
+      // Newer data stores Brainstorm as a Note variant plus a mirror; older
+      // maps may still have only host.brainstorm, so support both shapes.
+      const srcNotes = getNodeNotes(source).slice();
+      const srcIndex = srcNotes.findIndex(isBrainstormNote);
+      const srcHasLegacy = hasBrainstormContent(source);
+      if (srcIndex < 0 && !srcHasLegacy) return;
+
+      const dstNotes = getNodeNotes(target).slice();
+      const dstHasBrainstorm = dstNotes.some(isBrainstormNote) || hasBrainstormContent(target);
+      if (dstHasBrainstorm) return; // one Brainstorm per node/cell
+
+      pushUndo();
+      let movedNote;
+      if (srcIndex >= 0) {
+        movedNote = srcNotes[srcIndex];
+      } else {
+        const now = Date.now();
+        movedNote = {
+          id: uid(),
+          title: "",
+          html: getBrainstormHtml(source),
+          kind: "brainstorm",
+          createdAt: now,
+          updatedAt: now
+        };
+      }
+      if (copy) {
+        movedNote = Object.assign({}, movedNote, {
+          id: uid(),
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+      }
+
+      target.notes = dstNotes.concat([movedNote]);
+      target.note = "";
+      syncBrainstormMirrorFromNotes(target);
+
+      if (!copy) {
+        if (srcIndex >= 0) {
+          srcNotes.splice(srcIndex, 1);
+          source.notes = srcNotes;
+          source.note = "";
+          syncBrainstormMirrorFromNotes(source);
+        } else {
+          source.brainstorm = null;
+        }
+      }
     } else if (type === "note-single") {
       // A single note, dragged by its index in the source's notes — same
       // shape as the "photo" single-thumbnail case above, since each note
@@ -9587,14 +9645,17 @@
       const { noteIndex } = markerDragState;
       const srcNotes = getNodeNotes(source);
       if (noteIndex == null || noteIndex < 0 || noteIndex >= srcNotes.length) return;
+      const movedNote = srcNotes[noteIndex];
       pushUndo();
-      target.notes = getNodeNotes(target).concat([srcNotes[noteIndex]]);
+      target.notes = getNodeNotes(target).concat([movedNote]);
       target.note = "";
+      if (isBrainstormNote(movedNote)) syncBrainstormMirrorFromNotes(target);
       if (!copy) {
         const remaining = srcNotes.slice();
         remaining.splice(noteIndex, 1);
         source.notes = remaining;
         source.note = "";
+        if (isBrainstormNote(movedNote)) syncBrainstormMirrorFromNotes(source);
       }
     } else if (type === "urls") {
       const srcUrls = getNodeUrls(source);
@@ -10326,10 +10387,17 @@
     if (cellHasBrainstorm) {
       // Same brain-with-count marker as the node-level strip (see
       // renderNode) — click jumps straight into the scratchpad for this cell.
+      // v424: this is also a real Branchline marker drag, so moving the brain
+      // moves the Brainstorm content itself instead of only dragging its emoji.
       const bIcon = document.createElement("span");
       bIcon.className = "node-table-cell-icon node-table-cell-brainstorm";
       bIcon.textContent = "🧠";
-      bIcon.title = "Brainstorm — click to keep writing.";
+      bIcon.title = "Brainstorm — click to keep writing; drag onto a node or cell to move (hold Alt to copy).";
+      bIcon.draggable = true;
+      bIcon.addEventListener("dragstart", (e) =>
+        startMarkerDrag(e, node, "brainstorm", { sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(bIcon, node, "brainstorm", { sourceR: r, sourceC: c });
+      bIcon.addEventListener("dragend", endMarkerDrag);
       bIcon.addEventListener("click", () => openBrainstormModal(node.id, r, c));
       strip.appendChild(bIcon);
     }
@@ -11236,7 +11304,16 @@
         const bIcon = document.createElement("span");
         bIcon.className = "node-photo-thumb node-brainstorm-marker";
         bIcon.textContent = "🧠";
-        bIcon.title = "Brainstorm — click to keep writing.";
+        const ownsBrainstorm = hasBrainstormContent(node);
+        bIcon.title = ownsBrainstorm
+          ? "Brainstorm — click to keep writing; drag onto a node or cell to move (hold Alt to copy)."
+          : "Brainstorm — click to keep writing.";
+        if (ownsBrainstorm) {
+          bIcon.draggable = true;
+          bIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "brainstorm"));
+          armMarkerTouchDrag(bIcon, node, "brainstorm");
+          bIcon.addEventListener("dragend", endMarkerDrag);
+        }
         bIcon.addEventListener("click", (e) => {
           e.stopPropagation();
           openBrainstormModal(node.id);
