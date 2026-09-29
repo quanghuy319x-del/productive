@@ -7302,3 +7302,21 @@ kbd{
     touch-action:manipulation;
   }
 }
+
+
+/* v446: phone Note/DRC top controls are tap-to-reveal. Back and Close
+   remain visible at all times; the middle gap becomes the reveal target. */
+@media (max-width:640px) and (any-pointer:coarse){
+  #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
+  .note-nav-btn:not(#note-nav-back):not(#note-nav-close){
+    display:none!important;
+  }
+  #note-modal .note-nav-row .note-nav-gap{
+    min-height:34px;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row{
+    margin-bottom:6px;
+  }
+}
