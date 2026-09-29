@@ -1150,11 +1150,20 @@ body.signed-out #title-input{ visibility:hidden; }
   font-size:8px;
   font-weight:900;
   line-height:1;
-  pointer-events:none;
+  pointer-events:auto;
+  cursor:pointer;
+  user-select:none;
+  -webkit-user-select:none;
   color:#fff;
   border:1px solid rgba(255,255,255,.68);
   box-shadow:0 1px 3px rgba(0,0,0,.28);
   font-variant-numeric:tabular-nums;
+}
+.node-table-cell-score-badge:hover,
+.node-table-cell-score-badge:focus-visible{
+  transform:scale(1.1);
+  outline:2px solid rgba(255,255,255,.75);
+  outline-offset:1px;
 }
 .node-table-cell-score-badge.score-very-low{
   background:#64748b;

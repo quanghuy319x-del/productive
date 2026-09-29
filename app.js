@@ -10055,13 +10055,34 @@
     return "very-low";
   }
 
-  function buildCellScoreBadge(a) {
+  function buildCellScoreBadge(node, r, c, a) {
     const prog = nodeTaskProgress(a);
-    if (!prog || prog.done <= 0) return null;
+    const hasTasks = getNodeTasks(a).length > 0;
+    // v409: keep the badge available as the cell's fast Tasks entry point.
+    // A task list with zero points still gets a "0" badge so it can always
+    // be reopened directly from the calendar/table cell.
+    if (!prog || (!hasTasks && prog.done <= 0)) return null;
+    const points = Math.max(0, Number(prog.done) || 0);
     const badge = document.createElement("span");
-    badge.className = "node-table-cell-score-badge score-" + cellScoreBand(prog.done);
-    badge.textContent = String(prog.done);
-    badge.title = `${prog.done} progress points${prog.total ? ` / ${prog.total} total` : ""}`;
+    badge.className = "node-table-cell-score-badge score-" + cellScoreBand(points);
+    badge.textContent = String(points);
+    badge.title = `${points} progress points${prog.total ? ` / ${prog.total} total` : ""} — click to open Tasks`;
+    badge.setAttribute("role", "button");
+    badge.setAttribute("tabindex", "0");
+    badge.setAttribute("aria-label", `Open Tasks — ${points} progress points`);
+
+    const openTasks = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openTasksModal(node.id, r, c);
+    };
+    badge.addEventListener("mousedown", (e) => e.stopPropagation());
+    badge.addEventListener("pointerdown", (e) => e.stopPropagation());
+    badge.addEventListener("click", openTasks);
+    badge.addEventListener("dblclick", (e) => e.stopPropagation());
+    badge.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") openTasks(e);
+    });
     return badge;
   }
 
@@ -10485,7 +10506,7 @@
         });
         td.appendChild(textEl);
         td.appendChild(buildCellIconStrip(node, r, c));
-        const scoreBadge = buildCellScoreBadge(a);
+        const scoreBadge = buildCellScoreBadge(node, r, c, a);
         if (scoreBadge) td.appendChild(scoreBadge);
         tr.appendChild(td);
       }
