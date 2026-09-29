@@ -413,7 +413,7 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
   opacity: .45;
   pointer-events: none;
 }
-.note-locked .note-nav-btn:not(#note-nav-close):not(#note-nav-back){
+.note-locked .note-nav-btn:not(#note-nav-close):not(#note-nav-back):not(#note-nav-info){
   opacity: .45;
   pointer-events: none;
 }
@@ -1934,7 +1934,9 @@ body.signed-out #title-input{ visibility:hidden; }
 .app-toast{
   position: fixed;
   left: 50%;
-  bottom: 28px;
+  /* v445: keep toast feedback visible above fullscreen Note/DRC modals
+     and above the Android software keyboard. */
+  bottom: calc(28px + var(--keyboard-inset, 0px));
   transform: translate(-50%, 10px);
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -1943,7 +1945,7 @@ body.signed-out #title-input{ visibility:hidden; }
   border-radius: 8px;
   font-size: 13px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-  z-index: 100;
+  z-index: 3000;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.18s ease, transform 0.18s ease;
@@ -7284,4 +7286,19 @@ kbd{
      glyph upward so its horizontal shaft aligns with the visual middle
      of the surrounding text, not the lower half of the line. */
   top:-0.18em;
+}
+
+
+/* v445: make Note info a reliable phone touch target without changing
+   the rest of the compact top row. */
+@media (max-width:640px){
+  #note-nav-info{
+    width:34px!important;
+    min-width:34px!important;
+    height:34px!important;
+    padding:0!important;
+    font-size:15px!important;
+    font-weight:800!important;
+    touch-action:manipulation;
+  }
 }
