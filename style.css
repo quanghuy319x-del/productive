@@ -1318,6 +1318,38 @@ body.signed-out #title-input{ visibility:hidden; }
   cursor: grabbing;
 }
 
+/* v405 marker drag reliability: embedded img/svg glyphs must never start
+   their own browser-native image drag. The draggable wrapper owns the
+   gesture for node↔node, node↔cell and cell↔cell moves. */
+[data-marker-drag-source="1"] img,
+[data-marker-drag-source="1"] svg{
+  pointer-events:none;
+  -webkit-user-drag:none;
+  user-select:none;
+}
+.marker-touch-ghost{
+  position:fixed !important;
+  z-index:10000 !important;
+  pointer-events:none !important;
+  width:22px !important;
+  height:22px !important;
+  min-width:22px !important;
+  max-width:22px !important;
+  margin:0 !important;
+  overflow:hidden !important;
+  opacity:.82 !important;
+  transform:scale(1.12);
+  filter:drop-shadow(0 3px 5px rgba(0,0,0,.4));
+}
+@media (any-pointer: coarse){
+  [data-marker-drag-source="1"]{
+    touch-action:none;
+    -webkit-touch-callout:none;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+}
+
 /* Sits in normal flow below the text, inside the node's own box (see
    .node's flex-direction:column and the matching height/width reserved
    for it in computeNodeBox), rather than floating outside the frame or

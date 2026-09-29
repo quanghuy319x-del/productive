@@ -9193,22 +9193,232 @@
   // the mouse-based dragCandidate mechanism above (which is reserved for
   // repositioning/reparenting whole nodes), so the two never collide.
   let markerDragState = null;
+  const MARKER_DRAG_MIME = "application/x-branchline-marker";
+  const MARKER_DRAG_TEXT_PREFIX = "branchline-marker:";
+  let markerDragSeq = 0;
+
+  function makeMarkerDragPayload(node, type, extra) {
+    return Object.assign({
+      type,
+      sourceNodeId: node.id,
+      dragToken: ++markerDragSeq
+    }, extra || {});
+  }
+
+  function markerDragPayloadValid(payload) {
+    return !!(payload && payload.type && payload.sourceNodeId);
+  }
+
+  function writeMarkerDragPayload(e, payload) {
+    if (!e || !e.dataTransfer || !markerDragPayloadValid(payload)) return;
+    const raw = JSON.stringify(payload);
+    try { e.dataTransfer.effectAllowed = "copyMove"; } catch (_) {}
+    // Keep a Branchline-specific MIME payload so a transient DOM rebuild or
+    // browser drag lifecycle quirk cannot make the drop forget its source.
+    try { e.dataTransfer.setData(MARKER_DRAG_MIME, raw); } catch (_) {}
+    // Firefox requires some text payload; this also gives us a second
+    // recovery path on browsers that strip custom MIME types.
+    try { e.dataTransfer.setData("text/plain", MARKER_DRAG_TEXT_PREFIX + raw); } catch (_) {}
+  }
+
+  function readMarkerDragPayload(e) {
+    if (markerDragPayloadValid(markerDragState)) return markerDragState;
+    const dt = e && e.dataTransfer;
+    if (!dt) return null;
+    let raw = "";
+    try { raw = dt.getData(MARKER_DRAG_MIME) || ""; } catch (_) {}
+    if (!raw) {
+      try {
+        const textPayload = dt.getData("text/plain") || "";
+        if (textPayload.startsWith(MARKER_DRAG_TEXT_PREFIX)) {
+          raw = textPayload.slice(MARKER_DRAG_TEXT_PREFIX.length);
+        }
+      } catch (_) {}
+    }
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!markerDragPayloadValid(parsed)) return null;
+      markerDragState = parsed;
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function markerDragAvailable(e) {
+    if (markerDragPayloadValid(markerDragState)) return true;
+    const types = e && e.dataTransfer && e.dataTransfer.types;
+    if (!types) return false;
+    try {
+      return Array.from(types).includes(MARKER_DRAG_MIME);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function clearMarkerDropHighlights() {
+    nodesLayer.querySelectorAll(".node.marker-drop-target, .node-table-cell.marker-drop-target")
+      .forEach(d => d.classList.remove("marker-drop-target"));
+  }
 
   function startMarkerDrag(e, node, type, extra) {
     e.stopPropagation();
     if (!requireSignIn()) { e.preventDefault(); return; }
-    markerDragState = Object.assign({ type, sourceNodeId: node.id }, extra);
-    e.dataTransfer.effectAllowed = "copyMove";
-    // Firefox requires data to actually be set for the drag to proceed.
-    try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
+    const payload = makeMarkerDragPayload(node, type, extra);
+    markerDragState = payload;
+    writeMarkerDragPayload(e, payload);
     e.currentTarget.classList.add("marker-dragging");
   }
 
   function endMarkerDrag(e) {
-    e.currentTarget.classList.remove("marker-dragging");
-    markerDragState = null;
-    nodesLayer.querySelectorAll(".node.marker-drop-target, .node-table-cell.marker-drop-target").forEach(d => d.classList.remove("marker-drop-target"));
+    if (e && e.currentTarget) e.currentTarget.classList.remove("marker-dragging");
+    const endedToken = markerDragState && markerDragState.dragToken;
+    clearMarkerDropHighlights();
+    // Some Chromium/WebView builds can deliver dragend while the drop is
+    // still unwinding. Clear on the next task, and only if a newer drag has
+    // not started meanwhile.
+    setTimeout(() => {
+      if (!markerDragState || markerDragState.dragToken === endedToken) markerDragState = null;
+    }, 0);
   }
+
+  // Native HTML5 drag-and-drop is unreliable on touch browsers. Give every
+  // draggable marker a pointer-driven fallback: move a finger far enough to
+  // arm the drag, highlight the node/cell under it, then drop on pointerup.
+  // A tap still behaves exactly like the marker's normal click action.
+  let touchMarkerDrag = null;
+  let suppressMarkerClickUntil = 0;
+  const TOUCH_MARKER_DRAG_DIST = 7;
+
+  function armMarkerTouchDrag(el, node, type, extra) {
+    if (!el) return;
+    el.dataset.markerDragSource = "1";
+    // Full-color DRC/plan/link icons often contain an <img>/<svg>; the child
+    // must never start its own browser image drag instead of the marker drag.
+    el.querySelectorAll("img").forEach(img => { img.draggable = false; });
+    el.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "touch" || e.button !== 0) return;
+      e.stopPropagation();
+      touchMarkerDrag = {
+        pointerId: e.pointerId,
+        sourceEl: el,
+        payload: makeMarkerDragPayload(node, type, extra),
+        startX: e.clientX,
+        startY: e.clientY,
+        x: e.clientX,
+        y: e.clientY,
+        active: false,
+        target: null,
+        ghost: null
+      };
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+  }
+
+  function markerDropTargetAt(x, y, payload) {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit) return null;
+    const cell = hit.closest && hit.closest(".node-table-cell");
+    if (cell) {
+      const nodeEl = cell.closest(".node[data-id]");
+      if (nodeEl) {
+        const target = {
+          nodeId: nodeEl.dataset.id,
+          r: Number(cell.dataset.r),
+          c: Number(cell.dataset.c),
+          el: cell
+        };
+        if (!(payload.sourceNodeId === target.nodeId &&
+              payload.sourceR === target.r && payload.sourceC === target.c)) {
+          return target;
+        }
+        return null;
+      }
+    }
+    const nodeEl = hit.closest && hit.closest(".node[data-id]");
+    if (!nodeEl) return null;
+    const target = { nodeId: nodeEl.dataset.id, r: null, c: null, el: nodeEl };
+    if (payload.sourceNodeId === target.nodeId &&
+        payload.sourceR == null && payload.sourceC == null) return null;
+    return target;
+  }
+
+  function setTouchMarkerDropTarget(target) {
+    clearMarkerDropHighlights();
+    if (target && target.el) target.el.classList.add("marker-drop-target");
+  }
+
+  function cleanupTouchMarkerDrag() {
+    const d = touchMarkerDrag;
+    if (!d) return;
+    if (d.sourceEl) d.sourceEl.classList.remove("marker-dragging");
+    if (d.ghost && d.ghost.remove) d.ghost.remove();
+    clearMarkerDropHighlights();
+    try { d.sourceEl && d.sourceEl.releasePointerCapture(d.pointerId); } catch (_) {}
+    touchMarkerDrag = null;
+  }
+
+  window.addEventListener("pointermove", (e) => {
+    const d = touchMarkerDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    d.x = e.clientX; d.y = e.clientY;
+    if (!d.active) {
+      const dx = d.x - d.startX, dy = d.y - d.startY;
+      if (Math.hypot(dx, dy) < TOUCH_MARKER_DRAG_DIST) return;
+      if (!requireSignIn()) { cleanupTouchMarkerDrag(); return; }
+      d.active = true;
+      markerDragState = d.payload;
+      d.sourceEl.classList.add("marker-dragging");
+      const ghost = d.sourceEl.cloneNode(true);
+      ghost.removeAttribute("id");
+      ghost.classList.add("marker-touch-ghost");
+      ghost.classList.remove("marker-dragging");
+      document.body.appendChild(ghost);
+      d.ghost = ghost;
+    }
+    e.preventDefault();
+    if (d.ghost) {
+      d.ghost.style.left = (d.x + 12) + "px";
+      d.ghost.style.top = (d.y + 12) + "px";
+    }
+    d.target = markerDropTargetAt(d.x, d.y, d.payload);
+    setTouchMarkerDropTarget(d.target);
+  }, { passive: false });
+
+  window.addEventListener("pointerup", (e) => {
+    const d = touchMarkerDrag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    if (!d.active) { cleanupTouchMarkerDrag(); return; }
+    e.preventDefault();
+    d.target = markerDropTargetAt(e.clientX, e.clientY, d.payload) || d.target;
+    const target = d.target;
+    suppressMarkerClickUntil = Date.now() + 500;
+    if (target) {
+      markerDragState = d.payload;
+      completeMarkerDrop(target.nodeId, false, target.r, target.c);
+    }
+    cleanupTouchMarkerDrag();
+    markerDragState = null;
+  }, { passive: false });
+
+  window.addEventListener("pointercancel", (e) => {
+    if (!touchMarkerDrag || e.pointerId !== touchMarkerDrag.pointerId) return;
+    cleanupTouchMarkerDrag();
+    markerDragState = null;
+  });
+
+  // Prevent the synthetic click that mobile browsers may emit after a
+  // completed pointer drag from immediately opening the marker we just moved.
+  document.addEventListener("click", (e) => {
+    if (Date.now() > suppressMarkerClickUntil) return;
+    const marker = e.target && e.target.closest &&
+      e.target.closest('[data-marker-drag-source="1"]');
+    if (!marker) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    suppressMarkerClickUntil = 0;
+  }, true);
 
   // Applies a completed marker drop: merges the dragged data onto the
   // target (a whole node, or — when targetR/targetC are given — one
@@ -9377,6 +9587,8 @@
     } else {
       return;
     }
+    markerDragState = null;
+    clearMarkerDropHighlights();
     renderAll();
     persist();
   }
@@ -9865,6 +10077,7 @@
         if (overflow) {
           thumb.title = `${cellImages.length} photos — click to view the first, drag to move them all onto a node or cell (hold Alt to copy)`;
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photos", { sourceR: r, sourceC: c }));
+          armMarkerTouchDrag(thumb, node, "photos", { sourceR: r, sourceC: c });
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
           badge.textContent = String(cellImages.length);
@@ -9872,6 +10085,7 @@
         } else {
           thumb.title = "Click to view — drag onto a node or cell to move it there (hold Alt to copy) — right-click to remove";
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photo", { photoIndex: i, sourceR: r, sourceC: c }));
+          armMarkerTouchDrag(thumb, node, "photo", { photoIndex: i, sourceR: r, sourceC: c });
           thumb.addEventListener("contextmenu", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -9901,6 +10115,7 @@
       noteIcon.draggable = true;
       noteIcon.addEventListener("click", () => editCellNote(node, r, c));
       noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes", { sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(noteIcon, node, "notes", { sourceR: r, sourceC: c });
       noteIcon.addEventListener("dragend", endMarkerDrag);
       strip.appendChild(noteIcon);
     }
@@ -9923,6 +10138,7 @@
         removePhoto: (id) => removeCellLinkPhoto(getCellAttach(node, r, c), u, id),
       }));
       linkIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i, sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(linkIcon, node, "url-single", { urlIndex: i, sourceR: r, sourceC: c });
       linkIcon.addEventListener("dragend", endMarkerDrag);
       linkIcon.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -9946,6 +10162,7 @@
       taskEl.draggable = true;
       taskEl.addEventListener("click", (e) => { e.stopPropagation(); openTasksModal(node.id, r, c); });
       taskEl.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks", { sourceR: r, sourceC: c }));
+      armMarkerTouchDrag(taskEl, node, "tasks", { sourceR: r, sourceC: c });
       taskEl.addEventListener("dragend", endMarkerDrag);
       strip.appendChild(taskEl);
     }
@@ -10204,11 +10421,12 @@
         // propagation so it lands on this one cell instead of also
         // bubbling up to the whole-node drop handler below.
         td.addEventListener("dragover", (e) => {
-          if (!markerDragState) return;
-          if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR === r && markerDragState.sourceC === c) return;
+          if (!markerDragAvailable(e)) return;
+          const drag = markerDragState;
+          if (drag && drag.sourceNodeId === node.id && drag.sourceR === r && drag.sourceC === c) return;
           e.preventDefault();
           e.stopPropagation();
-          e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+          if (e.dataTransfer) e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
           td.classList.add("marker-drop-target");
         });
         td.addEventListener("dragleave", (e) => {
@@ -10216,8 +10434,9 @@
           td.classList.remove("marker-drop-target");
         });
         td.addEventListener("drop", (e) => {
-          if (!markerDragState) return;
-          if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR === r && markerDragState.sourceC === c) return;
+          const drag = readMarkerDragPayload(e);
+          if (!drag) return;
+          if (drag.sourceNodeId === node.id && drag.sourceR === r && drag.sourceC === c) return;
           e.preventDefault();
           e.stopPropagation();
           td.classList.remove("marker-drop-target");
@@ -10547,6 +10766,7 @@
         strip.title = "Drag onto another node to move the photos there (hold Alt to copy)";
         strip.draggable = true;
         strip.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photos"));
+        armMarkerTouchDrag(strip, node, "photos");
         strip.addEventListener("dragend", endMarkerDrag);
       }
       // Pin the strip's actual width in JS to exactly what fits `cols`
@@ -10599,6 +10819,7 @@
         if (notesOverflow) {
           noteIcon.title = `${nodeNotes.length} notes — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "notes"));
+          armMarkerTouchDrag(noteIcon, node, "notes");
           noteIcon.addEventListener("click", (e) => { e.stopPropagation(); openNoteManageMenu(node.id, e.clientX, e.clientY); });
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
@@ -10613,6 +10834,7 @@
               ? (drcNoteIsFilled(n) ? "DRC — filled in" : "DRC — not filled in yet")
               : notePreviewText(n));
           noteIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "note-single", { noteIndex: i }));
+          armMarkerTouchDrag(noteIcon, node, "note-single", { noteIndex: i });
           noteIcon.addEventListener("click", (e) => {
             e.stopPropagation();
             openNoteModal(node.id, i);
@@ -10719,6 +10941,7 @@
           urlIcon.innerHTML = LINK_ICON_SVGS.link;
           urlIcon.title = `${nodeUrls.length} links — click to view the list, or drag to move them all onto another node (hold Alt to copy)`;
           urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "urls"));
+          armMarkerTouchDrag(urlIcon, node, "urls");
           urlIcon.addEventListener("click", (e) => { e.stopPropagation(); openLinksManageMenu(node.id, e.clientX, e.clientY); });
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
@@ -10730,6 +10953,7 @@
           urlIcon.title = linkTitle || u;
           attachLinkCommentTooltip(urlIcon, u, () => getLinkComment(findNode(node.id) || node, u), () => getLinkTitle(findNode(node.id) || node, u));
           urlIcon.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "url-single", { urlIndex: i }));
+          armMarkerTouchDrag(urlIcon, node, "url-single", { urlIndex: i });
           urlIcon.addEventListener("click", (e) => {
             e.stopPropagation();
             openLinkSmart(u, {
@@ -10809,6 +11033,7 @@
           // all the photos together rather than just this one.
           thumb.title = `${nodeImages.length} photos — click to view, or drag to move them all onto another node (hold Alt to copy)`;
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photos"));
+          armMarkerTouchDrag(thumb, node, "photos");
           const badge = document.createElement("span");
           badge.className = "node-marker-count";
           badge.textContent = String(nodeImages.length);
@@ -10816,6 +11041,7 @@
         } else {
           thumb.title = "Click to view photo — drag onto another node to move it there (hold Alt to copy)";
           thumb.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "photo", { photoIndex: i }));
+          armMarkerTouchDrag(thumb, node, "photo", { photoIndex: i });
           // Small dot marking that this specific photo has a comment
           // attached (see photoComments / photo-modal-comment-row) — only
           // meaningful here, one thumb per actual photo; the single
@@ -10873,6 +11099,7 @@
       row.title = `${taskProg.done} of ${taskProg.total} tasks done — drag onto another node to move the tasks there (hold Alt to copy)`;
       row.draggable = true;
       row.addEventListener("dragstart", (e) => startMarkerDrag(e, node, "tasks"));
+      armMarkerTouchDrag(row, node, "tasks");
       row.addEventListener("dragend", endMarkerDrag);
 
       const track = document.createElement("span");
@@ -10990,10 +11217,11 @@
     // marker (no source cell) dropped back on its own node is a no-op —
     // that case is excluded below.
     div.addEventListener("dragover", (e) => {
-      if (!markerDragState) return;
-      if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR == null && markerDragState.sourceC == null) return;
+      if (!markerDragAvailable(e)) return;
+      const drag = markerDragState;
+      if (drag && drag.sourceNodeId === node.id && drag.sourceR == null && drag.sourceC == null) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+      if (e.dataTransfer) e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
       div.classList.add("marker-drop-target");
     });
     div.addEventListener("dragleave", (e) => {
@@ -11001,8 +11229,9 @@
       div.classList.remove("marker-drop-target");
     });
     div.addEventListener("drop", (e) => {
-      if (!markerDragState) return;
-      if (markerDragState.sourceNodeId === node.id && markerDragState.sourceR == null && markerDragState.sourceC == null) return;
+      const drag = readMarkerDragPayload(e);
+      if (!drag) return;
+      if (drag.sourceNodeId === node.id && drag.sourceR == null && drag.sourceC == null) return;
       e.preventDefault();
       e.stopPropagation();
       div.classList.remove("marker-drop-target");
