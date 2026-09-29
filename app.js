@@ -10006,6 +10006,95 @@
     return strip;
   }
 
+  // v404: calendars made by v398-v403 were stored Sun→Sat. Convert those
+  // existing calendar children once in memory so old maps immediately match
+  // the new Monday→Sunday order too. Date-cell attachment objects move with
+  // their actual date, so notes/photos/tasks/links/Brainstorms do not jump to
+  // a different day merely because the visible weekday columns changed.
+  function ensureCalendarMondayFirst(node) {
+    if (!node || !node.table || !node.table.calendar || !Array.isArray(node.table.cells)) return false;
+    const table = node.table;
+    const year = Number(table.calendarYear);
+    const month = Number(table.calendarMonth);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return false;
+
+    const headers = table.cells[1] || [];
+    const newStart = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+
+    // Already Monday-first (including the very early calendar prototype):
+    // just normalize its metadata and leave the stored cells untouched.
+    if (headers[0] === "Mon" && headers[6] === "Sun") {
+      table.calendarStart = newStart;
+      table.calendarWeekStartsMonday = true;
+      return false;
+    }
+
+    // Only transform the known Sunday-first shape. Unknown/custom weekday
+    // rows are left alone rather than guessing and risking user data.
+    if (!(headers[0] === "Sun" && headers[1] === "Mon" && headers[6] === "Sat")) return false;
+
+    const oldCells = table.cells.map(row => Array.isArray(row) ? row.slice() : []);
+    const oldAttach = ensureTableAttach(node).map(row => (row || []).slice());
+    const oldStart = Number.isFinite(Number(table.calendarStart))
+      ? Number(table.calendarStart)
+      : new Date(year, month - 1, 1).getDay(); // Sunday = 0
+
+    const prevDays = new Date(year, month - 1, 0).getDate();
+    const days = new Date(year, month, 0).getDate();
+    const newCells = [
+      (oldCells[0] || [String(month).padStart(2, "0") + "/" + String(year).slice(-2), "", "", "", "", "", ""]).slice(0, 7),
+      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    ];
+    while (newCells[0].length < 7) newCells[0].push("");
+
+    let nextDay = 1;
+    for (let week = 0; week < 6; week++) {
+      const row = new Array(7).fill("");
+      for (let col = 0; col < 7; col++) {
+        const slot = week * 7 + col;
+        const dayIndex = slot - newStart + 1;
+        if (dayIndex < 1) row[col] = String(prevDays + dayIndex);
+        else if (dayIndex > days) row[col] = String(nextDay++);
+        else row[col] = String(dayIndex);
+      }
+      newCells.push(row);
+    }
+
+    const newAttach = newCells.map(row => row.map(() => ({})));
+
+    // Preserve title-row attachment data as-is.
+    for (let c = 0; c < 7; c++) {
+      if (oldAttach[0] && oldAttach[0][c]) newAttach[0][c] = oldAttach[0][c];
+    }
+    // Weekday row rotates Sun from the first old column to the last new one.
+    for (let c = 0; c < 6; c++) {
+      if (oldAttach[1] && oldAttach[1][c + 1]) newAttach[1][c] = oldAttach[1][c + 1];
+    }
+    if (oldAttach[1] && oldAttach[1][0]) newAttach[1][6] = oldAttach[1][0];
+
+    // Move each stored date cell by its absolute offset from this month's
+    // first day. The Monday-first 42-day window differs by at most one
+    // boundary day from the old Sunday-first window.
+    for (let r = 2; r < oldCells.length; r++) {
+      for (let c = 0; c < 7; c++) {
+        const oldSlot = (r - 2) * 7 + c;
+        const dayIndex = oldSlot - oldStart + 1;
+        const newSlot = dayIndex + newStart - 1;
+        if (newSlot < 0 || newSlot >= 42) continue;
+        const nr = 2 + Math.floor(newSlot / 7);
+        const nc = newSlot % 7;
+        if (oldCells[r] && oldCells[r][c] != null) newCells[nr][nc] = oldCells[r][c];
+        if (oldAttach[r] && oldAttach[r][c]) newAttach[nr][nc] = oldAttach[r][c];
+      }
+    }
+
+    table.cells = newCells;
+    table.attach = newAttach;
+    table.calendarStart = newStart;
+    table.calendarWeekStartsMonday = true;
+    return true;
+  }
+
   // Builds the actual <table> for a table node (see nodeIsTable) inside
   // its div, using the exact column widths / row heights computeNodeBox
   // (via computeTableBox) already worked out — so what's on screen always
@@ -10017,6 +10106,7 @@
   // the cost of the box only resizing to fit new text once you click
   // away from the cell.
   function renderTableGrid(div, node) {
+    ensureCalendarMondayFirst(node);
     ensureTableAttach(node);
     const cells = node.table.cells;
     const cols = Math.max(1, ...cells.map(r => r.length));
@@ -10062,7 +10152,7 @@
           else if (r === 1) td.classList.add("calendar-weekday-cell");
           else {
             td.classList.add("calendar-day-cell");
-            const start = Number(node.table.calendarStart ?? new Date(node.table.calendarYear || 2000, (node.table.calendarMonth || 1) - 1, 1).getDay());
+            const start = Number(node.table.calendarStart ?? ((new Date(node.table.calendarYear || 2000, (node.table.calendarMonth || 1) - 1, 1).getDay() + 6) % 7));
             const monthDays = new Date(node.table.calendarYear || 2000, node.table.calendarMonth || 1, 0).getDate();
             const slot = (r - 2) * 7 + c;
             const dayIndex = slot - start + 1;
@@ -11574,15 +11664,14 @@
     }
     n.fontColor = parent.fontColor || null;
 
-    // Calendar-card layout inspired by the MTF chart calendar:
-    // merged month header, Sun→Sat weekday row, and a complete six-week
-    // grid including faded dates from the neighboring months.
+    // v404: calendar children use the familiar Monday→Sunday week order.
+    // Keep a complete six-week grid, including faded neighboring-month dates.
     const cells = [
       [String(month).padStart(2, "0") + "/" + String(year).slice(-2), "", "", "", "", "", ""],
-      ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     ];
     const first = new Date(year, month - 1, 1);
-    const start = first.getDay(); // Sunday = 0, matching the chart calendar
+    const start = (first.getDay() + 6) % 7; // Monday = 0
     const prevDays = new Date(year, month - 1, 0).getDate();
     const days = new Date(year, month, 0).getDate();
     let nextDay = 1;
@@ -11604,6 +11693,7 @@
       calendarMonth: month,
       calendarYear: year,
       calendarStart: start,
+      calendarWeekStartsMonday: true,
       merges: [{ r0: 0, c0: 0, r1: 0, c1: 6 }]
     };
     parent.children.push(n);
