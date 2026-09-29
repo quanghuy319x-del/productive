@@ -10024,7 +10024,9 @@
     const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
 
     const table = document.createElement("table");
-    table.className = "node-table" + (node.table.gridStyle === "outline" ? " node-table-outline" : "");
+    table.className = "node-table"
+      + (node.table.gridStyle === "outline" ? " node-table-outline" : "")
+      + (node.table.calendar ? " node-table-calendar" : "");
     table.addEventListener("mousedown", (e) => e.stopPropagation());
     table.addEventListener("pointerdown", (e) => e.stopPropagation());
     table.addEventListener("dblclick", (e) => e.stopPropagation());
@@ -10054,6 +10056,22 @@
         const a = getCellAttach(node, r, c);
         const td = document.createElement("td");
         td.className = "node-table-cell";
+        if (node.table.calendar) {
+          if (r === 0) td.classList.add("calendar-title-cell");
+          else if (r === 1) td.classList.add("calendar-weekday-cell");
+          else {
+            td.classList.add("calendar-day-cell");
+            const start = Number(node.table.calendarStart ?? new Date(node.table.calendarYear || 2000, (node.table.calendarMonth || 1) - 1, 1).getDay());
+            const monthDays = new Date(node.table.calendarYear || 2000, node.table.calendarMonth || 1, 0).getDate();
+            const slot = (r - 2) * 7 + c;
+            const dayIndex = slot - start + 1;
+            if (dayIndex < 1 || dayIndex > monthDays) td.classList.add("calendar-outside-month");
+            const now = new Date();
+            if (Number(node.table.calendarYear) === now.getFullYear() &&
+                Number(node.table.calendarMonth) === now.getMonth() + 1 &&
+                dayIndex === now.getDate()) td.classList.add("calendar-today");
+          }
+        }
         td.dataset.r = String(r);
         td.dataset.c = String(c);
         if (span.rowSpan > 1) td.rowSpan = span.rowSpan;
@@ -11534,30 +11552,36 @@
     }
     n.fontColor = parent.fontColor || null;
 
-    // Reuse the normal table-child format: title row + weekday header +
-    // six calendar weeks. Empty leading/trailing cells remain editable.
+    // Calendar-card layout inspired by the MTF chart calendar:
+    // merged month header, Sun→Sat weekday row, and a complete six-week
+    // grid including faded dates from the neighboring months.
     const cells = [
       [String(month).padStart(2, "0") + "/" + String(year).slice(-2), "", "", "", "", "", ""],
-      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+      ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     ];
     const first = new Date(year, month - 1, 1);
+    const start = first.getDay(); // Sunday = 0, matching the chart calendar
+    const prevDays = new Date(year, month - 1, 0).getDate();
     const days = new Date(year, month, 0).getDate();
-    const start = (first.getDay() + 6) % 7; // Monday = 0
-    let day = 1;
+    let nextDay = 1;
     for (let week = 0; week < 6; week++) {
       const row = new Array(7).fill("");
       for (let col = 0; col < 7; col++) {
         const slot = week * 7 + col;
-        if (slot >= start && day <= days) row[col] = String(day++);
+        const dayIndex = slot - start + 1;
+        if (dayIndex < 1) row[col] = String(prevDays + dayIndex);
+        else if (dayIndex > days) row[col] = String(nextDay++);
+        else row[col] = String(dayIndex);
       }
       cells.push(row);
     }
-    // Drop an entirely empty sixth week when the month fits in five.
-    if (cells[cells.length - 1].every(v => !v)) cells.pop();
     n.table = {
       cells,
       gridStyle: "grid",
       calendar: true,
+      calendarMonth: month,
+      calendarYear: year,
+      calendarStart: start,
       merges: [{ r0: 0, c0: 0, r1: 0, c1: 6 }]
     };
     parent.children.push(n);
