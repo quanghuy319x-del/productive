@@ -1564,6 +1564,22 @@ body.signed-out #title-input{ visibility:hidden; }
   pointer-events:none;
   line-height:1;
 }
+/* v438: cell icons are only ~10px, so the node-sized 12px counter badge
+   hid most of the photo/affirmation glyph. Keep node counters unchanged,
+   but make counters inside cell icons smaller and park them mostly outside
+   the icon's top-right corner. */
+.node-table-cell-icon > .node-marker-count{
+  right:-6px;
+  top:-6px;
+  min-width:9px;
+  height:9px;
+  padding:0 1px;
+  font-size:6px;
+  line-height:9px;
+  border:1px solid rgba(255,255,255,.72);
+  box-sizing:border-box;
+  z-index:8;
+}
 .node-progress-row,
 .node-photo-strip,
 .node-photo-thumb{ cursor: grab; }
