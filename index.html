@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=442">
+<link rel="stylesheet" href="style.css?v=443">
 </head>
 <body>
 <div id="app">
@@ -843,7 +843,7 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  const APP_VERSION = "442";
+  const APP_VERSION = "443";
   let swReloading = false;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -871,12 +871,12 @@ if ("serviceWorker" in navigator) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return;
       const fresh = await res.text();
-      if (fresh.includes('const APP_VERSION = "442"') && !document.documentElement.dataset.v442Reloaded) {
+      if (fresh.includes('const APP_VERSION = "443"') && !document.documentElement.dataset.v443Reloaded) {
         // If this running document is older than the hosted index, bypass the
         // service-worker navigation cache once and replace it immediately.
         const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
         if (running && running !== APP_VERSION) {
-          document.documentElement.dataset.v442Reloaded = "1";
+          document.documentElement.dataset.v443Reloaded = "1";
           location.replace(url.href);
         }
       }
@@ -890,8 +890,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=442"></script>
-<script src="phase2-layout.js?v=442"></script>
+<script src="phase1-editors.js?v=443"></script>
+<script src="phase2-layout.js?v=443"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +928,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=442"></script>
+<script src="app.js?v=443"></script>
 <script>
 (() => {
   function insertText(editor, text) {
