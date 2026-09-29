@@ -17956,6 +17956,7 @@
   let noteReturn = null; // where ← Back goes — see withViewerReturn
   const noteNavFavorite = $("#note-nav-favorite");
   const noteNavFolder = $("#note-nav-folder");
+  const noteNavInfo = $("#note-nav-info");
   const noteNavDelete = $("#note-nav-delete");
 
   // ---- Note editor undo/redo ----
@@ -18608,6 +18609,7 @@
     updateNoteLineCount();
     updateNoteFavoriteUI();
     updateNoteFolderUI();
+    updateNoteInfoUI();
     updateNoteColorToolAvailability();
     noteDownscaleOversizedImagesInEditor();
   }
@@ -18633,6 +18635,36 @@
       // needed shrinking after all.
       scheduleNoteAutosave();
     });
+  }
+
+  // v440: top-row "i" button exposes the immutable creation timestamp of
+  // whichever note is currently open. Imported/very old notes may predate
+  // createdAt; in that case report that honestly rather than inventing a date.
+  function noteCreatedAtLabel(note) {
+    const raw = note && note.createdAt;
+    if (raw == null || raw === "") return null;
+    const d = new Date(raw);
+    if (!Number.isFinite(d.getTime())) return null;
+    try {
+      return d.toLocaleString("vi-VN", { dateStyle: "medium", timeStyle: "short" });
+    } catch (_) {
+      return d.toLocaleString();
+    }
+  }
+
+  function updateNoteInfoUI() {
+    if (!noteNavInfo) return;
+    const current = noteWorkingList[noteActiveIndex];
+    const created = noteCreatedAtLabel(current);
+    const label = created ? `Ngày tạo: ${created}` : "Ngày tạo: không có dữ liệu (note cũ)";
+    noteNavInfo.title = label;
+    noteNavInfo.setAttribute("aria-label", label);
+  }
+
+  function showCurrentNoteInfo() {
+    const current = noteWorkingList[noteActiveIndex];
+    const created = noteCreatedAtLabel(current);
+    showToast(created ? `Ngày tạo: ${created}` : "Ngày tạo: không có dữ liệu (note cũ)");
   }
 
   // Syncs the ☆/★ favorite button in the note editor's nav row to match
@@ -20985,6 +21017,13 @@
     }
   });
 
+  if (noteNavInfo) {
+    noteNavInfo.addEventListener("mousedown", (e) => e.preventDefault());
+    noteNavInfo.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showCurrentNoteInfo();
+    });
+  }
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
   $("#note-nav-close").addEventListener("click", closeNoteModal);
