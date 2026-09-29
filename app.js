@@ -17961,19 +17961,6 @@
   const noteNavRow = noteModal.querySelector(".note-nav-row");
   const noteNavGap = noteNavRow && noteNavRow.querySelector(".note-nav-gap");
 
-  // v446: phone Note/DRC top row stays minimal until explicitly opened.
-  // Back + Close are always visible; tapping the empty middle of the row
-  // reveals the rest, and tapping the editor/title collapses them again.
-  function setPhoneNoteNavExpanded(expanded) {
-    if (!noteCard) return;
-    const phone = window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches;
-    if (!phone) {
-      noteCard.classList.remove("phone-note-nav-collapsed");
-      return;
-    }
-    noteCard.classList.toggle("phone-note-nav-collapsed", !expanded);
-  }
-
   // v444: immediate crash/F5 safety for Note/DRC typing. The canonical map
   // and Drive save remain debounced for phone performance, but every editor
   // mutation also writes one small local recovery record synchronously.
@@ -18657,7 +18644,7 @@
     // default width. Reset back to the normal width for every other note
     // type so a previous photo-note session doesn't leak into them.
     noteCard.style.width = noteEditingPhotoId ? "1520px" : "";
-    setPhoneNoteNavExpanded(false);
+    // v457: opening state is owned by the single shared top-row controller.
     zoomModalOpen(noteModal);
     const current = noteWorkingList[noteActiveIndex];
     const isBlank = !(current.title && current.title.trim()) && !(current.html && current.html.trim());
@@ -21156,14 +21143,8 @@
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
 
-  if (noteNavGap) {
-    noteNavGap.addEventListener("pointerup", (e) => {
-      if (!window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setPhoneNoteNavExpanded(noteCard.classList.contains("phone-note-nav-collapsed"));
-    });
-  }
+  // v457: top-row visibility is owned exclusively by the shared controller
+  // in index.html. No legacy pointerup toggle is attached here.
   // v453: phone Note/DRC/Brainstorm top actions are now owned by the
   // shared 5-second reveal controller in index.html. Do not collapse them
   // again when the same reveal touch lands on the title/editor.
