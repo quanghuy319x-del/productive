@@ -9963,8 +9963,15 @@
     }
 
     // Task score badge = complete task tree, including notes on tasks/subtasks.
+    // v434: copied tasks already use the current 0/1 star model. Mark the
+    // destination host as migrated BEFORE its pasted task list is read again;
+    // otherwise getNodeTasks() treats a fresh cell host (starsReset missing)
+    // as legacy 3-star data and clears the star we just copied.
     if (Array.isArray(source.tasks) && source.tasks.length) {
-      target.tasks = getNodeTasks(target).concat(source.tasks.map(cloneTaskForAllIcons));
+      const existingTasks = getNodeTasks(target).slice();
+      const incomingTasks = source.tasks.map(cloneTaskForAllIcons);
+      target.tasks = existingTasks.concat(incomingTasks);
+      target.starsReset = true;
     }
 
     // Singleton status markers merge rather than erase existing target data.
