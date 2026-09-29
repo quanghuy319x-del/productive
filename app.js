@@ -9694,7 +9694,9 @@
     files.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
-        a.images.push(addPhotoRecord(reader.result, { avoid: getCellPhotoIds(a) }));
+        const id = addPhotoRecord(reader.result, { avoid: getCellPhotoIds(a) });
+        a.images.push(id);
+        setPhotoTimestamp(a, id, Date.now());
         done();
       };
       reader.onerror = () => { hadError = true; done(); };
@@ -9760,6 +9762,7 @@
     urls.push(url);
     a.urls = urls;
     a.url = null; // fully migrated onto the array field
+    setLinkTimestamp(a, url, Date.now());
     if (name && name.trim()) setCellLinkTitle(a, url, name);
     renderAll();
     persist();
@@ -9888,6 +9891,8 @@
     openLinkCommentModal(u, {
       get: () => getCellLinkComment(getCellAttach(node, r, c), u),
       set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
+      getFavorite: () => getLinkFavorite(getCellAttach(node, r, c), u),
+      setFavorite: (v) => setLinkFavorite(getCellAttach(node, r, c), u, v),
     });
   }
 
@@ -10237,8 +10242,11 @@
       linkIcon.draggable = true;
       attachLinkCommentTooltip(linkIcon, u, () => getCellLinkComment(getCellAttach(node, r, c), u), () => getCellLinkTitle(getCellAttach(node, r, c), u));
       linkIcon.addEventListener("click", () => openLinkSmart(u, {
+        videoKey: videoItemKey(node.id, r, c, u),
         get: () => getCellLinkComment(getCellAttach(node, r, c), u),
         set: (v) => setCellLinkComment(getCellAttach(node, r, c), u, v),
+        getFavorite: () => getLinkFavorite(getCellAttach(node, r, c), u),
+        setFavorite: (v) => setLinkFavorite(getCellAttach(node, r, c), u, v),
         getPhotos: () => getCellLinkPhotos(getCellAttach(node, r, c), u),
         addPhoto: (dataUrl) => addCellLinkPhoto(getCellAttach(node, r, c), u, dataUrl),
         removePhoto: (id) => removeCellLinkPhoto(getCellAttach(node, r, c), u, id),
@@ -11454,6 +11462,64 @@
     return out;
   }
 
+  // v419: content-host parity. A table/calendar cell is a mini-node for
+  // content features; only its visual/container form differs from a node.
+  function contentNodeLabel(node) {
+    if (!node) return "Untitled node";
+    const text = String(node.text || "").trim();
+    if (text) return text;
+    const title = node.table && node.table.cells && node.table.cells[0] && node.table.cells[0][0];
+    return String(title || "").trim() || "Untitled node";
+  }
+  function contentCellLabel(node, r, c) {
+    const value = node && node.table && node.table.cells && node.table.cells[r]
+      ? String(node.table.cells[r][c] || "").trim()
+      : "";
+    return value || `Cell ${r + 1},${c + 1}`;
+  }
+  function collectContentHosts() {
+    const out = [];
+    collectAllNodesFlat().forEach((node) => {
+      const nodeLabel = contentNodeLabel(node);
+      out.push({ node, host: node, r: null, c: null, nodeLabel, hostLabel: nodeLabel });
+      if (!node.table || !Array.isArray(node.table.attach)) return;
+      node.table.attach.forEach((row, r) => (row || []).forEach((host, c) => {
+        if (!host) return;
+        out.push({
+          node, host, r, c, nodeLabel,
+          hostLabel: `${nodeLabel} → ${contentCellLabel(node, r, c)}`
+        });
+      }));
+    });
+    return out;
+  }
+  function browserItemHost(node, item) {
+    if (!node || !item) return null;
+    return item.r != null && item.c != null ? getCellAttach(node, item.r, item.c) : node;
+  }
+  function browserItemCellPos(item) {
+    return item && item.r != null && item.c != null ? { r: item.r, c: item.c } : null;
+  }
+  function videoItemKey(nodeId, r, c, url) {
+    return r != null && c != null
+      ? `${nodeId}|cell:${r},${c}|${url}`
+      : `${nodeId}|${url}`;
+  }
+  function photoGroupItemMatches(it, nodeId, cellPos, id) {
+    const r = cellPos ? cellPos.r : null;
+    const c = cellPos ? cellPos.c : null;
+    return !!it && it.nodeId === nodeId &&
+      (it.r ?? null) === r && (it.c ?? null) === c && it.id === id;
+  }
+  function openBrowserPhotoItem(item, index, group) {
+    if (!item) return;
+    if (item.r != null && item.c != null) {
+      openCellPhotoModal(item.nodeId, item.r, item.c, index, group);
+    } else {
+      openPhotoModal(item.nodeId, index, group);
+    }
+  }
+
   // Un-collapses every ancestor of a node so it's actually visible/findable
   // in the DOM before we try to select or center the camera on it.
   function expandAncestorsOf(id) {
@@ -11471,36 +11537,25 @@
   function collectPhotoTagGroups() {
     const groups = new Map();
     let cleaned = false;
-    collectAllNodesFlat().forEach((node) => {
-      if (!node.photoTags) return;
-      const liveIds = new Set(getNodeImageIds(node));
-      Object.keys(node.photoTags).forEach((id) => {
-        // A tag only ever means anything while the photo it's keyed by is
-        // still actually attached to THIS node (see setPhotoTags) — but a
-        // photo dragged onto a different node (see completeMarkerDrop)
-        // used to leave its old tag entry behind here, pointing at a
-        // photo this node no longer has. That showed up in the tag
-        // browser as a permanently broken, unclickable thumbnail (open
-        // its click handler no-ops once the id isn't found in the node's
-        // own images). Clean up any such leftover the moment it's
-        // noticed instead of surfacing it.
+    collectContentHosts().forEach(({ node, host, r, c, hostLabel }) => {
+      if (!host.photoTags) return;
+      const liveIds = new Set(getNodeImageIds(host));
+      Object.keys(host.photoTags).forEach((id) => {
         if (!liveIds.has(id)) {
-          delete node.photoTags[id];
+          delete host.photoTags[id];
           cleaned = true;
           return;
         }
-        (node.photoTags[id] || []).forEach((tag) => {
+        (host.photoTags[id] || []).forEach((tag) => {
           const key = tag.toLowerCase();
           if (!groups.has(key)) groups.set(key, { label: tag, items: [] });
-          groups.get(key).items.push({ nodeId: node.id, id });
+          groups.get(key).items.push({ nodeId: node.id, r, c, id, hostLabel });
         });
       });
     });
     if (cleaned) persist();
-    // Most-tagged first (the tag browser's whole point is surfacing your
-    // biggest photo collections at a glance); ties broken alphabetically
-    // so the order stays stable rather than shuffling on every render.
-    return Array.from(groups.values()).sort((a, b) => b.items.length - a.items.length || a.label.localeCompare(b.label));
+    return Array.from(groups.values()).sort((a, b) =>
+      b.items.length - a.items.length || a.label.localeCompare(b.label));
   }
 
   // Selects a node, expanding any collapsed ancestors so it renders, then
@@ -12358,7 +12413,12 @@
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
-      if (state.selectedId) addNodeUrl(state.selectedId);
+      if (state.selectedCell && state.selectedCell.nodeId === state.selectedId) {
+        const node = findNode(state.selectedCell.nodeId);
+        if (node) addCellUrl(node, state.selectedCell.r, state.selectedCell.c);
+      } else if (state.selectedId) {
+        addNodeUrl(state.selectedId);
+      }
       return;
     }
     if (!state.selectedId) {
@@ -14662,10 +14722,8 @@
     renderVideoModalFolder();
   });
   // Same "📁, dotted when filed" idea as the note/photo viewers — keyed
-  // by videoKey (nodeId|url, same shape collectAllVideos uses), which
-  // only node-level links carry (see the videoKey additions above) —
-  // a cell-scoped link's commentCtx has neither this nor getFavorite,
-  // so the button stays hidden there, same split as the favorite star.
+  // by videoKey (nodeId|url for a node, nodeId|cell:r,c|url for a cell),
+  // the same stable key collectAllVideos uses for both host types.
   function renderVideoModalFolder() {
     if (!videoModalFolderBtn) return;
     const key = videoModalCommentCtx && videoModalCommentCtx.videoKey;
@@ -15776,18 +15834,26 @@
   // present, the modal's prev/next step through every photo sharing that
   // tag across the whole map instead of just this node's own photos —
   // used when opening a photo from the tag browser's "Go to node".
-  function openCellPhotoModal(nodeId, r, c, index) {
+  function openCellPhotoModal(nodeId, r, c, index, tagGroup) {
     const node = findNode(nodeId);
     if (!node || !node.table) return;
     const host = getCellAttach(node, r, c);
     const images = getNodeImages(host);
     if (!images.length) return;
+    const clampedIndex = clamp(index || 0, 0, images.length - 1);
+    let tagIndex = 0;
+    if (tagGroup && tagGroup.items && tagGroup.items.length) {
+      const id = getNodeImageIds(host)[clampedIndex];
+      const found = tagGroup.items.findIndex(it =>
+        it.nodeId === nodeId && (it.r ?? null) === r && (it.c ?? null) === c && it.id === id);
+      tagIndex = found >= 0 ? found : 0;
+    }
     photoModalState = {
       nodeId,
       cellPos: { r, c },
-      index: clamp(index || 0, 0, images.length - 1),
-      tagGroup: null,
-      tagIndex: 0,
+      index: clampedIndex,
+      tagGroup: (tagGroup && tagGroup.items && tagGroup.items.length) ? tagGroup : null,
+      tagIndex,
       ret: takeViewerReturn() || underlyingModalReturn(),
     };
     resetPhotoZoom();
@@ -15803,7 +15869,8 @@
     let tagIndex = 0;
     if (tagGroup && tagGroup.items && tagGroup.items.length) {
       const id = getNodeImageIds(node)[clampedIndex];
-      const found = tagGroup.items.findIndex(it => it.nodeId === nodeId && it.id === id);
+      const found = tagGroup.items.findIndex(it =>
+        it.nodeId === nodeId && it.r == null && it.c == null && it.id === id);
       tagIndex = found >= 0 ? found : 0;
     }
     photoModalState = {
@@ -16086,25 +16153,23 @@
       const n = group.items.length;
       if (!n) return;
       const prevNodeId = photoModalState.nodeId;
-      // Skip over any stale entries (node or photo deleted since the tag
-      // group was collected) rather than getting stuck on them.
       for (let tries = 0; tries < n; tries++) {
         photoModalState.tagIndex = (photoModalState.tagIndex + delta + n) % n;
         const it = group.items[photoModalState.tagIndex];
         const node = findNode(it.nodeId);
         if (!node) continue;
-        const idx = getNodeImageIds(node).indexOf(it.id);
+        const host = (it.r != null && it.c != null && node.table)
+          ? getCellAttach(node, it.r, it.c)
+          : node;
+        const idx = getNodeImageIds(host).indexOf(it.id);
         if (idx < 0) continue;
         photoModalState.nodeId = it.nodeId;
-        photoModalState.cellPos = null;
+        photoModalState.cellPos = it.r != null && it.c != null ? { r: it.r, c: it.c } : null;
         photoModalState.index = idx;
         break;
       }
       resetPhotoZoom();
       renderPhotoModal();
-      // The new photo may live on a different node — keep the canvas
-      // behind the modal in sync so it's already centered if the user
-      // closes the modal.
       if (photoModalState.nodeId !== prevNodeId) focusNodeInCanvas(photoModalState.nodeId);
       return;
     }
@@ -16184,13 +16249,14 @@
     setPhotoTags(node, deletedId, null);
     setPhotoNotes(node, deletedId, null);
     setPhotoComment(node, deletedId, null);
+    setPhotoFavorite(node, deletedId, false);
     setPhotoTimestamp(node, deletedId, null);
     deletePhotoRecord(deletedId);
     // Keep the tag group's item list in sync so prev/next doesn't try to
     // step onto the photo we just deleted.
     if (photoModalState.tagGroup) {
       const gi = photoModalState.tagGroup.items.findIndex(
-        it => it.nodeId === photoModalState.nodeId && it.id === deletedId
+        it => photoGroupItemMatches(it, photoModalState.nodeId, photoModalState.cellPos, deletedId)
       );
       if (gi >= 0) {
         photoModalState.tagGroup.items.splice(gi, 1);
@@ -24106,7 +24172,7 @@
     const node = findNode(nodeId);
     if (!node) return;
 
-    if (r != null && c != null && node.table && node.table.calendar) {
+    if (r != null && c != null && node.table) {
       const host = getCellAttach(node, r, c);
       const notes = getCellNotes(host).slice();
       let index = notes.findIndex(isBrainstormNote);
@@ -25531,7 +25597,9 @@
     tagBrowserGalleryGrid.innerHTML = "";
     group.items.forEach((it) => {
       const node = findNode(it.nodeId);
-      if (!node) return; // stale entry (shouldn't normally happen)
+      if (!node) return;
+      const host = browserItemHost(node, it);
+      if (!host) return;
       const cell = document.createElement("div");
       cell.className = "tagbrowser-gallery-item";
 
@@ -25544,25 +25612,19 @@
 
       const label = document.createElement("span");
       label.className = "tagbrowser-gallery-label";
-      label.textContent = node.text || "Untitled node";
+      label.textContent = it.hostLabel || contentNodeLabel(node);
 
       cell.append(thumb, label);
-      // Opens the very same full photo viewer used from a node (zoom, crop,
-      // add text, tag it, etc.) — with the group attached so its prev/next
-      // step through every photo sharing this tag instead of just this
-      // node's own photos, plus a "Go to node" button to jump to the map.
       cell.addEventListener("click", () => {
-        const idx = getNodeImageIds(node).indexOf(it.id);
+        const idx = getNodeImageIds(host).indexOf(it.id);
         if (idx < 0) return;
-        // Back re-opens this tag's gallery (and, if the tag browser was
-        // reached through the Photos browser, keeps its ← to Photos).
         const fromPhotos = !tagBrowserListBack.classList.contains("hidden");
         const ret = {
           label: fromPhotos ? `Photos › ${group.label}` : `tag “${group.label}”`,
           restore: () => { openTagBrowserModal(fromPhotos); openTagGallery(group); },
         };
         closeTagBrowserModal();
-        withViewerReturn(ret, () => openPhotoModal(it.nodeId, idx, group));
+        withViewerReturn(ret, () => openBrowserPhotoItem(it, idx, group));
       });
       tagBrowserGalleryGrid.appendChild(cell);
     });
@@ -25608,19 +25670,16 @@
   function collectPhotoCommentItems() {
     const items = [];
     let cleaned = false;
-    collectAllNodesFlat().forEach((node) => {
-      if (!node.photoComments) return;
-      const liveIds = new Set(getNodeImageIds(node));
-      Object.keys(node.photoComments).forEach((id) => {
-        // Same leftover cleanup as collectPhotoTagGroups — a photo dragged
-        // onto a different node shouldn't leave a comment behind here
-        // pointing at a photo this node no longer actually holds.
+    collectContentHosts().forEach(({ node, host, r, c, hostLabel }) => {
+      if (!host.photoComments) return;
+      const liveIds = new Set(getNodeImageIds(host));
+      Object.keys(host.photoComments).forEach((id) => {
         if (!liveIds.has(id)) {
-          delete node.photoComments[id];
+          delete host.photoComments[id];
           cleaned = true;
           return;
         }
-        items.push({ nodeId: node.id, id, comment: node.photoComments[id], nodeLabel: node.text || "Untitled node" });
+        items.push({ nodeId: node.id, r, c, id, comment: host.photoComments[id], nodeLabel: hostLabel });
       });
     });
     if (cleaned) persist();
@@ -25656,7 +25715,7 @@
     // prev/next inside the opened photo modal steps through the full set,
     // same as a tag group does — the search box only narrows what's shown
     // here, not what you can browse once you're inside a photo.
-    const group = { label: "Comments", items: commentBrowserItems.map(it => ({ nodeId: it.nodeId, id: it.id })) };
+    const group = { label: "Comments", items: commentBrowserItems.map(it => ({ nodeId: it.nodeId, r: it.r, c: it.c, id: it.id })) };
     filtered.forEach((it) => {
       const node = findNode(it.nodeId);
       if (!node) return; // stale entry (shouldn't normally happen)
@@ -25680,11 +25739,12 @@
 
       cell.append(thumb, label, excerpt);
       cell.addEventListener("click", () => {
-        const idx = getNodeImageIds(node).indexOf(it.id);
+        const host = browserItemHost(node, it);
+        const idx = host ? getNodeImageIds(host).indexOf(it.id) : -1;
         if (idx < 0) return;
         const ret = makeBrowserReturn("Photo comments", commentBrowserGrid, openCommentBrowserModal, null);
         closeCommentBrowserModal();
-        withViewerReturn(ret, () => openPhotoModal(it.nodeId, idx, group));
+        withViewerReturn(ret, () => openBrowserPhotoItem(it, idx, group));
       });
       commentBrowserGrid.appendChild(cell);
     });
@@ -25715,62 +25775,45 @@
   function collectFavoriteItems() {
     const items = [];
     let cleaned = false;
-    collectAllNodesFlat().forEach((node) => {
-      const nodeLabel = node.text || "Untitled node";
-
-      getNodeNotes(node).forEach((n) => {
+    collectContentHosts().forEach(({ node, host, r, c, hostLabel }) => {
+      getNodeNotes(host).forEach((n) => {
         if (!n.favorite) return;
-        items.push({ type: "note", nodeId: node.id, noteId: n.id, nodeLabel, preview: notePreviewText(n), isDRC: isDRCNote(n), isPlan: isPlanNote(n) });
+        items.push({ type: "note", nodeId: node.id, r, c, noteId: n.id, nodeLabel: hostLabel, preview: notePreviewText(n), isDRC: isDRCNote(n), isPlan: isPlanNote(n) });
       });
-
-      // A task's own notes (see getTaskNotes) are a separate list from
-      // the node's own `notes` array above — easy to miss here, which
-      // used to mean a note favorited from inside a task's note editor
-      // silently never showed up in this browser. Labelled with both the
-      // node and the task it lives on so it's clear which checklist item
-      // it came from.
-      getNodeTasks(node).forEach((t) => {
+      getNodeTasks(host).forEach((t) => {
         getTaskNotes(t).forEach((n) => {
           if (!n.favorite) return;
           items.push({
-            type: "note",
-            nodeId: node.id,
-            taskId: t.id,
-            noteId: n.id,
-            nodeLabel: `${nodeLabel} → ${t.text || "Untitled task"}`,
-            preview: notePreviewText(n),
-            isDRC: isDRCNote(n),
-            isPlan: isPlanNoteFor(n, t),
+            type: "note", nodeId: node.id, r, c, taskId: t.id, noteId: n.id,
+            nodeLabel: `${hostLabel} → ${t.text || "Untitled task"}`,
+            preview: notePreviewText(n), isDRC: isDRCNote(n), isPlan: isPlanNoteFor(n, t),
           });
         });
+        getTaskSubtasks(t).forEach((s) => getTaskNotes(s).forEach((n) => {
+          if (!n.favorite) return;
+          items.push({
+            type: "note", nodeId: node.id, r, c, taskId: t.id, subtaskId: s.id, noteId: n.id,
+            nodeLabel: `${hostLabel} → ${t.text || "Untitled task"} → ${s.text || "Untitled subtask"}`,
+            preview: notePreviewText(n), isDRC: isDRCNote(n), isPlan: isPlanNoteFor(n, s),
+          });
+        }));
       });
-
-      if (node.photoFavorites) {
-        const liveIds = new Set(getNodeImageIds(node));
-        Object.keys(node.photoFavorites).forEach((id) => {
-          // Same leftover cleanup as collectPhotoTagGroups/
-          // collectPhotoCommentItems — a photo dragged onto a different
-          // node (which carries its star along, see carryPhotoFavorites)
-          // shouldn't leave a stale star behind here pointing at a photo
-          // this node no longer actually holds.
-          if (!liveIds.has(id)) { delete node.photoFavorites[id]; cleaned = true; return; }
-          if (!node.photoFavorites[id]) return;
-          items.push({ type: "photo", nodeId: node.id, photoId: id, nodeLabel, preview: "Photo" });
+      if (host.photoFavorites) {
+        const liveIds = new Set(getNodeImageIds(host));
+        Object.keys(host.photoFavorites).forEach((id) => {
+          if (!liveIds.has(id)) { delete host.photoFavorites[id]; cleaned = true; return; }
+          if (host.photoFavorites[id]) items.push({ type: "photo", nodeId: node.id, r, c, photoId: id, nodeLabel: hostLabel, preview: "Photo" });
         });
       }
-
-      if (node.linkFavorites) {
-        const liveUrls = new Set(getNodeUrls(node));
-        Object.keys(node.linkFavorites).forEach((url) => {
-          if (!liveUrls.has(url)) { delete node.linkFavorites[url]; cleaned = true; return; }
-          if (!node.linkFavorites[url]) return;
+      if (host.linkFavorites) {
+        const liveUrls = new Set(getNodeUrls(host));
+        Object.keys(host.linkFavorites).forEach((url) => {
+          if (!liveUrls.has(url)) { delete host.linkFavorites[url]; cleaned = true; return; }
+          if (!host.linkFavorites[url]) return;
           const isVideo = !!youtubeVideoId(url);
           items.push({
-            type: isVideo ? "video" : "link",
-            nodeId: node.id,
-            url,
-            nodeLabel,
-            preview: getLinkTitle(node, url) || url,
+            type: isVideo ? "video" : "link", nodeId: node.id, r, c, url,
+            nodeLabel: hostLabel, preview: getLinkTitle(host, url) || url,
           });
         });
       }
@@ -25826,11 +25869,18 @@
   // collectFavoriteItems/collectAllNotes) that task's own separate notes
   // list instead.
   function resolveNoteListForItem(node, item) {
+    const host = browserItemHost(node, item);
+    if (!host) return [];
     if (item.taskId) {
-      const t = getNodeTasks(node).find(x => x.id === item.taskId);
-      return t ? getTaskNotes(t) : [];
+      const t = getNodeTasks(host).find(x => x.id === item.taskId);
+      if (!t) return [];
+      if (item.subtaskId) {
+        const s = getTaskSubtasks(t).find(x => x.id === item.subtaskId);
+        return s ? getTaskNotes(s) : [];
+      }
+      return getTaskNotes(t);
     }
-    return getNodeNotes(node);
+    return getNodeNotes(host);
   }
 
   // Unstars one item directly from the list (the row's own ☆) without
@@ -25840,14 +25890,16 @@
   function unfavoriteItem(item) {
     const node = findNode(item.nodeId);
     if (!node) return;
+    const host = browserItemHost(node, item);
+    if (!host) return;
     pushUndo();
     if (item.type === "note") {
       const n = resolveNoteListForItem(node, item).find(x => x.id === item.noteId);
       if (n) n.favorite = false;
     } else if (item.type === "photo") {
-      setPhotoFavorite(node, item.photoId, false);
+      setPhotoFavorite(host, item.photoId, false);
     } else {
-      setLinkFavorite(node, item.url, false);
+      setLinkFavorite(host, item.url, false);
     }
     persist();
     renderAll();
@@ -25856,38 +25908,37 @@
   function jumpToFavoriteItem(item) {
     const node = findNode(item.nodeId);
     if (!node) return;
+    const host = browserItemHost(node, item);
+    if (!host) return;
     const ret = makeBrowserReturn("Favorites", favoritesBrowserList, openFavoritesBrowserModal, null);
     closeFavoritesBrowserModal();
     withViewerReturn(ret, () => {
-    if (item.type === "note") {
-      const idx = resolveNoteListForItem(node, item).findIndex(n => n.id === item.noteId);
-      openNoteModal(item.nodeId, idx >= 0 ? idx : undefined, null, item.taskId || null);
-    } else if (item.type === "photo") {
-      const idx = getNodeImageIds(node).indexOf(item.photoId);
-      if (idx < 0) return;
-      // Every favorited photo (not just the filtered/visible ones), so
-      // prev/next inside the opened photo modal steps through the whole
-      // starred set — same idea as the tag browser's group.
-      const group = {
-        label: "Favorites",
-        items: favoritesBrowserItems.filter(it => it.type === "photo").map(it => ({ nodeId: it.nodeId, id: it.photoId })),
-      };
-      openPhotoModal(item.nodeId, idx, group);
-    } else {
-      // Plain link or YouTube video — same click behavior as the link's
-      // own icon on the canvas (see openLinkSmart): a video opens in the
-      // in-app player, anything else opens its own popup window.
-      openLinkSmart(item.url, {
-        videoKey: `${item.nodeId}|${item.url}`,
-        get: () => getLinkComment(findNode(item.nodeId) || node, item.url),
-        set: (v) => setLinkComment(findNode(item.nodeId) || node, item.url, v),
-        getFavorite: () => getLinkFavorite(findNode(item.nodeId) || node, item.url),
-        setFavorite: (v) => setLinkFavorite(findNode(item.nodeId) || node, item.url, v),
-        getPhotos: () => getLinkPhotos(findNode(item.nodeId) || node, item.url),
-        addPhoto: (dataUrl) => addLinkPhoto(findNode(item.nodeId) || node, item.url, dataUrl),
-        removePhoto: (id) => removeLinkPhoto(findNode(item.nodeId) || node, item.url, id),
-      });
-    }
+      if (item.type === "note") {
+        const idx = resolveNoteListForItem(node, item).findIndex(n => n.id === item.noteId);
+        openNoteModal(item.nodeId, idx >= 0 ? idx : undefined, null, item.taskId || null,
+          browserItemCellPos(item), false, item.subtaskId || null);
+      } else if (item.type === "photo") {
+        const idx = getNodeImageIds(host).indexOf(item.photoId);
+        if (idx < 0) return;
+        const group = {
+          label: "Favorites",
+          items: favoritesBrowserItems.filter(it => it.type === "photo")
+            .map(it => ({ nodeId: it.nodeId, r: it.r, c: it.c, id: it.photoId })),
+        };
+        openBrowserPhotoItem(item, idx, group);
+      } else {
+        const liveHost = () => browserItemHost(findNode(item.nodeId) || node, item);
+        openLinkSmart(item.url, {
+          videoKey: videoItemKey(item.nodeId, item.r, item.c, item.url),
+          get: () => getLinkComment(liveHost(), item.url),
+          set: (v) => setLinkComment(liveHost(), item.url, v),
+          getFavorite: () => getLinkFavorite(liveHost(), item.url),
+          setFavorite: (v) => setLinkFavorite(liveHost(), item.url, v),
+          getPhotos: () => getLinkPhotos(liveHost(), item.url),
+          addPhoto: (dataUrl) => addLinkPhoto(liveHost(), item.url, dataUrl),
+          removePhoto: (id) => removeLinkPhoto(liveHost(), item.url, id),
+        });
+      }
     });
   }
 
@@ -26350,44 +26401,26 @@
 
   function collectAllNotes() {
     const items = [];
-    collectAllNodesFlat().forEach((node) => {
-      const nodeLabel = node.text || "Untitled node";
-      getNodeNotes(node).forEach((n) => {
-        items.push({
-          nodeId: node.id,
-          noteId: n.id,
-          nodeLabel,
-          taskLabel: "",
-          title: (n.title || "").trim(),
-          preview: notePreviewText(n),
-          favorite: !!n.favorite,
-          ts: n.updatedAt || n.createdAt || 0,
-          isDRC: isDRCNote(n),
-          isPlan: isPlanNote(n),
-        });
-      });
-      // A task's own notes (see getTaskNotes) live in a separate list
-      // from the node's own `notes` array above — missing this meant a
-      // note written (and favorited) from inside a task's note editor
-      // never showed up here. taskLabel is kept as its own field (rather
-      // than folded into nodeLabel) so noteBrowserRowLabel below can
-      // build "node → task → title", skipping any segment that's empty.
-      getNodeTasks(node).forEach((t) => {
-        getTaskNotes(t).forEach((n) => {
-          items.push({
-            nodeId: node.id,
-            taskId: t.id,
-            noteId: n.id,
-            nodeLabel,
-            taskLabel: t.text || "Untitled task",
-            title: (n.title || "").trim(),
-            preview: notePreviewText(n),
-            favorite: !!n.favorite,
-            ts: n.updatedAt || n.createdAt || 0,
-            isDRC: isDRCNote(n),
-            isPlan: isPlanNoteFor(n, t),
-          });
-        });
+    collectContentHosts().forEach(({ node, host, r, c, hostLabel }) => {
+      getNodeNotes(host).forEach((n) => items.push({
+        nodeId: node.id, r, c, noteId: n.id, nodeLabel: hostLabel, taskLabel: "",
+        title: (n.title || "").trim(), preview: notePreviewText(n), favorite: !!n.favorite,
+        ts: n.updatedAt || n.createdAt || 0, isDRC: isDRCNote(n), isPlan: isPlanNote(n),
+      }));
+      getNodeTasks(host).forEach((t) => {
+        getTaskNotes(t).forEach((n) => items.push({
+          nodeId: node.id, r, c, taskId: t.id, noteId: n.id, nodeLabel: hostLabel,
+          taskLabel: t.text || "Untitled task", title: (n.title || "").trim(),
+          preview: notePreviewText(n), favorite: !!n.favorite, ts: n.updatedAt || n.createdAt || 0,
+          isDRC: isDRCNote(n), isPlan: isPlanNoteFor(n, t),
+        }));
+        getTaskSubtasks(t).forEach((s) => getTaskNotes(s).forEach((n) => items.push({
+          nodeId: node.id, r, c, taskId: t.id, subtaskId: s.id, noteId: n.id,
+          nodeLabel: hostLabel,
+          taskLabel: `${t.text || "Untitled task"} → ${s.text || "Untitled subtask"}`,
+          title: (n.title || "").trim(), preview: notePreviewText(n), favorite: !!n.favorite,
+          ts: n.updatedAt || n.createdAt || 0, isDRC: isDRCNote(n), isPlan: isPlanNoteFor(n, s),
+        })));
       });
     });
     return items;
@@ -26437,7 +26470,8 @@
     const idx = resolveNoteListForItem(node, it).findIndex(n => n.id === it.noteId);
     const ret = makeBrowserReturn("Notes", notesBrowserList, openNotesBrowserModal, notesFolderMgr);
     closeNotesBrowserModal();
-    withViewerReturn(ret, () => openNoteModal(it.nodeId, idx >= 0 ? idx : undefined, null, it.taskId || null));
+    withViewerReturn(ret, () => openNoteModal(it.nodeId, idx >= 0 ? idx : undefined, null,
+      it.taskId || null, browserItemCellPos(it), false, it.subtaskId || null));
   }
 
   // Same direct toggle as unfavoriteItem in the Favorites browser above —
@@ -26607,26 +26641,15 @@
 
   function collectAllPhotos() {
     const items = [];
-    // Photos attached before photoTimestamps existed have no recorded
-    // date — backfilled with "now" the first time they're listed here
-    // (and persisted once, below), same lazy-backfill idea as a note's
-    // createdAt (see captureActiveNote) rather than leaving them
-    // permanently dateless.
     let backfilled = false;
-    collectAllNodesFlat().forEach((node) => {
-      const nodeLabel = node.text || "Untitled node";
-      getNodeImageIds(node).forEach((id) => {
-        let ts = getPhotoTimestamp(node, id);
-        if (!ts) { ts = Date.now(); setPhotoTimestamp(node, id, ts); backfilled = true; }
-        const tag = getPhotoTags(node, id)[0] || "";
+    collectContentHosts().forEach(({ node, host, r, c, hostLabel }) => {
+      getNodeImageIds(host).forEach((id) => {
+        let ts = getPhotoTimestamp(host, id);
+        if (!ts) { ts = Date.now(); setPhotoTimestamp(host, id, ts); backfilled = true; }
+        const tag = getPhotoTags(host, id)[0] || "";
         items.push({
-          nodeId: node.id,
-          photoId: id,
-          nodeLabel,
-          tag,
-          alphaKey: tag || nodeLabel,
-          favorite: getPhotoFavorite(node, id),
-          ts,
+          nodeId: node.id, r, c, photoId: id, nodeLabel: hostLabel,
+          tag, alphaKey: tag || hostLabel, favorite: getPhotoFavorite(host, id), ts,
         });
       });
     });
@@ -26660,19 +26683,16 @@
   function jumpToPhotoBrowserItem(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
-    const idx = getNodeImageIds(node).indexOf(it.photoId);
+    const host = browserItemHost(node, it);
+    const idx = host ? getNodeImageIds(host).indexOf(it.photoId) : -1;
     if (idx < 0) return;
     const ret = makeBrowserReturn("Photos", photosBrowserList, openPhotosBrowserModal, photosFolderMgr);
     closePhotosBrowserModal();
-    // Every photo across the map (not just the filtered/visible ones), so
-    // prev/next inside the opened photo modal steps through the whole set
-    // the browser knows about — same idea as the Favorites browser's
-    // photo group.
     const group = {
       label: "Photos",
-      items: photosBrowserItems.map(x => ({ nodeId: x.nodeId, id: x.photoId })),
+      items: photosBrowserItems.map(x => ({ nodeId: x.nodeId, r: x.r, c: x.c, id: x.photoId })),
     };
-    withViewerReturn(ret, () => openPhotoModal(it.nodeId, idx, group));
+    withViewerReturn(ret, () => openBrowserPhotoItem(it, idx, group));
   }
 
   // Same direct toggle as unfavoriteItem in the Favorites browser above —
@@ -26680,9 +26700,11 @@
   function togglePhotoBrowserFavorite(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
+    const host = browserItemHost(node, it);
+    if (!host) return;
     pushUndo();
-    setPhotoFavorite(node, it.photoId, !getPhotoFavorite(node, it.photoId));
-    it.favorite = getPhotoFavorite(node, it.photoId);
+    setPhotoFavorite(host, it.photoId, !getPhotoFavorite(host, it.photoId));
+    it.favorite = getPhotoFavorite(host, it.photoId);
     persist();
   }
 
@@ -26815,24 +26837,16 @@
 
   function collectAllVideos() {
     const items = [];
-    // Same lazy-backfill idea as collectAllPhotos above — a link added
-    // before linkTimestamps existed gets stamped with "now" the first
-    // time it's listed here, rather than staying permanently dateless.
     let backfilled = false;
-    collectAllNodesFlat().forEach((node) => {
-      const nodeLabel = node.text || "Untitled node";
-      getNodeUrls(node).forEach((url) => {
-        if (!youtubeVideoId(url)) return; // plain links aren't "videos"
-        let ts = getLinkTimestamp(node, url);
-        if (!ts) { ts = Date.now(); setLinkTimestamp(node, url, ts); backfilled = true; }
+    collectContentHosts().forEach(({ node, host, r, c, hostLabel }) => {
+      getNodeUrls(host).forEach((url) => {
+        if (!youtubeVideoId(url)) return;
+        let ts = getLinkTimestamp(host, url);
+        if (!ts) { ts = Date.now(); setLinkTimestamp(host, url, ts); backfilled = true; }
         items.push({
-          nodeId: node.id,
-          url,
-          id: `${node.id}|${url}`,
-          nodeLabel,
-          title: getLinkTitle(node, url) || url,
-          favorite: getLinkFavorite(node, url),
-          ts,
+          nodeId: node.id, r, c, url, id: videoItemKey(node.id, r, c, url),
+          nodeLabel: hostLabel, title: getLinkTitle(host, url) || url,
+          favorite: getLinkFavorite(host, url), ts,
         });
       });
     });
@@ -26870,26 +26884,31 @@
   function jumpToVideoBrowserItem(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
+    const host = browserItemHost(node, it);
+    if (!host) return;
     const ret = makeBrowserReturn("Videos", videosBrowserList, openVideosBrowserModal, videosFolderMgr);
     closeVideosBrowserModal();
+    const liveHost = () => browserItemHost(findNode(it.nodeId) || node, it);
     withViewerReturn(ret, () => openLinkSmart(it.url, {
-      videoKey: `${it.nodeId}|${it.url}`,
-      get: () => getLinkComment(findNode(it.nodeId) || node, it.url),
-      set: (v) => setLinkComment(findNode(it.nodeId) || node, it.url, v),
-      getFavorite: () => getLinkFavorite(findNode(it.nodeId) || node, it.url),
-      setFavorite: (v) => setLinkFavorite(findNode(it.nodeId) || node, it.url, v),
-      getPhotos: () => getLinkPhotos(findNode(it.nodeId) || node, it.url),
-      addPhoto: (dataUrl) => addLinkPhoto(findNode(it.nodeId) || node, it.url, dataUrl),
-      removePhoto: (id) => removeLinkPhoto(findNode(it.nodeId) || node, it.url, id),
+      videoKey: it.id,
+      get: () => getLinkComment(liveHost(), it.url),
+      set: (v) => setLinkComment(liveHost(), it.url, v),
+      getFavorite: () => getLinkFavorite(liveHost(), it.url),
+      setFavorite: (v) => setLinkFavorite(liveHost(), it.url, v),
+      getPhotos: () => getLinkPhotos(liveHost(), it.url),
+      addPhoto: (dataUrl) => addLinkPhoto(liveHost(), it.url, dataUrl),
+      removePhoto: (id) => removeLinkPhoto(liveHost(), it.url, id),
     }));
   }
 
   function toggleVideoBrowserFavorite(it) {
     const node = findNode(it.nodeId);
     if (!node) return;
+    const host = browserItemHost(node, it);
+    if (!host) return;
     pushUndo();
-    setLinkFavorite(node, it.url, !getLinkFavorite(node, it.url));
-    it.favorite = getLinkFavorite(node, it.url);
+    setLinkFavorite(host, it.url, !getLinkFavorite(host, it.url));
+    it.favorite = getLinkFavorite(host, it.url);
     persist();
   }
 
