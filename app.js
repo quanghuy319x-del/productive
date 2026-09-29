@@ -17958,6 +17958,21 @@
   const noteNavFolder = $("#note-nav-folder");
   const noteNavInfo = $("#note-nav-info");
   const noteNavDelete = $("#note-nav-delete");
+  const noteNavRow = noteModal.querySelector(".note-nav-row");
+  const noteNavGap = noteNavRow && noteNavRow.querySelector(".note-nav-gap");
+
+  // v446: phone Note/DRC top row stays minimal until explicitly opened.
+  // Back + Close are always visible; tapping the empty middle of the row
+  // reveals the rest, and tapping the editor/title collapses them again.
+  function setPhoneNoteNavExpanded(expanded) {
+    if (!noteCard) return;
+    const phone = window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches;
+    if (!phone) {
+      noteCard.classList.remove("phone-note-nav-collapsed");
+      return;
+    }
+    noteCard.classList.toggle("phone-note-nav-collapsed", !expanded);
+  }
 
   // v444: immediate crash/F5 safety for Note/DRC typing. The canonical map
   // and Drive save remain debounced for phone performance, but every editor
@@ -18642,6 +18657,7 @@
     // default width. Reset back to the normal width for every other note
     // type so a previous photo-note session doesn't leak into them.
     noteCard.style.width = noteEditingPhotoId ? "1520px" : "";
+    setPhoneNoteNavExpanded(false);
     zoomModalOpen(noteModal);
     const current = noteWorkingList[noteActiveIndex];
     const isBlank = !(current.title && current.title.trim()) && !(current.html && current.html.trim());
@@ -21131,6 +21147,20 @@
   }
   noteNavDelete.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavDelete.addEventListener("click", deleteActiveNote);
+
+  if (noteNavGap) {
+    noteNavGap.addEventListener("pointerup", (e) => {
+      if (!window.matchMedia("(max-width: 640px) and (any-pointer: coarse)").matches) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPhoneNoteNavExpanded(noteCard.classList.contains("phone-note-nav-collapsed"));
+    });
+  }
+  [noteTitleInput, noteTextarea].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("pointerdown", () => setPhoneNoteNavExpanded(false));
+  });
+
   $("#note-nav-close").addEventListener("click", closeNoteModal);
   noteNavBack.addEventListener("mousedown", (e) => e.preventDefault());
   noteNavBack.addEventListener("click", () => {
