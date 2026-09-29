@@ -1591,16 +1591,11 @@
     scheduleRefresh() {
       if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = null; }
       if (!this.signedIn || this.needsReauth || !this.tokenExpiresAt) return;
-      // Renew a minute early. prompt:"none" does not open a popup.
+      // A minute before expiry, stop cloud traffic and ask for an explicit
+      // reconnect instead of launching any Google auth flow in the background.
       const delay = Math.max(1000, this.tokenExpiresAt - Date.now() - 60000);
-      this.refreshTimer = setTimeout(async () => {
-        try {
-          await this.requestToken(true);
-          this.scheduleRefresh();
-          updateDriveUI();
-        } catch (e) {
-          this.requireReconnect();
-        }
+      this.refreshTimer = setTimeout(() => {
+        this.requireReconnect();
       }, delay);
     },
 
@@ -1646,26 +1641,16 @@
       let was = false;
       try { was = await DB.getHandle(DRIVE_SIGNED_IN_KEY); } catch (e) {}
       if (!was) return;
-      // This browser connected Drive before. Try a no-popup renewal first;
-      // only ask for a reconnect click if Google says silent auth is unavailable.
+      // This browser connected Drive before, but v389 deliberately does not
+      // start GIS during startup. Keep the cached/local map visible and wait
+      // for the user to tap Reconnect Google.
+      startupLocalPreview = true;
       this.status = "connecting";
-      updateDriveUI("Reconnecting Google…");
-      try {
-        await this.requestToken(true);
-        await this.syncFromDrive();
-        this.status = "ok";
-        await this.pushLocalNewer({ force: true, includeNew: true });
-        this.setSyncProgress("", 0, 0);
-        renderSidebar();
-        if (!state.editingId && !unsavedEdits) renderAll();
-        updateDriveUI();
-        startDriveSyncPolling();
-        this.scheduleRefresh();
-        syncTaskTemplatesWithDrive();
-      } catch (e) {
-        console.warn("Silent Google reconnect unavailable; user click required", e);
-        this.requireReconnect();
-      }
+      renderSidebar();
+      if (!state.editingId && !unsavedEdits) renderAll();
+      this.status = "reauth";
+      updateDriveUI("Reconnect Google");
+      stopDriveSyncPolling();
     },
 
     // NOTE: deliberately no longer reused across calls — see requestToken()
@@ -1675,9 +1660,14 @@
     },
 
     requestToken(silent) {
-      // Silent renewal is intentionally allowed for a browser that already
-      // connected Drive. GIS uses prompt:"none", so it never opens a popup.
-      // If Google cannot renew silently, callers fall back to reauth UI.
+      // v389: Never invoke Google Identity Services from a background/silent
+      // path. On Android/Edge, prompt:"none" can still hand control to an
+      // accounts.google.com auth surface and leave the app trapped there.
+      // Background callers must fall back to local data + Reconnect Google;
+      // only an explicit user click is allowed to start OAuth.
+      if (silent) {
+        return Promise.reject(new Error("Google reconnect requires a user click."));
+      }
 
       // Google Identity Services simply does not work when the page is
       // opened as a local file (origin "null" / file://) — there is no
@@ -1782,17 +1772,13 @@
       return promise;
     },
 
-    // Reuse a valid token; when it expires, first try GIS silent renewal.
-    // This avoids hourly reconnect prompts on phones when the Google session
-    // is still available. No popup is opened by this path.
+    // Reuse a valid token. Once it expires, never start OAuth from a
+    // background Drive request; leave the local map available and wait for
+    // an explicit Reconnect Google tap.
     async getToken() {
       if (this.accessToken && Date.now() < this.tokenExpiresAt - 5000) return this.accessToken;
-      try {
-        return await this.requestToken(true);
-      } catch (e) {
-        this.requireReconnect();
-        throw new Error("Google session expired — tap Reconnect Google.");
-      }
+      this.requireReconnect();
+      throw new Error("Google session expired — tap Reconnect Google.");
     },
 
     // Thin wrapper around fetch that attaches the bearer token and retries
@@ -1819,21 +1805,8 @@
       } finally {
         clearTimeout(timer);
       }
-      if (res.status === 401 && !_retried) {
-        // The token may simply have expired between getToken() and fetch().
-        // Forget only the token, silently renew it, then retry once.
-        this.accessToken = null;
-        this.tokenExpiresAt = 0;
-        clearCachedDriveToken();
-        try {
-          await this.requestToken(true);
-          return this.api(url, opts, true);
-        } catch (e) {
-          this.requireReconnect();
-          throw new Error("Google session expired — tap Reconnect Google.");
-        }
-      }
       if (res.status === 401) {
+        // v389: A 401 must never recurse into GIS. Re-auth is user initiated.
         this.requireReconnect();
         throw new Error("Google session expired — tap Reconnect Google.");
       }
