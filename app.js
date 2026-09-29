@@ -10034,9 +10034,10 @@
     const colgroup = document.createElement("colgroup");
     colWidths.forEach((w) => {
       const col = document.createElement("col");
-      // Calendar width must be visibly 2x even when compute/layout cached
-      // the older column width. Apply the multiplier at the actual <col>.
-      const renderedW = node.table.calendar ? Math.max(w * 2, 120) : Math.max(w * 2, 120);
+      // v399: phase2-layout now computes the real 2× table width and
+      // includes calendar spacing/padding in node._w. Render that exact width
+      // here so the grid stays inside the node border.
+      const renderedW = Math.max(w, 88);
       col.style.width = renderedW + "px";
       col.style.minWidth = renderedW + "px";
       colgroup.appendChild(col);
