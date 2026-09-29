@@ -6501,6 +6501,34 @@
       .toLocaleLowerCase("vi");
   }
 
+  // v460: relaxed whole-line comparison. After Vietnamese accents are
+  // normalized away, a line passes when similarity is strictly above 80%.
+  // Levenshtein distance allows ordinary substitutions, missing letters and
+  // extra letters without making the exercise overly strict.
+  function affirmationSimilarity(a, b) {
+    a = normalizeAffirmationText(a);
+    b = normalizeAffirmationText(b);
+    const maxLen = Math.max(a.length, b.length);
+    if (!maxLen) return 1;
+    if (!a.length || !b.length) return 0;
+    let prev = new Array(b.length + 1);
+    let curr = new Array(b.length + 1);
+    for (let j = 0; j <= b.length; j++) prev[j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      curr[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(
+          prev[j] + 1,
+          curr[j - 1] + 1,
+          prev[j - 1] + cost
+        );
+      }
+      [prev, curr] = [curr, prev];
+    }
+    return Math.max(0, 1 - prev[b.length] / maxLen);
+  }
+
   // The "Brainstorm" note-typing score task — reached from the same
   // right-click menu as the Affirmation game and Timer, but simpler than
   // either: no target quote, no countdown, just a plain free-typed
@@ -24405,21 +24433,17 @@
     const target = a.target || AFFIRMATION_TARGET;
     const count = Math.min(a.count || 0, target);
     const quote = a.quote || "";
-    // Use the exact same accent-insensitive normalization for live progress
-    // as for Enter/submission, so a different Vietnamese tone never flashes
-    // the progress bar red while the user is typing.
-    const chars = Array.from(normalizeAffirmationText(quote));
-    const typed = Array.from(normalizeAffirmationText(typedRaw).replace(/^\s+/, ""));
-    let correctCount = 0;
-    let hitMismatch = false;
-    for (let i = 0; i < typed.length && !hitMismatch; i++) {
-      if (i < chars.length && typed[i] === chars[i]) {
-        correctCount++;
-      } else {
-        hitMismatch = true;
-      }
-    }
-    const lineFraction = chars.length ? correctCount / chars.length : 0;
+    // v460: live progress is relaxed too. While the line is still being
+    // typed, fill by typed length rather than marking the first typo red.
+    // Once the typed line reaches the expected length, only <=80% similarity
+    // is considered wrong.
+    const expected = normalizeAffirmationText(quote);
+    const typed = normalizeAffirmationText(typedRaw).replace(/^\s+/, "");
+    const similarity = affirmationSimilarity(typed, expected);
+    const lineFraction = expected.length
+      ? Math.min(1, typed.length / expected.length) * Math.max(0.8, similarity)
+      : 0;
+    const hitMismatch = typed.length >= expected.length && similarity <= 0.8;
     const combined = count >= target ? 1 : (count + lineFraction) / target;
     affirmationProgressBar.style.width = Math.round(combined * 100) + "%";
     affirmationProgressBar.classList.toggle("done", count >= target);
@@ -24436,7 +24460,7 @@
     const typed = normalizeAffirmationText(affirmationInput.value);
     if (!typed) return;
     const expected = normalizeAffirmationText(a.quote);
-    if (typed === expected) {
+    if (affirmationSimilarity(typed, expected) > 0.8) {
       pushUndo();
       a.count = (a.count || 0) + 1;
       const justWon = a.count >= target;
