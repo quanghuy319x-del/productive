@@ -10421,7 +10421,7 @@
     ensureTableAttach(node);
     const cells = node.table.cells;
     const cols = Math.max(1, ...cells.map(r => r.length));
-    const colWidths = node._tableColWidths || new Array(cols).fill(node.table.calendar ? TABLE_CELL_MIN_W * 2 : TABLE_CELL_MIN_W);
+    const colWidths = node._tableColWidths || new Array(cols).fill(node.table.calendar ? 70 : TABLE_CELL_MIN_W);
     const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
 
     const table = document.createElement("table");
@@ -10438,7 +10438,7 @@
       // v399: phase2-layout now computes the real 2× table width and
       // includes calendar spacing/padding in node._w. Render that exact width
       // here so the grid stays inside the node border.
-      const renderedW = Math.max(w, 88);
+      const renderedW = Math.max(w, node.table.calendar ? 70 : 88);
       col.style.width = renderedW + "px";
       col.style.minWidth = renderedW + "px";
       colgroup.appendChild(col);

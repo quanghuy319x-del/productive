@@ -923,7 +923,7 @@ body.signed-out #title-input{ visibility:hidden; }
 }
 .node-table-calendar .calendar-day-cell .node-table-cell-text{
   box-sizing: border-box;
-  min-height: 38px;
+  min-height: 54px;
   padding: 4px 6px;
   display: flex;
   align-items: center;

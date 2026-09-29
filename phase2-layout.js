@@ -616,21 +616,22 @@
     // the visual table becomes wider than node._w and spills through the
     // node border.
     const widthScale = 2;
-    const colWidths = new Array(cols).fill(TABLE_CELL_MIN_W * widthScale);
+    const calendarCellW = 70;
+    const colWidths = new Array(cols).fill(node.table.calendar ? calendarCellW : TABLE_CELL_MIN_W * widthScale);
     const rowHeights = new Array(rows).fill(TABLE_CELL_MIN_H + TABLE_CELL_ICON_STRIP_H);
     if (node.table.calendar) {
       if (rows > 0) rowHeights[0] = Math.max(rowHeights[0], 38);
       if (rows > 1) rowHeights[1] = Math.max(rowHeights[1], 22);
-      for (let r = 2; r < rows; r++) rowHeights[r] = Math.max(rowHeights[r], 40);
+      for (let r = 2; r < rows; r++) rowHeights[r] = Math.max(rowHeights[r], 54);
     }
-    const maxTextW = TABLE_CELL_MAX_W - TABLE_CELL_PAD_X;
+    const maxTextW = node.table.calendar ? calendarCellW - TABLE_CELL_PAD_X : TABLE_CELL_MAX_W - TABLE_CELL_PAD_X;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const cellText = (cells[r] && cells[r][c]) || "";
         const lines = wrapText(cellText, maxTextW);
         const widest = Math.max(0, ...lines.map(l => measureW(l)));
         const baseW = clamp(Math.ceil(widest) + TABLE_CELL_PAD_X, TABLE_CELL_MIN_W, TABLE_CELL_MAX_W);
-        const w = baseW * widthScale;
+        const w = node.table.calendar ? calendarCellW : baseW * widthScale;
         const h = Math.max(TABLE_CELL_MIN_H, lines.length * TABLE_CELL_LINE_H + TABLE_CELL_PAD_Y) + TABLE_CELL_ICON_STRIP_H;
         colWidths[c] = Math.max(colWidths[c], w);
         rowHeights[r] = Math.max(rowHeights[r], h);
@@ -648,7 +649,7 @@
           const iconWidth = calendarCellIconWidth(a);
           if (!iconWidth) continue;
 
-          const usableW = Math.max(24, (colWidths[c] || TABLE_CELL_MIN_W * widthScale) - 8);
+          const usableW = Math.max(24, (colWidths[c] || (node.table.calendar ? calendarCellW : TABLE_CELL_MIN_W * widthScale)) - 8);
           const iconRows = Math.max(1, Math.ceil(iconWidth / usableW));
           const iconStripH = iconRows * 12 + Math.max(0, iconRows - 1) + 2;
           const cellText = (cells[r] && cells[r][c]) || "";
