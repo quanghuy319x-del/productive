@@ -11479,6 +11479,52 @@
     return n;
   }
 
+  function addCalendarChild(parentId) {
+    if (!requireSignIn()) return null;
+    const raw = prompt("Calendar month (MM/YY)", "");
+    if (raw === null) return null;
+    const m = raw.trim().match(/^(0?[1-9]|1[0-2])\/(\d{2}|\d{4})$/);
+    if (!m) { alert("Enter month as MM/YY, for example 09/26."); return null; }
+    const month = Number(m[1]);
+    let year = Number(m[2]);
+    if (year < 100) year += 2000;
+
+    const parent = findNode(parentId);
+    if (!parent) return null;
+    pushUndo();
+    const n = newNode("");
+    if (typeof parent.childrenGap === "number" && parent.childrenGap >= 0) {
+      n.xGap = parent.childrenGap;
+      n.childrenGap = parent.childrenGap;
+    }
+    n.fontColor = parent.fontColor || null;
+
+    // Reuse the normal table-child format: title row + weekday header +
+    // six calendar weeks. Empty leading/trailing cells remain editable.
+    const cells = [
+      [String(month).padStart(2, "0") + "/" + String(year).slice(-2), "", "", "", "", "", ""],
+      ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    ];
+    const first = new Date(year, month - 1, 1);
+    const days = new Date(year, month, 0).getDate();
+    const start = (first.getDay() + 6) % 7; // Monday = 0
+    let day = 1;
+    for (let week = 0; week < 6; week++) {
+      const row = new Array(7).fill("");
+      for (let col = 0; col < 7; col++) {
+        const slot = week * 7 + col;
+        if (slot >= start && day <= days) row[col] = String(day++);
+      }
+      cells.push(row);
+    }
+    // Drop an entirely empty sixth week when the month fits in five.
+    if (cells[cells.length - 1].every(v => !v)) cells.pop();
+    n.table = { cells, gridStyle: "grid" };
+    parent.children.push(n);
+    parent.collapsed = false;
+    return n;
+  }
+
   function tableAddRow(node) {
     const cols = (node.table.cells[0] || [""]).length;
     node.table.cells.push(new Array(cols).fill(""));
@@ -12010,6 +12056,10 @@
     const contentItems = [];
     contentItems.push(["▦ Add table child", () => {
       const n = addTableChild(node.id);
+      if (n) { state.selectedId = n.id; renderAll(); persist(); }
+    }]);
+    contentItems.push(["📅 Add calendar child", () => {
+      const n = addCalendarChild(node.id);
       if (n) { state.selectedId = n.id; renderAll(); persist(); }
     }]);
     if (nodeIsTable(node)) {
