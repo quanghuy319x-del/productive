@@ -10533,9 +10533,13 @@
     const rowHeights = node._tableRowHeights || cells.map(() => TABLE_CELL_MIN_H);
 
     const table = document.createElement("table");
+    const calendarStyles = ["classic", "transparent", "glass", "paper"];
+    const calendarStyle = calendarStyles.includes(node.table.calendarStyle)
+      ? node.table.calendarStyle
+      : "classic";
     table.className = "node-table"
       + (node.table.gridStyle === "outline" ? " node-table-outline" : "")
-      + (node.table.calendar ? " node-table-calendar" : "");
+      + (node.table.calendar ? ` node-table-calendar calendar-style-${calendarStyle}` : "");
     table.addEventListener("mousedown", (e) => e.stopPropagation());
     table.addEventListener("pointerdown", (e) => e.stopPropagation());
     table.addEventListener("dblclick", (e) => e.stopPropagation());
@@ -12191,6 +12195,7 @@
       cells,
       gridStyle: "grid",
       calendar: true,
+      calendarStyle: "classic",
       calendarMonth: month,
       calendarYear: year,
       calendarStart: start,
@@ -12765,6 +12770,29 @@
         renderAll();
         persist();
       }]);
+      if (node.table.calendar) {
+        const calendarStyleOptions = [
+          ["classic", "Classic"],
+          ["transparent", "Transparent"],
+          ["glass", "Glass"],
+          ["paper", "Paper"]
+        ];
+        const currentCalendarStyle = calendarStyleOptions.some(([key]) => key === node.table.calendarStyle)
+          ? node.table.calendarStyle
+          : "classic";
+        calendarStyleOptions.forEach(([key, label]) => {
+          contentItems.push([
+            (currentCalendarStyle === key ? "✓ " : "○ ") + "Calendar style: " + label,
+            () => {
+              if ((node.table.calendarStyle || "classic") === key) return;
+              pushUndo();
+              node.table.calendarStyle = key;
+              renderAll();
+              persist();
+            }
+          ]);
+        });
+      }
     }
     contentItems.push([nodeHasNotes(node) ? `📝 Notes (${getNodeNotes(node).length})…` : "📝 Add note…", () => openNoteModal(node.id)]);
     contentItems.push(["🖼️ Add photo…", () => openNodePhotoPicker(node.id)]);

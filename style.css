@@ -945,6 +945,106 @@ body.signed-out #title-input{ visibility:hidden; }
   box-shadow: inset 0 0 0 2px #2f6df6;
   background: rgba(255,255,255,0.48);
 }
+/* v426: per-calendar visual styles. "Classic" is the existing calendar
+   above; these three variants only change paint, never geometry/data. */
+
+/* Transparent — no card behind the month and almost no fill in day cells,
+   so the canvas/theme shows through. Explicit per-cell fillColor still wins
+   because it is applied inline by renderTableGrid. */
+.node-table-calendar.calendar-style-transparent{
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+.node-table-calendar.calendar-style-transparent td{
+  color: inherit;
+}
+.node-table-calendar.calendar-style-transparent .calendar-title-cell{
+  background: transparent;
+  border-color: color-mix(in srgb, currentColor 24%, transparent);
+}
+.node-table-calendar.calendar-style-transparent .calendar-weekday-cell .node-table-cell-text{
+  color: currentColor !important;
+  opacity: .62;
+}
+.node-table-calendar.calendar-style-transparent .calendar-day-cell{
+  background: transparent;
+  border-color: color-mix(in srgb, currentColor 22%, transparent) !important;
+}
+.node-table-calendar.calendar-style-transparent .calendar-day-cell:has(.node-table-cell-text:focus){
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.node-table-calendar.calendar-style-transparent .calendar-outside-month{
+  background: transparent;
+  opacity: .28;
+}
+.node-table-calendar.calendar-style-transparent .calendar-today{
+  border-color: #2f6df6 !important;
+  box-shadow: inset 0 0 0 2px #2f6df6;
+  background: rgba(47,109,246,.10);
+}
+
+/* Glass — translucent cool card with a light frosted effect. */
+.node-table-calendar.calendar-style-glass{
+  background: rgba(220,228,240,.48);
+  box-shadow: 0 6px 22px rgba(0,0,0,.16);
+  backdrop-filter: blur(10px) saturate(1.12);
+  -webkit-backdrop-filter: blur(10px) saturate(1.12);
+}
+.node-table-calendar.calendar-style-glass .calendar-title-cell{
+  background: rgba(255,255,255,.42);
+  border-color: rgba(255,255,255,.52);
+}
+.node-table-calendar.calendar-style-glass .calendar-day-cell{
+  background: rgba(255,255,255,.26);
+  border-color: rgba(255,255,255,.42) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.30);
+}
+.node-table-calendar.calendar-style-glass .calendar-day-cell:has(.node-table-cell-text:focus){
+  background: rgba(255,255,255,.46);
+}
+.node-table-calendar.calendar-style-glass .calendar-outside-month{
+  background: rgba(255,255,255,.12);
+  opacity: .34;
+}
+.node-table-calendar.calendar-style-glass .calendar-today{
+  border-color: #2f6df6 !important;
+  box-shadow: inset 0 0 0 2px #2f6df6, inset 0 1px 0 rgba(255,255,255,.35);
+  background: rgba(255,255,255,.48);
+}
+
+/* Paper — warmer, flatter calendar for a notebook/planner look. */
+.node-table-calendar.calendar-style-paper{
+  background: #eee9dc;
+  box-shadow: 0 3px 12px rgba(77,57,26,.16);
+  color: #322d25;
+}
+.node-table-calendar.calendar-style-paper td{
+  color: #322d25;
+}
+.node-table-calendar.calendar-style-paper .calendar-title-cell{
+  background: #f8f4e9;
+  border-color: rgba(79,65,42,.25);
+}
+.node-table-calendar.calendar-style-paper .calendar-weekday-cell .node-table-cell-text{
+  color: rgba(50,45,37,.62) !important;
+}
+.node-table-calendar.calendar-style-paper .calendar-day-cell{
+  background: #fbf8ef;
+  border-color: rgba(79,65,42,.20) !important;
+}
+.node-table-calendar.calendar-style-paper .calendar-day-cell:has(.node-table-cell-text:focus){
+  background: #fffdf7;
+}
+.node-table-calendar.calendar-style-paper .calendar-outside-month{
+  background: #f2ede1;
+  opacity: .42;
+}
+.node-table-calendar.calendar-style-paper .calendar-today{
+  border-color: #2f6df6 !important;
+  box-shadow: inset 0 0 0 2px #2f6df6;
+  background: #f7f7ef;
+}
 .node-table-calendar .calendar-day-cell .node-table-cell-icons{
   /* v403: calendar date cells keep their icons in normal flow and wrap
      onto extra rows. This lets the cell grow to fit any number of markers
