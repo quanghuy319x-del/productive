@@ -7304,7 +7304,7 @@ kbd{
 }
 
 
-/* v453: Note, DRC and Brainstorm share one phone top-row interaction.
+/* v454: Note, DRC and Brainstorm share one phone top-row interaction.
    Back always remains visible; all other actions use tap-to-reveal + 5s timeout. */
 #note-nav-close{display:none!important;}
 @media (max-width:640px) and (any-pointer:coarse){
@@ -7326,4 +7326,18 @@ kbd{
   #brainstorm-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row{
     margin-bottom:6px;
   }
+}
+
+
+/* v454: identical top-row visibility on mouse and touch devices. */
+#note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
+.note-nav-btn:not(#note-nav-back){
+  display:none!important;
+}
+#note-modal .note-nav-row .note-nav-gap{
+  min-height:34px;
+  cursor:pointer;
+}
+#note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row{
+  margin-bottom:6px;
 }
