@@ -10510,6 +10510,35 @@
           // the next deliberate click/render will naturally recompute layout.
           persist();
         });
+
+        // v415: a table/calendar cell is always contenteditable, which meant
+        // the global "paste onto selected node/cell" shortcut skipped it.
+        // Intercept attachment-like clipboard content here instead:
+        //   copied image       -> cell photo
+        //   copied URL/link    -> cell link
+        //   copied YouTube URL -> same cell link, therefore same video icon/player
+        // Plain text that is not exactly one URL keeps the browser's normal
+        // paste behavior and remains editable cell text.
+        textEl.addEventListener("paste", (e) => {
+          if (!requireSignIn()) return;
+          const cd = e.clipboardData;
+          if (!cd) return;
+          const items = cd.items ? Array.from(cd.items) : [];
+          const imageItem = items.find(i => i.type && i.type.startsWith("image/"));
+          const file = imageItem && imageItem.getAsFile();
+          const url = !file ? pasteableUrlFromClipboard(cd) : null;
+          if (!file && !url) return;
+
+          e.preventDefault();
+          e.stopPropagation();
+          // Keep the cell as the active paste target even though renderAll()
+          // below will replace this contenteditable element.
+          state.selectedId = node.id;
+          state.selectedCell = { nodeId: node.id, r, c };
+
+          if (file) handleCellPhotoFiles(node.id, r, c, [file]);
+          else pasteUrlOntoCell(node.id, r, c, url);
+        });
         td.appendChild(textEl);
         td.appendChild(buildCellIconStrip(node, r, c));
         const scoreBadge = buildCellScoreBadge(node, r, c, a);
@@ -15130,6 +15159,9 @@
     urls.push(url);
     a.urls = urls;
     a.url = null;
+    // v415: a pasted cell link should carry the same "date added"
+    // metadata as a link pasted onto a normal node.
+    setLinkTimestamp(a, url, Date.now());
     renderAll();
     persist();
     fetchCellLinkTitle(nodeId, r, c, url);
