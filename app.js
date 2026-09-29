@@ -9991,12 +9991,17 @@
       strip.appendChild(bIcon);
     }
 
-    const addBtn = document.createElement("span");
-    addBtn.className = "node-table-cell-icon node-table-cell-add";
-    addBtn.textContent = "+";
-    addBtn.title = "Add a photo, note, link, task, timer, affirmation game, or brainstorm to this cell";
-    addBtn.addEventListener("click", (e) => openCellAddMenu(node, r, c, e.clientX, e.clientY));
-    strip.appendChild(addBtn);
+    // Calendar tables stay visually clean: cell actions are available
+    // from right-click/long-press only, so don't render a trailing + in
+    // every date cell. Existing attachment markers still remain visible.
+    if (!node.table.calendar) {
+      const addBtn = document.createElement("span");
+      addBtn.className = "node-table-cell-icon node-table-cell-add";
+      addBtn.textContent = "+";
+      addBtn.title = "Add a photo, note, link, task, timer, affirmation game, or brainstorm to this cell";
+      addBtn.addEventListener("click", (e) => openCellAddMenu(node, r, c, e.clientX, e.clientY));
+      strip.appendChild(addBtn);
+    }
 
     return strip;
   }
@@ -10093,7 +10098,10 @@
         textEl.spellcheck = false;
         textEl.textContent = row[c] || "";
         textEl.style.color = a.fontColor || "";
-        textEl.style.textAlign = a.align || "";
+        textEl.style.textAlign = a.align || (node.table.calendar ? "center" : "");
+        if (node.table.calendar && (r === 0 || r === 1)) {
+          textEl.style.fontWeight = r === 0 ? "900" : "800";
+        }
         textEl.addEventListener("click", (e) => { e.stopPropagation(); handleTableCellClick(node, r, c, e.shiftKey); });
         textEl.addEventListener("blur", () => {
           const newText = textEl.textContent;
@@ -11519,7 +11527,12 @@
     }
     // Drop an entirely empty sixth week when the month fits in five.
     if (cells[cells.length - 1].every(v => !v)) cells.pop();
-    n.table = { cells, gridStyle: "grid" };
+    n.table = {
+      cells,
+      gridStyle: "grid",
+      calendar: true,
+      merges: [{ r0: 0, c0: 0, r1: 0, c1: 6 }]
+    };
     parent.children.push(n);
     parent.collapsed = false;
     return n;
