@@ -10109,7 +10109,10 @@
           if (!requireSignIn()) { textEl.textContent = cells[r][c] || ""; return; }
           pushUndo();
           cells[r][c] = newText;
-          renderAll();
+          // Do not rebuild the whole table merely because the caret leaves
+          // a cell. A render swaps the contentEditable DOM node and makes
+          // the caret appear to jump/disappear. Keep the edited cell intact;
+          // the next deliberate click/render will naturally recompute layout.
           persist();
         });
         td.appendChild(textEl);
