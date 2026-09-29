@@ -7269,3 +7269,20 @@ kbd{
     padding:8px 12px 4px;
   }
 }
+
+
+/* v441 — make the → insert glyph 2x larger while keeping its button the
+   same size, and optically center it vertically instead of sitting low on
+   the font baseline. Shared by Note/DRC and Brainstorm toolbars. */
+#note-tool-arrow,
+#brainstorm-tool-arrow{
+  overflow:visible;
+}
+#note-tool-arrow .note-arrow-glyph,
+#brainstorm-tool-arrow .note-arrow-glyph{
+  display:block;
+  font-size:21px;
+  line-height:1;
+  transform:translateY(-1px);
+  pointer-events:none;
+}
