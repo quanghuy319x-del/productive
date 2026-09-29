@@ -7280,5 +7280,8 @@ kbd{
   line-height:0;
   vertical-align:middle;
   position:relative;
-  top:-0.02em;
+  /* v443: Unicode → sits optically low inside its font box. Move the
+     glyph upward so its horizontal shaft aligns with the visual middle
+     of the surrounding text, not the lower half of the line. */
+  top:-0.18em;
 }
