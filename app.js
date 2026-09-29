@@ -9764,6 +9764,232 @@
     persist();
   }
 
+  // v428: one in-app clipboard for ALL node/cell markers. A cell is a
+  // mini-node, so the exact same snapshot can be copied from either host and
+  // pasted onto either host. Text/children/table geometry are deliberately
+  // excluded — this clipboard is only for things represented by icons/badges.
+  let allIconsClipboard = null;
+
+  function clonePlainIconData(value) {
+    if (value == null) return value;
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function cloneNoteForAllIcons(note) {
+    const n = clonePlainIconData(note) || {};
+    n.id = uid();
+    const now = Date.now();
+    n.createdAt = now;
+    n.updatedAt = now;
+    return n;
+  }
+
+  function cloneTaskForAllIcons(task) {
+    const t = clonePlainIconData(task) || {};
+    t.id = uid();
+    if (Array.isArray(t.notes)) t.notes = t.notes.map(cloneNoteForAllIcons);
+    if (Array.isArray(t.subtasks)) {
+      t.subtasks = t.subtasks.map((sub) => {
+        const s = clonePlainIconData(sub) || {};
+        s.id = uid();
+        if (Array.isArray(s.notes)) s.notes = s.notes.map(cloneNoteForAllIcons);
+        return s;
+      });
+    }
+    return t;
+  }
+
+  function allIconsSnapshot(host) {
+    if (!host) return null;
+    return {
+      images: getNodeImageIds(host).slice(),
+      photoTags: clonePlainIconData(host.photoTags || {}),
+      photoNotes: clonePlainIconData(host.photoNotes || {}),
+      photoComments: clonePlainIconData(host.photoComments || {}),
+      photoFavorites: clonePlainIconData(host.photoFavorites || {}),
+      photoTimestamps: clonePlainIconData(host.photoTimestamps || {}),
+
+      notes: clonePlainIconData(getNodeNotes(host)),
+      brainstorm: clonePlainIconData(host.brainstorm || null),
+
+      urls: getNodeUrls(host).slice(),
+      linkTitles: clonePlainIconData(host.linkTitles || {}),
+      linkComments: clonePlainIconData(host.linkComments || {}),
+      linkFavorites: clonePlainIconData(host.linkFavorites || {}),
+      linkTimestamps: clonePlainIconData(host.linkTimestamps || {}),
+      linkPhotos: clonePlainIconData(host.linkPhotos || {}),
+
+      // The score badge IS the task icon, so copying all icons copies the
+      // complete task/subtask tree represented by that badge.
+      tasks: clonePlainIconData(getNodeTasks(host)),
+      affirmation: clonePlainIconData(getNodeAffirmation(host)),
+      timePlayedSec: getNodeTimePlayed(host)
+    };
+  }
+
+  function copyAllIconsFromHost(host) {
+    const snapshot = allIconsSnapshot(host);
+    if (!snapshot) return;
+    allIconsClipboard = {
+      mapId: state.current && state.current.id,
+      copiedAt: Date.now(),
+      host: snapshot
+    };
+  }
+
+  async function duplicateClipboardPhoto(oldId) {
+    if (!oldId) return oldId;
+    let blob = photoBlobCache.get(oldId) || null;
+    if (!blob) {
+      try {
+        const rec = await PhotoDB.get(oldId);
+        blob = rec && rec.blob;
+        if (!blob && rec && rec.data) {
+          try { blob = dataUrlToBlob(rec.data); } catch (_) {}
+        }
+      } catch (_) {}
+    }
+    if (!blob) return oldId;
+
+    const id = uid();
+    photoBlobCache.set(id, blob);
+    photoCache.set(id, URL.createObjectURL(blob));
+    const fp = photoFpById.get(oldId);
+    if (fp) rememberPhotoFingerprint(id, fp);
+    if (state.current) {
+      PhotoDB.put({ id, mapId: state.current.id, blob })
+        .catch(e => console.error("Copy all icons: saving photo failed", e));
+    }
+    return id;
+  }
+
+  async function pasteAllIconsToHost(target) {
+    if (!target) return;
+    if (!allIconsClipboard || !allIconsClipboard.host) {
+      alert("No copied icons yet.");
+      return;
+    }
+    const source = allIconsClipboard.host;
+    pushUndo();
+
+    // Photos + all photo-owned metadata.
+    const sourcePhotoIds = Array.isArray(source.images) ? source.images : [];
+    if (sourcePhotoIds.length) {
+      const carriedIds = [];
+      for (const id of sourcePhotoIds) carriedIds.push(await duplicateClipboardPhoto(id));
+      const pairs = sourcePhotoIds.map((id, i) => [id, carriedIds[i]]);
+      carryPhotoTags(source, target, pairs);
+      carryPhotoNotes(source, target, pairs);
+      carryPhotoComments(source, target, pairs);
+      carryPhotoFavorites(source, target, pairs);
+      carryPhotoTimestamps(source, target, pairs);
+      target.images = getNodeImageIds(target).concat(carriedIds);
+      target.image = null;
+    }
+
+    // Host-level Notes/DRC/Plan/Brainstorm. Keep the one-DRC and
+    // one-Brainstorm-per-host rules while still pasting every ordinary note.
+    const dstNotes = getNodeNotes(target).slice();
+    let hasDstDrc = dstNotes.some(isDRCNote);
+    let hasDstBrainstorm = dstNotes.some(isBrainstormNote) || hasBrainstormContent(target);
+    const notesToAdd = [];
+    (source.notes || []).forEach((n) => {
+      if (isBrainstormNote(n)) {
+        if (hasDstBrainstorm) return;
+        hasDstBrainstorm = true;
+      } else if (isDRCNote(n)) {
+        if (hasDstDrc) return;
+        hasDstDrc = true;
+      }
+      notesToAdd.push(cloneNoteForAllIcons(n));
+    });
+
+    // Compatibility with old maps where Brainstorm existed only in the
+    // mirror field and did not yet have a Note-variant entry.
+    if (!hasDstBrainstorm && source.brainstorm &&
+        ((source.brainstorm.text || "").trim() || (source.brainstorm.html || "").trim())) {
+      notesToAdd.push({
+        id: uid(),
+        title: "",
+        kind: "brainstorm",
+        html: source.brainstorm.html || noteHtmlFromRaw(source.brainstorm.text || ""),
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+      hasDstBrainstorm = true;
+    }
+
+    if (notesToAdd.length) {
+      target.notes = dstNotes.concat(notesToAdd);
+      target.note = "";
+      if (notesToAdd.some(isBrainstormNote)) syncBrainstormMirrorFromNotes(target);
+    }
+
+    // Links + title/comment/favorite/date + photos attached to link comments.
+    const srcUrls = Array.isArray(source.urls) ? source.urls : [];
+    if (srcUrls.length) {
+      target.urls = getNodeUrls(target).concat(srcUrls);
+      target.url = null;
+      srcUrls.forEach((u) => {
+        if (source.linkTitles && source.linkTitles[u]) {
+          if (!target.linkTitles) target.linkTitles = {};
+          if (!target.linkTitles[u]) target.linkTitles[u] = source.linkTitles[u];
+        }
+        if (source.linkComments && source.linkComments[u]) {
+          if (!target.linkComments) target.linkComments = {};
+          if (!target.linkComments[u]) target.linkComments[u] = source.linkComments[u];
+        }
+        if (source.linkFavorites && source.linkFavorites[u]) {
+          if (!target.linkFavorites) target.linkFavorites = {};
+          target.linkFavorites[u] = true;
+        }
+        if (source.linkTimestamps && source.linkTimestamps[u]) {
+          if (!target.linkTimestamps) target.linkTimestamps = {};
+          if (!target.linkTimestamps[u]) target.linkTimestamps[u] = source.linkTimestamps[u];
+        }
+      });
+
+      if (source.linkPhotos) {
+        for (const u of srcUrls) {
+          const ids = Array.isArray(source.linkPhotos[u]) ? source.linkPhotos[u] : [];
+          if (!ids.length) continue;
+          if (!target.linkPhotos) target.linkPhotos = {};
+          if (!Array.isArray(target.linkPhotos[u])) target.linkPhotos[u] = [];
+          for (const id of ids) target.linkPhotos[u].push(await duplicateClipboardPhoto(id));
+        }
+      }
+    }
+
+    // Task score badge = complete task tree, including notes on tasks/subtasks.
+    if (Array.isArray(source.tasks) && source.tasks.length) {
+      target.tasks = getNodeTasks(target).concat(source.tasks.map(cloneTaskForAllIcons));
+    }
+
+    // Singleton status markers merge rather than erase existing target data.
+    if (source.affirmation) {
+      const srcAff = clonePlainIconData(source.affirmation);
+      const dstAff = getNodeAffirmation(target);
+      if (!dstAff) {
+        target.affirmation = srcAff;
+      } else {
+        const dstActive = !!(dstAff.quote || dstAff.count);
+        target.affirmation = Object.assign({}, srcAff, dstAff, {
+          wins: (Number(dstAff.wins) || 0) + (Number(srcAff.wins) || 0),
+          quote: dstActive ? dstAff.quote : srcAff.quote,
+          count: dstActive ? dstAff.count : srcAff.count,
+          target: dstActive ? dstAff.target : srcAff.target
+        });
+      }
+    }
+
+    if (Number(source.timePlayedSec) > 0) {
+      target.timePlayedSec = getNodeTimePlayed(target) + Number(source.timePlayedSec);
+    }
+
+    renderAll();
+    persist();
+  }
+
   // Same little sticky-note glyph the node-level note marker uses (see
   // the photo/note/link strip in renderNode) — shared here so a note
   // attached to a table cell reads as the same icon as a note attached
@@ -10112,6 +10338,8 @@
       const label = drcFilled > 0 ? `DRC (${drcFilled} filled in)…` : "DRC…";
       items.push([label, () => openCellDRCModal(node, r, c)]);
     }
+    items.push(["📋 Copy all icons", () => copyAllIconsFromHost(a)]);
+    items.push(["📥 Paste all icons", () => pasteAllIconsToHost(a)]);
     // "Merge cells" only shows up once a multi-cell rectangle is actually
     // selected in this same table (see state.cellRange/handleTableCellClick,
     // set by shift-clicking a second cell) — merging folds that whole
@@ -12865,6 +13093,8 @@
         renderAll(); persist();
       }]);
     }
+    contentItems.push(["📋 Copy all icons", () => copyAllIconsFromHost(node)]);
+    contentItems.push(["📥 Paste all icons", () => pasteAllIconsToHost(node)]);
     renderItemRows(contentItems);
 
     // Group: reference — actions that read/export/mark this branch
