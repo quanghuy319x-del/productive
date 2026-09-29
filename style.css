@@ -7176,3 +7176,61 @@ kbd{
     padding: 8px 12px 4px;
   }
 }
+
+
+/* v431 — node/cell context-menu parity. */
+.ctx-menu.node-context-menu,
+.ctx-menu.cell-context-menu{
+  min-width:236px;
+  max-width:min(330px, calc(100vw - 16px));
+}
+.ctx-menu.node-context-menu .ctx-item-header,
+.ctx-menu.cell-context-menu .ctx-item-header{
+  cursor:default;
+  min-height:auto;
+  padding:7px 10px 4px;
+  background:transparent!important;
+}
+.ctx-menu.node-context-menu .ctx-item-header .ctx-item-label,
+.ctx-menu.cell-context-menu .ctx-item-header .ctx-item-label{
+  color:var(--text-faint);
+  font-size:10.5px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.ctx-menu.node-context-menu .ctx-item-header:hover,
+.ctx-menu.cell-context-menu .ctx-item-header:hover{
+  background:transparent!important;
+}
+
+@media (pointer:coarse){
+  .ctx-menu.node-context-menu,
+  .ctx-menu.cell-context-menu{
+    min-width:min(310px, calc(100vw - 16px));
+    max-width:calc(100vw - 16px);
+    padding:8px;
+    max-height:min(78vh, 580px);
+  }
+  .ctx-menu.node-context-menu .ctx-item:not(.ctx-item-header):not(.cell-menu-subhead),
+  .ctx-menu.cell-context-menu .ctx-item:not(.ctx-item-header):not(.cell-menu-subhead){
+    font-size:16px;
+    line-height:1.3;
+    min-height:46px;
+    padding:11px 13px;
+    box-sizing:border-box;
+  }
+  .ctx-menu.node-context-menu .ctx-item-header,
+  .ctx-menu.cell-context-menu .ctx-item-header{
+    min-height:auto;
+    padding:8px 12px 4px;
+  }
+  .ctx-menu.node-context-menu .ctx-item-header .ctx-item-label,
+  .ctx-menu.cell-context-menu .ctx-item-header .ctx-item-label{
+    font-size:11px;
+  }
+  .ctx-menu.cell-context-menu .cell-menu-subhead{
+    font-size:12px;
+    padding:8px 12px 4px;
+  }
+}
