@@ -1369,19 +1369,24 @@ body.signed-out #title-input{ visibility:hidden; }
   -webkit-user-drag:none;
   user-select:none;
 }
-.marker-touch-ghost{
+.marker-touch-ghost,
+.marker-native-drag-ghost{
   position:fixed !important;
   z-index:10000 !important;
   pointer-events:none !important;
-  width:22px !important;
-  height:22px !important;
-  min-width:22px !important;
-  max-width:22px !important;
+  width:var(--marker-ghost-w, 10px) !important;
+  height:var(--marker-ghost-h, 10px) !important;
+  min-width:var(--marker-ghost-w, 10px) !important;
+  max-width:var(--marker-ghost-w, 10px) !important;
   margin:0 !important;
   overflow:hidden !important;
   opacity:.82 !important;
-  transform:scale(1.12);
-  filter:drop-shadow(0 3px 5px rgba(0,0,0,.4));
+  transform:none !important;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));
+}
+.marker-native-drag-ghost{
+  left:-1000px !important;
+  top:-1000px !important;
 }
 @media (any-pointer: coarse){
   [data-marker-drag-source="1"]{

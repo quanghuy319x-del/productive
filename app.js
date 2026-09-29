@@ -9275,12 +9275,33 @@
       .forEach(d => d.classList.remove("marker-drop-target"));
   }
 
+  // v421: use an explicit drag image sized from the actual marker wrapper.
+  // Without this Chromium may snapshot the embedded DRC PNG at a much larger
+  // intrinsic size than the tiny calendar-cell icon.
+  function setMarkerNativeDragImage(e, sourceEl) {
+    const dt = e && e.dataTransfer;
+    if (!dt || typeof dt.setDragImage !== "function" || !sourceEl) return;
+    const rect = sourceEl.getBoundingClientRect();
+    const w = Math.max(8, Math.round(rect.width || 10));
+    const h = Math.max(8, Math.round(rect.height || 10));
+    const ghost = sourceEl.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.classList.remove("marker-dragging");
+    ghost.classList.add("marker-native-drag-ghost");
+    ghost.style.setProperty("--marker-ghost-w", w + "px");
+    ghost.style.setProperty("--marker-ghost-h", h + "px");
+    document.body.appendChild(ghost);
+    try { dt.setDragImage(ghost, Math.round(w / 2), Math.round(h / 2)); } catch (_) {}
+    setTimeout(() => ghost.remove(), 0);
+  }
+
   function startMarkerDrag(e, node, type, extra) {
     e.stopPropagation();
     if (!requireSignIn()) { e.preventDefault(); return; }
     const payload = makeMarkerDragPayload(node, type, extra);
     markerDragState = payload;
     writeMarkerDragPayload(e, payload);
+    setMarkerNativeDragImage(e, e.currentTarget);
     e.currentTarget.classList.add("marker-dragging");
   }
 
@@ -9383,10 +9404,15 @@
       d.active = true;
       markerDragState = d.payload;
       d.sourceEl.classList.add("marker-dragging");
+      const sourceRect = d.sourceEl.getBoundingClientRect();
+      const ghostW = Math.max(8, Math.round(sourceRect.width || 10));
+      const ghostH = Math.max(8, Math.round(sourceRect.height || 10));
       const ghost = d.sourceEl.cloneNode(true);
       ghost.removeAttribute("id");
       ghost.classList.add("marker-touch-ghost");
       ghost.classList.remove("marker-dragging");
+      ghost.style.setProperty("--marker-ghost-w", ghostW + "px");
+      ghost.style.setProperty("--marker-ghost-h", ghostH + "px");
       document.body.appendChild(ghost);
       d.ghost = ghost;
     }
