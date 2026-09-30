@@ -22801,64 +22801,192 @@
   // suppresses the synthetic click many browsers emit after the hold —
   // otherwise a successful long-press would also toggle the subtask done.
   function installSubtaskLongPress(row, openMenu) {
-    let timer = null;
+    // v461 phone gesture:
+    //   hold still 520ms -> menu
+    //   hold 250ms then move >12px -> touch drag
+    //   move before 250ms -> normal scrolling
+    // This avoids needing a separate drag handle on the small phone pill.
+    const DRAG_ARM_MS = 250;
+    const MENU_MS = 520;
+    const MOVE_SQ = 144; // 12px
+    let armTimer = null, menuTimer = null;
     let pointerId = null;
     let startX = 0, startY = 0;
-    let restoreDraggable = null;
+    let dragArmed = false, dragging = false;
+    let ghost = null, hoverTarget = null;
 
-    const cancelPending = () => {
-      if (timer) clearTimeout(timer);
-      timer = null;
+    const clearTimers = () => {
+      if (armTimer) clearTimeout(armTimer);
+      if (menuTimer) clearTimeout(menuTimer);
+      armTimer = menuTimer = null;
+    };
+    const clearHover = () => {
+      tasksListEl.querySelectorAll(".subtask-row.drag-over-top, .subtask-row.drag-over-bottom")
+        .forEach(el => el.classList.remove("drag-over-top", "drag-over-bottom"));
+      tasksListEl.querySelectorAll(".task-row.subtask-drop-target, .subtask-panel.subtask-drop-target")
+        .forEach(el => el.classList.remove("subtask-drop-target"));
+      hoverTarget = null;
+    };
+    const removeGhost = () => {
+      if (ghost) ghost.remove();
+      ghost = null;
+    };
+    const reset = () => {
+      clearTimers();
+      clearHover();
+      removeGhost();
+      row.classList.remove("task-dragging", "subtask-touch-drag-armed");
+      if (dragging) subtaskDragState = null;
       pointerId = null;
-      // A draggable element can enter the browser's native drag gesture on
-      // Android before it ever emits contextmenu.  We temporarily turn that
-      // behavior off only for the active touch, then put it back here.
-      if (restoreDraggable !== null) {
-        row.draggable = restoreDraggable;
-        restoreDraggable = null;
+      dragArmed = false;
+      dragging = false;
+    };
+    const markConsumed = () => {
+      row.__subtaskLongPressConsumed = true;
+      clearTimeout(row.__subtaskLongPressResetTimer);
+      row.__subtaskLongPressResetTimer = setTimeout(() => {
+        row.__subtaskLongPressConsumed = false;
+      }, 900);
+    };
+    const beginTouchDrag = (e) => {
+      if (dragging || !dragArmed) return;
+      if (!requireSignIn()) { reset(); return; }
+      clearTimers();
+      dragging = true;
+      markConsumed();
+      closeContextMenu();
+      subtaskDragState = {
+        taskId: row.dataset.taskId,
+        subtaskId: row.dataset.subtaskId
+      };
+      row.classList.remove("subtask-touch-drag-armed");
+      row.classList.add("task-dragging");
+      ghost = row.cloneNode(true);
+      ghost.classList.remove("task-dragging");
+      ghost.classList.add("subtask-touch-drag-ghost");
+      ghost.removeAttribute("id");
+      document.body.appendChild(ghost);
+      try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) {}
+    };
+    const moveGhost = (x, y) => {
+      if (!ghost) return;
+      ghost.style.left = x + "px";
+      ghost.style.top = y + "px";
+    };
+    const findDrop = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      if (!el) return null;
+      const subRow = el.closest && el.closest(".subtask-row");
+      if (subRow && subRow !== row) {
+        const taskId = subRow.dataset.taskId;
+        if (taskId === subtaskDragState.taskId) {
+          const r = subRow.getBoundingClientRect();
+          return {
+            kind: "subtask",
+            taskId,
+            subtaskId: subRow.dataset.subtaskId,
+            before: x < (r.left + r.right) / 2,
+            el: subRow
+          };
+        }
+        // Crossing tasks: the entire destination task card is the target.
+        const panel = subRow.closest(".subtask-panel");
+        return { kind: "task", taskId: panel?.dataset.taskId || taskId, el: panel || subRow };
+      }
+      const panel = el.closest && el.closest(".subtask-panel[data-task-id]");
+      if (panel) return { kind: "task", taskId: panel.dataset.taskId, el: panel };
+      const taskRow = el.closest && el.closest(".task-row[data-task-id]");
+      if (taskRow) return { kind: "task", taskId: taskRow.dataset.taskId, el: taskRow };
+      return null;
+    };
+    const paintDrop = (target) => {
+      clearHover();
+      hoverTarget = target;
+      if (!target) return;
+      if (target.kind === "subtask") {
+        target.el.classList.toggle("drag-over-top", !!target.before);
+        target.el.classList.toggle("drag-over-bottom", !target.before);
+      } else {
+        target.el.classList.add("subtask-drop-target");
+        const id = target.taskId;
+        tasksListEl.querySelectorAll(`.task-row[data-task-id="${CSS.escape(id)}"], .subtask-panel[data-task-id="${CSS.escape(id)}"]`)
+          .forEach(el => el.classList.add("subtask-drop-target"));
       }
     };
 
     row.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
       if (e.isPrimary === false) return;
-      if (e.target.closest && e.target.closest(".subtask-touch-drag-handle")) return;
       if (e.target.closest && e.target.closest('[contenteditable="true"]')) return;
-      cancelPending();
+      reset();
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
-      restoreDraggable = row.draggable;
-      row.draggable = false;
-      timer = setTimeout(() => {
-        timer = null;
-        // Keep pointerId until pointerup/pointercancel so draggable is restored
-        // after the finger actually leaves the screen.
-        row.__subtaskLongPressConsumed = true;
-        clearTimeout(row.__subtaskLongPressResetTimer);
-        row.__subtaskLongPressResetTimer = setTimeout(() => {
-          row.__subtaskLongPressConsumed = false;
-        }, 900);
-        try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) {}
+      armTimer = setTimeout(() => {
+        armTimer = null;
+        if (pointerId == null) return;
+        dragArmed = true;
+        row.classList.add("subtask-touch-drag-armed");
+      }, DRAG_ARM_MS);
+      menuTimer = setTimeout(() => {
+        menuTimer = null;
+        if (pointerId == null || dragging) return;
+        dragArmed = false;
+        row.classList.remove("subtask-touch-drag-armed");
+        markConsumed();
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) {}
         closeContextMenu();
         openMenu(startX, startY);
-      }, 520);
+      }, MENU_MS);
     }, { passive: true });
 
     row.addEventListener("pointermove", (e) => {
-      if (!timer || e.pointerId !== pointerId) return;
+      if (e.pointerId !== pointerId) return;
       const dx = e.clientX - startX, dy = e.clientY - startY;
-      if ((dx * dx + dy * dy) > 144) cancelPending(); // > 12 px = scrolling
-    }, { passive: true });
-    row.addEventListener("pointerup", (e) => {
-      if (e.pointerId === pointerId) cancelPending();
-    }, { passive: true });
-    row.addEventListener("pointercancel", (e) => {
-      if (e.pointerId === pointerId) cancelPending();
-    }, { passive: true });
-    row.addEventListener("dragstart", cancelPending);
-  }
+      const moved = (dx * dx + dy * dy) > MOVE_SQ;
+      if (!moved) return;
 
+      if (!dragArmed && !dragging) {
+        // Movement before the 250ms arm is a normal phone scroll.
+        reset();
+        return;
+      }
+      if (!dragging) beginTouchDrag(e);
+      if (!dragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      moveGhost(e.clientX, e.clientY);
+      paintDrop(findDrop(e.clientX, e.clientY));
+    }, { passive: false });
+
+    const finish = (e, cancelled) => {
+      if (e.pointerId !== pointerId) return;
+      if (dragging) {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = cancelled ? null : (hoverTarget || findDrop(e.clientX, e.clientY));
+        const sourceTaskId = subtaskDragState && subtaskDragState.taskId;
+        const sourceSubtaskId = subtaskDragState && subtaskDragState.subtaskId;
+        if (target && sourceTaskId && sourceSubtaskId) {
+          if (target.kind === "subtask") {
+            moveSubtask(sourceTaskId, sourceSubtaskId, target.taskId, target.subtaskId, target.before);
+          } else if (target.taskId !== sourceTaskId) {
+            moveSubtask(sourceTaskId, sourceSubtaskId, target.taskId, null, false);
+          }
+        }
+      }
+      reset();
+    };
+    row.addEventListener("pointerup", (e) => finish(e, false), { passive: false });
+    row.addEventListener("pointercancel", (e) => finish(e, true), { passive: false });
+
+    row.addEventListener("click", (e) => {
+      if (!row.__subtaskLongPressConsumed) return;
+      e.preventDefault();
+      e.stopPropagation();
+      row.__subtaskLongPressConsumed = false;
+    }, true);
+  }
 
   // Builds the expanded subtask checklist panel for one task — a nested
   // <li> (so it sits inline in the same <ul> right under its task row)
