@@ -23568,18 +23568,38 @@
       const noteBtn = document.createElement("button");
       noteBtn.type = "button";
       const taskNotes = getTaskNotes(t);
-      noteBtn.className = "task-note-btn" + (taskNotes.length ? " has-note" : "");
-      noteBtn.title = taskNotes.length ? `Notes (${taskNotes.length})` : "Add note";
-      // Same sticky-note icon as the node/cell note markers (CELL_NOTE_ICON_SVG).
-      // A task whose note is a DRC (or a task literally named "DRC", which
-      // opens the node's DRC note) shows the DRC image instead.
-      if (isDRCNote(taskNotes[0]) || (t.text || "").trim().toUpperCase() === "DRC") noteBtn.appendChild(drcIconEl(16));
-      else if (isPlanNoteFor(taskNotes[0], t)) noteBtn.appendChild(planIconEl(16));
-      else noteBtn.innerHTML = CELL_NOTE_ICON_SVG;
+      // v464: a Brainstorm task gets the same pink brain note affordance as
+      // a Brainstorm subtask. It opens the host/node's one shared Brainstorm,
+      // rather than creating an ordinary task Note.
+      const taskIsBrainstorm = isBrainstormPrefixText(t.text) || hasBrainstormContent(t);
+      noteBtn.className = "task-note-btn" + (taskNotes.length || taskIsBrainstorm ? " has-note" : "") +
+        (taskIsBrainstorm ? " task-brainstorm-note-btn" : "");
+      noteBtn.title = taskIsBrainstorm
+        ? "Brainstorm — tap to keep writing"
+        : (taskNotes.length ? `Notes (${taskNotes.length})` : "Add note");
+      if (taskIsBrainstorm) {
+        noteBtn.textContent = "🧠";
+      } else if (isDRCNote(taskNotes[0]) || (t.text || "").trim().toUpperCase() === "DRC") {
+        noteBtn.appendChild(drcIconEl(16));
+      } else if (isPlanNoteFor(taskNotes[0], t)) {
+        noteBtn.appendChild(planIconEl(16));
+      } else {
+        noteBtn.innerHTML = CELL_NOTE_ICON_SVG;
+      }
       noteBtn.addEventListener("mousedown", (e) => { e.stopPropagation(); });
       noteBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null);
+        if (taskIsBrainstorm) {
+          openBrainstormModal(
+            node.id,
+            target.r != null ? target.r : null,
+            target.c != null ? target.c : null,
+            t.id,
+            null
+          );
+        } else {
+          openNoteModal(node.id, undefined, null, t.id, target.r != null ? { r: target.r, c: target.c } : null);
+        }
       });
 
       // Add-subtask icon — reachable straight from the row, even for a
@@ -23617,6 +23637,7 @@
       // lives in the right-click / long-press menu.
       li.appendChild(handle);
       li.appendChild(text);
+      if (taskIsBrainstorm) li.appendChild(noteBtn);
       li.appendChild(subtaskBtn);
       tasksListEl.appendChild(li);
 
