@@ -7390,8 +7390,13 @@ kbd{
 }
 
 
-/* v464: Brainstorm task uses the same compact pink-brain affordance as a Brainstorm subtask. */
+/* v465: Brainstorm task uses the same compact pink-brain affordance as a Brainstorm subtask.
+   Unlike the other task-row tools, this is content, not a transient action:
+   keep it visible even when phone rows hide their controls until tap/hover. */
 .task-note-btn.task-brainstorm-note-btn{
   font-size:16px;
   line-height:1;
+  display:inline-flex !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
 }
