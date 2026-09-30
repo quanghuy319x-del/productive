@@ -22047,7 +22047,7 @@
   // task's list) — either way, it works both within the same task and
   // across two different tasks.
   let subtaskDragState = null;
-  // v462: phone dragging is explicit. Long-press only opens the menu; choosing
+  // v463: phone dragging is explicit. Long-press only opens the menu; choosing
   // Move arms exactly one subtask for direct touch-drag until drop/cancel.
   let subtaskTouchMoveMode = null; // { taskId, subtaskId }
   const SHARED_QUEUE_TASK_ID = "__shared_queue__";
@@ -22955,7 +22955,7 @@
       if (!moved) return;
 
       if (!dragArmed && !dragging) {
-        // v462: without explicit Move mode, movement is always normal scrolling.
+        // v463: without explicit Move mode, movement is always normal scrolling.
         reset();
         return;
       }
