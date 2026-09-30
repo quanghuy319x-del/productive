@@ -534,7 +534,7 @@ button:focus-visible, input:focus-visible, [contenteditable]:focus-visible{
 }
 .cloud-sync-pill[data-state="verified"]{ color:#6fd08c; border-color:rgba(111,208,140,.45); }
 .cloud-sync-pill[data-state="syncing"]{ color:#e8c15a; border-color:rgba(232,193,90,.45); }
-.cloud-sync-pill[data-state="warning"]{ color:#ffb460; border-color:rgba(255,180,84,.5); }
+.cloud-sync-pill[data-state="warning"]{ color:#ffb461; border-color:rgba(255,180,84,.5); }
 .cloud-sync-pill[data-state="error"]{ color:var(--danger); border-color:rgba(255,107,107,.5); }
 .cloud-sync-pill:hover{ color:var(--text); border-color:#3a4054; }
 
@@ -4770,7 +4770,7 @@ kbd{
 }
 .btn-ghost.small{ font-size: 10.5px; padding: 5px 8px; }
 
-.quote-banner-modal-card{ width: min(460px, 92vw); }
+.quote-banner-modal-card{ width: min(461px, 92vw); }
 .quote-banner-list{
   display:grid;
   gap:6px;
@@ -5686,7 +5686,7 @@ kbd{
 }
 .day-modal{
   background: #ffffff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.22);
-  width:100%; max-width: 460px; max-height: 82vh; overflow-y:auto;
+  width:100%; max-width: 461px; max-height: 82vh; overflow-y:auto;
   padding: 18px 18px 20px;
   color: #24231f;
   transition: transform 0.26s cubic-bezier(.22, 1, .36, 1);
@@ -6076,7 +6076,7 @@ kbd{
 .sync-modal-hero[data-state="syncing"]{ border-color:rgba(232,193,90,.5); }
 .sync-modal-hero[data-state="syncing"] strong{ color:#e8c15a; }
 .sync-modal-hero[data-state="warning"]{ border-color:rgba(255,180,84,.55); }
-.sync-modal-hero[data-state="warning"] strong{ color:#ffb460; }
+.sync-modal-hero[data-state="warning"] strong{ color:#ffb461; }
 .sync-modal-hero[data-state="error"]{ border-color:rgba(255,107,107,.55); }
 .sync-modal-hero[data-state="error"] strong{ color:var(--danger); }
 .sync-modal-grid{
@@ -7304,7 +7304,7 @@ kbd{
 }
 
 
-/* v460: Note, DRC and Brainstorm share one phone top-row interaction.
+/* v461: Note, DRC and Brainstorm share one phone top-row interaction.
    Back always remains visible; all other actions use tap-to-reveal + 5s timeout. */
 #note-nav-close{display:none!important;}
 @media (max-width:640px) and (any-pointer:coarse){
@@ -7329,7 +7329,7 @@ kbd{
 }
 
 
-/* v460: identical top-row visibility on mouse and touch devices. */
+/* v461: identical top-row visibility on mouse and touch devices. */
 #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row
 .note-nav-btn:not(#note-nav-back){
   display:none!important;
@@ -7340,4 +7340,20 @@ kbd{
 }
 #note-modal .note-modal-card.phone-note-nav-collapsed .note-nav-row{
   margin-bottom:6px;
+}
+
+
+/* v461: phone subtask hold+move drag feedback. */
+.subtask-row.subtask-touch-drag-armed{
+  transform:scale(1.025);
+}
+.subtask-touch-drag-ghost{
+  position:fixed!important;
+  z-index:100000!important;
+  pointer-events:none!important;
+  transform:translate(-50%,-50%) scale(1.04)!important;
+  opacity:.86!important;
+  width:max-content;
+  max-width:min(72vw,420px);
+  margin:0!important;
 }
