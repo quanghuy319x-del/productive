@@ -22047,6 +22047,9 @@
   // task's list) — either way, it works both within the same task and
   // across two different tasks.
   let subtaskDragState = null;
+  // v462: phone dragging is explicit. Long-press only opens the menu; choosing
+  // Move arms exactly one subtask for direct touch-drag until drop/cancel.
+  let subtaskTouchMoveMode = null; // { taskId, subtaskId }
   const SHARED_QUEUE_TASK_ID = "__shared_queue__";
 
   // Which tasks currently have their "add a subtask" input expanded —
@@ -22568,6 +22571,14 @@
       rerender();
     });
     addItem("Copy text", "", () => copySubtaskText(s.text));
+    addItem("↔ Move", "", () => {
+      if (!requireSignIn()) return;
+      subtaskTouchMoveMode = { taskId: t.id, subtaskId: s.id };
+      document.querySelectorAll(".subtask-row.subtask-move-ready").forEach(el => el.classList.remove("subtask-move-ready"));
+      const armed = tasksListEl && tasksListEl.querySelector(`.subtask-row[data-task-id="${CSS.escape(t.id)}"][data-subtask-id="${CSS.escape(s.id)}"]`);
+      if (armed) armed.classList.add("subtask-move-ready");
+      showToast("Move ready — drag this subtask");
+    });
 
     // Add/remove a visual break AFTER this pill by storing brBefore on
     // the following subtask. Both Tasks and Calendar already render it.
@@ -22801,24 +22812,22 @@
   // suppresses the synthetic click many browsers emit after the hold —
   // otherwise a successful long-press would also toggle the subtask done.
   function installSubtaskLongPress(row, openMenu) {
-    // v461 phone gesture:
-    //   hold still 520ms -> menu
-    //   hold 250ms then move >12px -> touch drag
-    //   move before 250ms -> normal scrolling
-    // This avoids needing a separate drag handle on the small phone pill.
-    const DRAG_ARM_MS = 250;
+    // v462 phone gesture:
+    //   hold -> menu only
+    //   choose Move in that menu -> arm this pill
+    //   then drag it directly (no second hold required)
+    // Ordinary touch movement remains scrolling, so menu vs drag cannot be confused.
     const MENU_MS = 520;
     const MOVE_SQ = 144; // 12px
-    let armTimer = null, menuTimer = null;
+    let menuTimer = null;
     let pointerId = null;
     let startX = 0, startY = 0;
     let dragArmed = false, dragging = false;
     let ghost = null, hoverTarget = null;
 
     const clearTimers = () => {
-      if (armTimer) clearTimeout(armTimer);
       if (menuTimer) clearTimeout(menuTimer);
-      armTimer = menuTimer = null;
+      menuTimer = null;
     };
     const clearHover = () => {
       tasksListEl.querySelectorAll(".subtask-row.drag-over-top, .subtask-row.drag-over-bottom")
@@ -22922,13 +22931,12 @@
       pointerId = e.pointerId;
       startX = e.clientX;
       startY = e.clientY;
-      armTimer = setTimeout(() => {
-        armTimer = null;
-        if (pointerId == null) return;
-        dragArmed = true;
-        row.classList.add("subtask-touch-drag-armed");
-      }, DRAG_ARM_MS);
-      menuTimer = setTimeout(() => {
+      const explicitlyArmed = !!subtaskTouchMoveMode &&
+        subtaskTouchMoveMode.taskId === row.dataset.taskId &&
+        subtaskTouchMoveMode.subtaskId === row.dataset.subtaskId;
+      dragArmed = explicitlyArmed;
+      row.classList.toggle("subtask-touch-drag-armed", explicitlyArmed);
+      if (!explicitlyArmed) menuTimer = setTimeout(() => {
         menuTimer = null;
         if (pointerId == null || dragging) return;
         dragArmed = false;
@@ -22947,7 +22955,7 @@
       if (!moved) return;
 
       if (!dragArmed && !dragging) {
-        // Movement before the 250ms arm is a normal phone scroll.
+        // v462: without explicit Move mode, movement is always normal scrolling.
         reset();
         return;
       }
@@ -22974,6 +22982,10 @@
             moveSubtask(sourceTaskId, sourceSubtaskId, target.taskId, null, false);
           }
         }
+      }
+      if (dragging) {
+        subtaskTouchMoveMode = null;
+        document.querySelectorAll(".subtask-row.subtask-move-ready").forEach(el => el.classList.remove("subtask-move-ready"));
       }
       reset();
     };
