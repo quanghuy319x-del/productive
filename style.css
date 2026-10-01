@@ -2368,7 +2368,7 @@ kbd{
   border: none;
   border-bottom: 1px solid var(--paper-border);
   color: var(--paper-text);
-  font-family: inherit;
+  font-family: Georgia, "Times New Roman", serif;
   font-size: 14px;
   font-weight: 700;
   padding: 2px 2px 8px;
@@ -2739,7 +2739,7 @@ kbd{
   border: none;
   border-radius: 0;
   color: var(--paper-text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-family: Georgia, "Times New Roman", serif;
   font-size: 13px;
   line-height: 1.7;
   padding: 4px 2px;
