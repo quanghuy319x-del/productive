@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=495">
+<link rel="stylesheet" href="style.css?v=496">
 </head>
 <body>
 <div id="app">
@@ -933,8 +933,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=495"></script>
-<script src="phase2-layout.js?v=495"></script>
+<script src="phase1-editors.js?v=496"></script>
+<script src="phase2-layout.js?v=496"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -994,8 +994,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=495"></script>
-<script src="app.js?v=495"></script>
+<script src="sidebar-hotfix-v490.js?v=496"></script>
+<script src="app.js?v=496"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1526,7 +1526,7 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
-/* v494: animated Yahoo emoji insertion + restored moving fire.
+/* v496: animated Yahoo emoji insertion + restored moving fire.
    Runs independently from app.js so the picker still works if another startup block fails. */
 (() => {
   const editor = document.getElementById("note-textarea");
@@ -1586,14 +1586,20 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
     event.stopImmediatePropagation();
 
     if (choice.dataset.yahooGif) {
-      const img = document.createElement("img");
-      img.src = choice.dataset.yahooGif;
-      img.alt = choice.dataset.yahooTitle || "Yahoo emoticon";
-      img.title = choice.dataset.yahooTitle || "Yahoo emoticon";
-      img.className = "note-inline-yahoo-emoji";
-      img.draggable = false;
-      img.setAttribute("contenteditable", "false");
-      insertAnimatedNode(img);
+      // v496: use a span with animated GIF background instead of <img>.
+      // The Note editor has its own photo/image handling; raw inline <img>
+      // nodes can be normalized/removed by that path. A span follows the
+      // same persistence path as the working animated-fire element.
+      const yahoo = document.createElement("span");
+      yahoo.className = "note-inline-yahoo-emoji";
+      yahoo.dataset.yahooGif = choice.dataset.yahooGif;
+      yahoo.dataset.yahooTitle = choice.dataset.yahooTitle || "Yahoo emoticon";
+      yahoo.title = yahoo.dataset.yahooTitle;
+      yahoo.setAttribute("contenteditable", "false");
+      yahoo.setAttribute("aria-label", yahoo.dataset.yahooTitle);
+      yahoo.style.backgroundImage = 'url("' + choice.dataset.yahooGif.replace(/"/g, "%22") + '")';
+      yahoo.textContent = "\u00A0";
+      insertAnimatedNode(yahoo);
     } else {
       const fire = document.createElement("span");
       fire.className = "note-animated-fire note-inline-moving-fire";
@@ -1610,9 +1616,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v495") return;
+      if (applying || badge.textContent === "v496") return;
       applying = true;
-      badge.textContent = "v495";
+      badge.textContent = "v496";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
