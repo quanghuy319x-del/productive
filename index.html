@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=484">
+<link rel="stylesheet" href="style.css?v=486">
 </head>
 <body>
 <div id="app">
@@ -153,6 +153,7 @@
       <div id="signed-out-state" class="hidden">
         <p>Sign in with Google to see your mind maps.</p>
         <button id="btn-signed-out-signin" class="btn-primary">Sign in with Google</button>
+        <button id="btn-local-only" class="btn-ghost">Continue offline (this device only)</button>
       </div>
       <div id="node-fabs" class="hidden">
         <button id="fab-add-child" class="node-fab" title="Add child node (Tab)">
@@ -856,8 +857,8 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
-<script src="phase1-editors.js?v=484"></script>
-<script src="phase2-layout.js?v=484"></script>
+<script src="phase1-editors.js?v=486"></script>
+<script src="phase2-layout.js?v=486"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -894,7 +895,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=484"></script>
+<script src="app.js?v=486"></script>
 <script>
 (() => {
   function insertText(editor, text) {
