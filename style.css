@@ -7423,3 +7423,18 @@ kbd{
 
 /* v470: font selector matches the 22px Note toolbar controls exactly. */
 .note-toolbar .note-font-picker,.note-toolbar .note-font-select{height:22px!important;min-height:22px!important;max-height:22px!important;}
+
+/* v471: phone toolbar controls are enlarged by the existing mobile rules.
+   Match the font select to the rendered tool-button box, not the desktop 22px base. */
+@media (max-width:640px){
+  .note-toolbar .note-font-picker,
+  .note-toolbar .note-font-select{
+    height:var(--note-tool-mobile-size, 44px)!important;
+    min-height:var(--note-tool-mobile-size, 44px)!important;
+    max-height:var(--note-tool-mobile-size, 44px)!important;
+  }
+  .note-toolbar .note-font-select{
+    border-radius:8px;
+    padding:0 7px;
+  }
+}
