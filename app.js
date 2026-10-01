@@ -20714,7 +20714,8 @@
           data:null
         }));
         scheduleNoteAutosave();
-      } else if (btn.dataset.animatedFire === "1") {
+        btn.dataset.branchlineEmojiHandled = "1";
+      } else if (btn.dataset.animatedFire === "1" || btn.dataset.movingFireV493 === "1") {
         const sel = window.getSelection();
         let range = null;
         if (sel && sel.rangeCount) {
@@ -20735,6 +20736,7 @@
         if (sel) { sel.removeAllRanges(); sel.addRange(range); }
         noteTextarea.dispatchEvent(new InputEvent("input", { bubbles:true, inputType:"insertText", data:null }));
         scheduleNoteAutosave();
+        btn.dataset.branchlineEmojiHandled = "1";
       } else {
         const symbol = btn.dataset.emoji || btn.textContent;
         if (symbol) noteInsertSymbol(symbol);
