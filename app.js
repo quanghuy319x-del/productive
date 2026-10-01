@@ -28251,8 +28251,20 @@
       hidden = saved === null ? true : saved === "1";
     } catch (e) { hidden = true; }
     setSidebarHidden(hidden);
-    $("#btn-toggle-sidebar").addEventListener("click", () => {
+    const sidebarToggle = $("#btn-toggle-sidebar");
+    let sidebarPointerHandled = false;
+    const toggleSidebarNow = (e) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
       setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
+    };
+    sidebarToggle.addEventListener("pointerdown", (e) => {
+      sidebarPointerHandled = true;
+      toggleSidebarNow(e);
+      setTimeout(() => { sidebarPointerHandled = false; }, 450);
+    });
+    sidebarToggle.addEventListener("click", (e) => {
+      if (sidebarPointerHandled) { e.preventDefault(); e.stopPropagation(); return; }
+      toggleSidebarNow(e);
     });
   })();
 
