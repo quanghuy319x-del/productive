@@ -7485,3 +7485,50 @@ kbd{
     line-height:1!important;
   }
 }
+
+/* v473: clean phone emoji picker — one compact centered row, equal square choices. */
+#note-emoji-popover.note-emoji-popover{
+  display:flex;
+  flex-direction:row;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:center;
+  width:auto;
+  max-width:calc(100vw - 24px);
+  gap:6px;
+  padding:6px;
+  box-sizing:border-box;
+  overflow:hidden;
+}
+#note-emoji-popover.note-emoji-popover.hidden{display:none!important;}
+#note-emoji-popover .note-emoji-swatch{
+  box-sizing:border-box!important;
+  flex:0 0 36px!important;
+  width:36px!important;
+  min-width:36px!important;
+  max-width:36px!important;
+  height:36px!important;
+  min-height:36px!important;
+  max-height:36px!important;
+  margin:0!important;
+  padding:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-radius:7px!important;
+  font-size:19px!important;
+  line-height:1!important;
+}
+@media (pointer:coarse){
+  #note-emoji-popover.note-emoji-popover{
+    width:226px!important;
+    max-width:calc(100vw - 24px)!important;
+    gap:6px!important;
+    padding:8px!important;
+  }
+  #note-emoji-popover .note-emoji-swatch{
+    flex-basis:36px!important;
+    width:36px!important;
+    height:36px!important;
+  }
+}
