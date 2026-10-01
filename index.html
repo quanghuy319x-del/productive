@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=468">
+<link rel="stylesheet" href="style.css?v=469">
 </head>
 <body>
 <div id="app">
@@ -583,15 +583,6 @@
     <div class="note-toolbar">
       
       
-      <span class="note-tool-sep"></span>
-      <label class="note-font-picker" title="Font">
-        <select id="note-tool-font" class="note-font-select" aria-label="Note font">
-          <option value="georgia">Georgia</option>
-          <option value="sans">Sans</option>
-          <option value="ios">iOS</option>
-          <option value="mono">Mono</option>
-        </select>
-      </label>
       <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
       <button type="button" id="note-tool-bold-upper" class="note-tool-btn" title="Bold + UPPERCASE selected text"><b>BB</b></button>
@@ -619,6 +610,15 @@
       <div class="note-color-picker">
         <button type="button" id="note-tool-symbol" class="note-tool-btn" title="Insert a symbol">➡️</button>
       </div>
+      <span class="note-tool-sep"></span>
+      <label class="note-font-picker" title="Font">
+        <select id="note-tool-font" class="note-font-select" aria-label="Note font">
+          <option value="georgia">Georgia</option>
+          <option value="sans">Sans</option>
+          <option value="ios">iOS</option>
+          <option value="mono">Mono</option>
+        </select>
+      </label>
     </div>
     <div id="note-resize-handle" class="note-resize-handle" title="Drag to resize"></div>
     <span id="note-line-count" class="note-line-count" aria-hidden="true">Lines: 0</span>
@@ -898,8 +898,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=468"></script>
-<script src="phase2-layout.js?v=468"></script>
+<script src="phase1-editors.js?v=469"></script>
+<script src="phase2-layout.js?v=469"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -936,7 +936,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=468"></script>
+<script src="app.js?v=469"></script>
 <script>
 (() => {
   function insertText(editor, text) {
