@@ -7738,3 +7738,88 @@ kbd{
 .note-inline-yahoo-emoji.note-yahoo-praying{background-image:url("./assets/yahoo/praying.gif")!important;}
 .note-inline-yahoo-emoji.note-yahoo-rocking{background-image:url("./assets/yahoo/rocking.gif")!important;}
 /* /v499 Yahoo mappings */
+
+
+/* v502: motivational/action moving emojis. Pure CSS so they work offline. */
+.note-moving-emoji{
+  display:inline-block;
+  transform-origin:50% 65%;
+  line-height:1;
+  font-size:1.15em;
+  margin:0 2px;
+  vertical-align:-.08em;
+  user-select:none;
+  -webkit-user-select:none;
+  will-change:transform,filter,opacity;
+}
+#note-emoji-popover .note-moving-emoji{
+  margin:0;
+  font-size:24px;
+  pointer-events:none;
+}
+@media (pointer:coarse){
+  #note-emoji-popover .note-moving-emoji{font-size:26px;}
+}
+@keyframes noteMoveRocket{
+  0%,100%{transform:translateY(2px) rotate(-8deg) scale(.94)}
+  45%{transform:translateY(-5px) rotate(4deg) scale(1.06)}
+  65%{transform:translateY(-2px) rotate(-2deg) scale(1.02)}
+}
+@keyframes noteMovePulse{
+  0%,100%{transform:scale(.88);filter:brightness(.95)}
+  50%{transform:scale(1.18);filter:brightness(1.35)}
+}
+@keyframes noteMovePump{
+  0%,100%{transform:rotate(-7deg) scale(.95)}
+  50%{transform:rotate(8deg) scale(1.12)}
+}
+@keyframes noteMoveSparkle{
+  0%{transform:scale(.82) rotate(-10deg);filter:brightness(.9)}
+  50%{transform:scale(1.2) rotate(10deg);filter:brightness(1.45)}
+  100%{transform:scale(.9) rotate(-4deg);filter:brightness(1.05)}
+}
+@keyframes noteMoveParty{
+  0%,100%{transform:translateY(1px) rotate(-10deg)}
+  35%{transform:translateY(-4px) rotate(9deg) scale(1.08)}
+  70%{transform:translateY(-1px) rotate(-5deg)}
+}
+@keyframes noteMoveRun{
+  0%,100%{transform:translateX(-3px) translateY(1px) rotate(-5deg)}
+  50%{transform:translateX(4px) translateY(-2px) rotate(5deg)}
+}
+@keyframes noteMoveStar{
+  0%,100%{transform:scale(.88) rotate(-8deg);filter:brightness(.95)}
+  50%{transform:scale(1.16) rotate(8deg);filter:brightness(1.35)}
+}
+@keyframes noteMoveCheer{
+  0%,100%{transform:translateY(1px) scale(.96)}
+  45%{transform:translateY(-4px) scale(1.08)}
+}
+@keyframes noteMoveClap{
+  0%,100%{transform:rotate(-8deg) scale(.94)}
+  50%{transform:rotate(8deg) scale(1.08)}
+}
+@keyframes noteMoveTarget{
+  0%,100%{transform:scale(.9);filter:brightness(.95)}
+  50%{transform:scale(1.13);filter:brightness(1.2)}
+}
+@keyframes noteMoveTrophy{
+  0%,100%{transform:translateY(1px) rotate(-3deg);filter:brightness(.98)}
+  50%{transform:translateY(-4px) rotate(3deg) scale(1.08);filter:brightness(1.25)}
+}
+@keyframes noteMoveRaise{
+  0%,100%{transform:translateY(2px) rotate(-5deg)}
+  50%{transform:translateY(-5px) rotate(5deg) scale(1.08)}
+}
+.note-motion-rocket{animation:noteMoveRocket .8s ease-in-out infinite;}
+.note-motion-pulse{animation:noteMovePulse .62s ease-in-out infinite;}
+.note-motion-pump{animation:noteMovePump .65s ease-in-out infinite;}
+.note-motion-sparkle{animation:noteMoveSparkle .85s ease-in-out infinite;}
+.note-motion-party{animation:noteMoveParty .72s ease-in-out infinite;}
+.note-motion-run{animation:noteMoveRun .58s ease-in-out infinite;}
+.note-motion-star{animation:noteMoveStar .82s ease-in-out infinite;}
+.note-motion-cheer{animation:noteMoveCheer .64s ease-in-out infinite;}
+.note-motion-clap{animation:noteMoveClap .48s ease-in-out infinite;}
+.note-motion-target{animation:noteMoveTarget .72s ease-in-out infinite;}
+.note-motion-trophy{animation:noteMoveTrophy .9s ease-in-out infinite;}
+.note-motion-raise{animation:noteMoveRaise .68s ease-in-out infinite;}
