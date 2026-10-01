@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=476" count as
+     by their exact URL, so "style.css" and "style.css?v=477" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=476">
+<link rel="stylesheet" href="style.css?v=477">
 </head>
 <body>
 <div id="app">
@@ -847,54 +847,19 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  // v476: passive SW registration with one-time URL cache bust. Do not force update, skipWaiting,
+  // v477: passive SW registration; OAuth guard removed. Do not force update, skipWaiting,
   // controller reload, or fresh-index replacement during app startup.
   // Those refresh mechanisms caused the Android/PWA refresh loop.
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=476", { updateViaCache: "none" })
+    navigator.serviceWorker.register("./sw.js?v=477", { updateViaCache: "none" })
       .catch(err => console.warn("Service worker registration failed:", err));
   });
 }
 </script>
-<script src="phase1-editors.js?v=476"></script>
-<script src="phase2-layout.js?v=476"></script>
-<script>
-/* v389 mobile OAuth guard: background prompt=none must never navigate away
-   from Branchline. Explicit user-triggered OAuth remains unchanged. */
-(() => {
-  let patched = false;
-  const patch = () => {
-    if (patched || !window.google?.accounts?.oauth2?.initTokenClient) return false;
-    const oauth2 = window.google.accounts.oauth2;
-    const originalInit = oauth2.initTokenClient.bind(oauth2);
-    oauth2.initTokenClient = (config) => {
-      const client = originalInit(config);
-      const originalRequest = client.requestAccessToken.bind(client);
-      client.requestAccessToken = (opts = {}) => {
-        if (opts.prompt === "none") {
-          queueMicrotask(() => {
-            if (typeof config.error_callback === "function") {
-              config.error_callback({ type: "silent_auth_disabled" });
-            } else if (typeof config.callback === "function") {
-              config.callback({ error: "interaction_required" });
-            }
-          });
-          return;
-        }
-        return originalRequest(opts);
-      };
-      return client;
-    };
-    patched = true;
-    return true;
-  };
-  if (!patch()) {
-    const timer = setInterval(() => { if (patch()) clearInterval(timer); }, 25);
-    setTimeout(() => clearInterval(timer), 15000);
-  }
-})();
-</script>
-<script src="app.js?v=476"></script>
+<script src="phase1-editors.js?v=477"></script>
+<script src="phase2-layout.js?v=477"></script>
+
+<script src="app.js?v=477"></script>
 <script>
 (() => {
   function insertText(editor, text) {
