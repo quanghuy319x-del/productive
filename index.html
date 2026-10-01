@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=498">
+<link rel="manifest" href="manifest.webmanifest?v=499">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=498">
+<link rel="stylesheet" href="style.css?v=499">
 </head>
 <body>
 <div id="app">
@@ -933,8 +933,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=498"></script>
-<script src="phase2-layout.js?v=498"></script>
+<script src="phase1-editors.js?v=499"></script>
+<script src="phase2-layout.js?v=499"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -943,7 +943,7 @@ if ("serviceWorker" in navigator) {
   const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
   const missing = need.filter(([g]) => !window[g]);
   missing.forEach(([g, f]) => {
-    document.write('<script src="' + f + '?v=498&r=' + Date.now() + '"><\/script>');
+    document.write('<script src="' + f + '?v=499&r=' + Date.now() + '"><\/script>');
   });
   window.__branchlineMissingModules = missing.map(([, f]) => f);
 })();
@@ -994,8 +994,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=498"></script>
-<script src="app.js?v=498"></script>
+<script src="sidebar-hotfix-v490.js?v=499"></script>
+<script src="app.js?v=499"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1597,6 +1597,12 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
       yahoo.title = yahoo.dataset.yahooTitle;
       yahoo.setAttribute("contenteditable", "false");
       yahoo.setAttribute("aria-label", yahoo.dataset.yahooTitle);
+      // v499: stable class-backed GIF rendering; survives editor style normalization.
+      const yahooFile = choice.dataset.yahooGif.split("/").pop().replace(/\.gif(?:\?.*)?$/i, "");
+      const yahooClass = "note-yahoo-" + yahooFile.toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      yahoo.classList.add(yahooClass);
       yahoo.style.backgroundImage = 'url("' + choice.dataset.yahooGif.replace(/"/g, "%22") + '")';
       yahoo.textContent = "\u00A0";
       insertAnimatedNode(yahoo);
@@ -1616,9 +1622,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v498") return;
+      if (applying || badge.textContent === "v499") return;
       applying = true;
-      badge.textContent = "v498";
+      badge.textContent = "v499";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
