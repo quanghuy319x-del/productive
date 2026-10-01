@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=308" count as
+     by their exact URL, so "style.css" and "style.css?v=476" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=475">
+<link rel="stylesheet" href="style.css?v=476">
 </head>
 <body>
 <div id="app">
@@ -847,17 +847,17 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  // v475: passive SW registration only. Do not force update, skipWaiting,
+  // v476: passive SW registration with one-time URL cache bust. Do not force update, skipWaiting,
   // controller reload, or fresh-index replacement during app startup.
   // Those refresh mechanisms caused the Android/PWA refresh loop.
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+    navigator.serviceWorker.register("./sw.js?v=476", { updateViaCache: "none" })
       .catch(err => console.warn("Service worker registration failed:", err));
   });
 }
 </script>
-<script src="phase1-editors.js?v=475"></script>
-<script src="phase2-layout.js?v=475"></script>
+<script src="phase1-editors.js?v=476"></script>
+<script src="phase2-layout.js?v=476"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -894,7 +894,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=475"></script>
+<script src="app.js?v=476"></script>
 <script>
 (() => {
   function insertText(editor, text) {
