@@ -1,11 +1,11 @@
-const CACHE_NAME = "branchline-pwa-v492";
+const CACHE_NAME = "branchline-pwa-v493";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=492",
-  "./phase1-editors.js?v=492",
-  "./phase2-layout.js?v=492",
-  "./app.js?v=492",
+  "./style.css?v=493",
+  "./phase1-editors.js?v=493",
+  "./phase2-layout.js?v=493",
+  "./app.js?v=493",
   "./sidebar-hotfix-v490.js",
   "./favicon.svg",
   "./manifest.webmanifest?v=314",
@@ -40,6 +40,25 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
+  const isYahooEmoji =
+    url.hostname === "raw.githubusercontent.com" &&
+    url.pathname.startsWith("/quangbahoa/yahoo-emoji/");
+  if (isYahooEmoji) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        try {
+          const response = await fetch(event.request, { cache: "force-cache" });
+          if (response && response.ok) cache.put(event.request, response.clone());
+          return response;
+        } catch (_) {
+          return cached || Response.error();
+        }
+      })
+    );
+    return;
+  }
   if (url.origin !== self.location.origin) return;
 
   const isDocument =
