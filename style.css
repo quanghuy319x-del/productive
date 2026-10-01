@@ -7669,3 +7669,32 @@ kbd{
     height:30px!important;
   }
 }
+
+
+/* v496: Yahoo emoji inline spans survive Note image normalization. */
+.note-inline-yahoo-emoji{
+  display:inline-block!important;
+  width:26px!important;
+  height:26px!important;
+  min-width:26px;
+  min-height:26px;
+  background-repeat:no-repeat!important;
+  background-position:center!important;
+  background-size:contain!important;
+  vertical-align:-6px;
+  margin:0 2px;
+  line-height:1;
+  overflow:hidden;
+  color:transparent;
+  user-select:none;
+  -webkit-user-select:none;
+}
+@media (max-width:640px), (pointer:coarse){
+  .note-inline-yahoo-emoji{
+    width:28px!important;
+    height:28px!important;
+    min-width:28px;
+    min-height:28px;
+    vertical-align:-7px;
+  }
+}
