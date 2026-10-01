@@ -28273,20 +28273,23 @@
       hidden = saved === null ? true : saved === "1";
     } catch (e) { hidden = true; }
     setSidebarHidden(hidden);
+
     const sidebarToggle = $("#btn-toggle-sidebar");
-    // v487: use pointerup on touch/PWA because a click can be cancelled by
-    // the sidebar's touch/scroll gesture handling. Keep click for mouse/keyboard.
-    let sidebarTouchToggleAt = 0;
-    sidebarToggle.addEventListener("pointerup", (e) => {
-      if (e.pointerType === "touch" || e.pointerType === "pen") {
-        sidebarTouchToggleAt = Date.now();
-        e.preventDefault();
-        e.stopPropagation();
-        setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
-      }
-    });
+    if (!sidebarToggle) return;
+
+    // v488: handle the earliest touch event. On Android/PWA the sidebar's
+    // gesture handlers can cancel pointerup/click, which made the ☰ button
+    // appear completely dead. touchstart closes/opens immediately; the
+    // following synthetic click is suppressed.
+    let touchHandledAt = 0;
+    sidebarToggle.addEventListener("touchstart", (e) => {
+      touchHandledAt = Date.now();
+      e.preventDefault();
+      e.stopPropagation();
+      setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
+    }, { passive: false });
     sidebarToggle.addEventListener("click", (e) => {
-      if (Date.now() - sidebarTouchToggleAt < 700) {
+      if (Date.now() - touchHandledAt < 900) {
         e.preventDefault();
         e.stopPropagation();
         return;
