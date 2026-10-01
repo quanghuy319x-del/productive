@@ -20663,7 +20663,30 @@
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      noteInsertSymbol(btn.dataset.emoji || btn.textContent);
+      if (btn.dataset.animatedFire === "1") {
+        const sel = window.getSelection();
+        let range = null;
+        if (sel && sel.rangeCount) {
+          const candidate = sel.getRangeAt(0);
+          if (noteTextarea.contains(candidate.commonAncestorContainer)) range = candidate.cloneRange();
+        }
+        noteTextarea.focus();
+        if (!range) { range = document.createRange(); range.selectNodeContents(noteTextarea); range.collapse(false); }
+        notePushUndo();
+        range.deleteContents();
+        const fire = document.createElement("span");
+        fire.className = "note-animated-fire";
+        fire.setAttribute("contenteditable", "false");
+        fire.setAttribute("aria-label", "animated fire");
+        fire.textContent = "🔥";
+        range.insertNode(fire);
+        range.setStartAfter(fire); range.collapse(true);
+        if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+        noteTextarea.dispatchEvent(new InputEvent("input", { bubbles:true, inputType:"insertText", data:null }));
+        scheduleNoteAutosave();
+      } else {
+        noteInsertSymbol(btn.dataset.emoji || btn.textContent);
+      }
       closeNoteEmojiPopover();
     });
   });
