@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=467">
+<link rel="stylesheet" href="style.css?v=468">
 </head>
 <body>
 <div id="app">
@@ -588,6 +588,7 @@
         <select id="note-tool-font" class="note-font-select" aria-label="Note font">
           <option value="georgia">Georgia</option>
           <option value="sans">Sans</option>
+          <option value="ios">iOS</option>
           <option value="mono">Mono</option>
         </select>
       </label>
@@ -897,8 +898,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=467"></script>
-<script src="phase2-layout.js?v=467"></script>
+<script src="phase1-editors.js?v=468"></script>
+<script src="phase2-layout.js?v=468"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -935,7 +936,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=467"></script>
+<script src="app.js?v=468"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1390,7 +1391,8 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (!select || !note) return;
   const families = {
     georgia: 'Georgia, "Times New Roman", serif',
-    sans: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Arial, sans-serif',
+    sans: '"Segoe UI", Roboto, Arial, sans-serif',
+    ios: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
     mono: '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace'
   };
   const apply = (key) => {
