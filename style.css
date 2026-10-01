@@ -7402,9 +7402,11 @@ kbd{
 }
 
 /* v467 — compact font picker in the Note toolbar. */
-.note-font-picker{ display:inline-flex; height:22px; }
+.note-font-picker{ display:inline-flex; height:22px; align-items:stretch; }
 .note-font-select{
+  box-sizing:border-box;
   height:22px;
+  min-height:22px;
   max-width:78px;
   padding:0 3px;
   border:1px solid var(--paper-border);
@@ -7418,3 +7420,6 @@ kbd{
 @media (max-width:640px){
   .note-font-select{ max-width:68px; font-size:10px; }
 }
+
+/* v470: font selector matches the 22px Note toolbar controls exactly. */
+.note-toolbar .note-font-picker,.note-toolbar .note-font-select{height:22px!important;min-height:22px!important;max-height:22px!important;}
