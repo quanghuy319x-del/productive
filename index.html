@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=313">
+<link rel="manifest" href="manifest.webmanifest?v=497">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=308" count as
+     by their exact URL, so "style.css" and "style.css?v=497" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=496">
+<link rel="stylesheet" href="style.css?v=497">
 </head>
 <body>
 <div id="app">
@@ -933,8 +933,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=496"></script>
-<script src="phase2-layout.js?v=496"></script>
+<script src="phase1-editors.js?v=497"></script>
+<script src="phase2-layout.js?v=497"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -943,7 +943,7 @@ if ("serviceWorker" in navigator) {
   const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
   const missing = need.filter(([g]) => !window[g]);
   missing.forEach(([g, f]) => {
-    document.write('<script src="' + f + '?v=491&r=' + Date.now() + '"><\/script>');
+    document.write('<script src="' + f + '?v=497&r=' + Date.now() + '"><\/script>');
   });
   window.__branchlineMissingModules = missing.map(([, f]) => f);
 })();
@@ -994,8 +994,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=496"></script>
-<script src="app.js?v=496"></script>
+<script src="sidebar-hotfix-v490.js?v=497"></script>
+<script src="app.js?v=497"></script>
 <script>
 (() => {
   function insertText(editor, text) {
