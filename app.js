@@ -20669,7 +20669,52 @@
     btn.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (btn.dataset.animatedFire === "1") {
+
+      // v501: Yahoo choices contain only an <img>, so the old fallback
+      // (btn.dataset.emoji || btn.textContent) was an empty string and
+      // inserted nothing. Handle animated Yahoo GIFs here, in the original
+      // picker pointerdown path, before the popover is closed.
+      if (btn.dataset.yahooGif) {
+        const sel = window.getSelection();
+        let range = null;
+        if (sel && sel.rangeCount) {
+          const candidate = sel.getRangeAt(0);
+          if (noteTextarea.contains(candidate.commonAncestorContainer)) range = candidate.cloneRange();
+        }
+        noteTextarea.focus();
+        if (!range) { range = document.createRange(); range.selectNodeContents(noteTextarea); range.collapse(false); }
+
+        notePushUndo();
+        range.deleteContents();
+
+        const yahoo = document.createElement("span");
+        yahoo.className = "note-inline-yahoo-emoji";
+        yahoo.dataset.yahooGif = btn.dataset.yahooGif;
+        yahoo.dataset.yahooTitle = btn.dataset.yahooTitle || "Yahoo emoticon";
+        yahoo.title = yahoo.dataset.yahooTitle;
+        yahoo.setAttribute("contenteditable", "false");
+        yahoo.setAttribute("aria-label", yahoo.dataset.yahooTitle);
+
+        const yahooFile = btn.dataset.yahooGif.split("/").pop().replace(/\.gif(?:\?.*)?$/i, "");
+        const yahooClass = "note-yahoo-" + yahooFile.toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+        yahoo.classList.add(yahooClass);
+        yahoo.style.backgroundImage = 'url("' + btn.dataset.yahooGif.replace(/"/g, "%22") + '")';
+        yahoo.textContent = "\u00A0";
+
+        range.insertNode(yahoo);
+        range.setStartAfter(yahoo);
+        range.collapse(true);
+        if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+
+        noteTextarea.dispatchEvent(new InputEvent("input", {
+          bubbles:true,
+          inputType:"insertText",
+          data:null
+        }));
+        scheduleNoteAutosave();
+      } else if (btn.dataset.animatedFire === "1") {
         const sel = window.getSelection();
         let range = null;
         if (sel && sel.rangeCount) {
@@ -20691,7 +20736,8 @@
         noteTextarea.dispatchEvent(new InputEvent("input", { bubbles:true, inputType:"insertText", data:null }));
         scheduleNoteAutosave();
       } else {
-        noteInsertSymbol(btn.dataset.emoji || btn.textContent);
+        const symbol = btn.dataset.emoji || btn.textContent;
+        if (symbol) noteInsertSymbol(symbol);
       }
       closeNoteEmojiPopover();
     });
