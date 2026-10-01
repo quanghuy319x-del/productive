@@ -4162,7 +4162,7 @@
     updateDriveLostBanner();
     if (onlineDot) {
       onlineDot.classList.toggle("offline", !isOnline);
-      onlineDot.title = isOnline ? "Online" : "Offline — editing paused";
+      onlineDot.title = isOnline ? "Online" : "Offline — editing locally";
     }
     if (!status || !btn) return;
     applySignedOutGate();
@@ -4199,7 +4199,7 @@
       // fully synced device can't edit right now, so say so plainly
       // rather than showing a stale "Synced …" line that implies
       // editing still works.
-      status.textContent = "Offline — editing paused";
+      status.textContent = "Offline — editing locally, sync pending";
     } else if (DriveDB.needsReauth) {
       status.textContent = "Google session expired \u2014 editing paused";
     } else if (DriveDB.driveBroken()) {
@@ -4257,10 +4257,12 @@
   // found (or failed to fetch) something newer — never merely because
   // the routine poll timer hasn't run yet.
   function isEditingAllowed() {
-    if (!DriveDB.signedIn && localOnlyMode()) return true;
-    return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
-      && !DriveDB.needsReauth && !DriveDB.driveBroken()
-      && !DriveDB.conflictDetected;
+    // v490 local-first: cloud/network health must never make the local map
+    // read-only. Signed-out users still use the existing sign-in/local-only
+    // gate, but once signed in, edits are saved locally and Drive catches up
+    // when connectivity/session/upload health recovers.
+    if (!DriveDB.signedIn) return localOnlyMode();
+    return true;
   }
 
   // Set only while flushing already-typed work to disk as the lock comes
@@ -8488,7 +8490,7 @@
 
   /* ---------------- layout / geometry module (phase 2) ---------------- */
   if (!window.BranchlineLayout || typeof window.BranchlineLayout.create !== "function") {
-    throw new Error("phase2-layout.js failed to load");
+    throw new Error("phase2-layout.js failed to load — make sure phase2-layout.js is uploaded next to index.html");
   }
   const {
     layout,
@@ -20805,7 +20807,7 @@
   // one symbol (➡️) remains, so clicking the button inserts it directly
   // instead of opening a list with a single option. ----
   const noteSymbolTriggerBtn = $("#note-tool-symbol");
-  noteSymbolTriggerBtn.addEventListener("mousedown", (e) => {
+  if (noteSymbolTriggerBtn) noteSymbolTriggerBtn.addEventListener("mousedown", (e) => {
     e.preventDefault(); // keep focus (and the note's caret position) off this button
     e.stopPropagation();
     noteInsertSymbol("➡️");
@@ -28273,27 +28275,7 @@
       hidden = saved === null ? true : saved === "1";
     } catch (e) { hidden = true; }
     setSidebarHidden(hidden);
-
-    const sidebarToggle = $("#btn-toggle-sidebar");
-    if (!sidebarToggle) return;
-
-    // v488: handle the earliest touch event. On Android/PWA the sidebar's
-    // gesture handlers can cancel pointerup/click, which made the ☰ button
-    // appear completely dead. touchstart closes/opens immediately; the
-    // following synthetic click is suppressed.
-    let touchHandledAt = 0;
-    sidebarToggle.addEventListener("touchstart", (e) => {
-      touchHandledAt = Date.now();
-      e.preventDefault();
-      e.stopPropagation();
-      setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
-    }, { passive: false });
-    sidebarToggle.addEventListener("click", (e) => {
-      if (Date.now() - touchHandledAt < 900) {
-        e.preventDefault();
-        e.stopPropagation();
-        return;
-      }
+    $("#btn-toggle-sidebar").addEventListener("click", () => {
       setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
     });
   })();

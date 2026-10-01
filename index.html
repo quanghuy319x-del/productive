@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=490">
+<link rel="stylesheet" href="style.css?v=491">
 </head>
 <body>
 <div id="app">
@@ -857,8 +857,75 @@ if ("serviceWorker" in navigator) {
   });
 }
 </script>
-<script src="phase1-editors.js?v=490"></script>
-<script src="phase2-layout.js?v=490"></script>
+<script>
+/* v491: a startup crash in app.js used to fail silently (nothing clickable:
+   no sign-in, no editing). Show the real error on screen instead. */
+(() => {
+  const t0 = Date.now();
+  function show(msg) {
+    try {
+      let box = document.getElementById("boot-error-banner");
+      if (!box) {
+        box = document.createElement("div");
+        box.id = "boot-error-banner";
+        box.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#7f1d1d;color:#fff;font:13px/1.4 system-ui,sans-serif;padding:10px 14px;white-space:pre-wrap;word-break:break-word";
+        const close = document.createElement("button");
+        close.textContent = "Dismiss";
+        close.style.cssText = "float:right;margin-left:10px";
+        close.onclick = () => box.remove();
+        const reload = document.createElement("button");
+        reload.textContent = "Clear cache & reload";
+        reload.style.cssText = "float:right;margin-left:10px";
+        reload.onclick = async () => {
+          try { (await navigator.serviceWorker.getRegistrations()).forEach(r => r.unregister()); } catch (_) {}
+          try { (await caches.keys()).forEach(k => caches.delete(k)); } catch (_) {}
+          location.reload();
+        };
+        box.appendChild(close); box.appendChild(reload);
+        const txt = document.createElement("div"); txt.id = "boot-error-text"; box.appendChild(txt);
+        (document.body || document.documentElement).appendChild(box);
+      }
+      const msgs = (window.__branchlineBootMsgs = window.__branchlineBootMsgs || []);
+      if (msgs.indexOf(msg) < 0) msgs.push(msg);
+      box.querySelector("#boot-error-text").textContent = "Branchline failed to start:\n" + msgs.join("\n\n");
+    } catch (_) {}
+  }
+  window.__branchlineBootError = show;
+  window.addEventListener("error", (e) => {
+    if (Date.now() - t0 > 15000) return;
+    const m = String(e.message || "");
+    if (/ResizeObserver/.test(m)) return;
+    const f = String(e.filename || "");
+    if (f && f.indexOf(location.origin) !== 0) return;
+    show(m + (f ? "\n(" + f.split("/").pop() + ":" + (e.lineno || "?") + ")" : ""));
+  });
+})();
+</script>
+<script src="phase1-editors.js?v=491"></script>
+<script src="phase2-layout.js?v=491"></script>
+<script>
+/* v491: app.js refuses to start without these two modules. If one failed to
+   load (404, stale service-worker copy, interrupted download) retry it once,
+   cache-busted, before app.js runs. */
+(() => {
+  const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
+  const missing = need.filter(([g]) => !window[g]);
+  missing.forEach(([g, f]) => {
+    document.write('<script src="' + f + '?v=491&r=' + Date.now() + '"><\/script>');
+  });
+  window.__branchlineMissingModules = missing.map(([, f]) => f);
+})();
+</script>
+<script>
+(() => {
+  const still = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]]
+    .filter(([g]) => !window[g]).map(([, f]) => f);
+  if (still.length && window.__branchlineBootError) {
+    window.__branchlineBootError("These files did not load: " + still.join(", ") +
+      "\nUpload them to the same folder as index.html (they are not part of the v491 zip).");
+  }
+})();
+</script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -895,8 +962,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="./sidebar-hotfix-v489.js?v=490"></script>
-<script src="app.js?v=490"></script>
+<script src="sidebar-hotfix-v490.js?v=491"></script>
+<script src="app.js?v=491"></script>
 <script>
 (() => {
   function insertText(editor, text) {
