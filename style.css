@@ -7532,3 +7532,11 @@ kbd{
     height:36px!important;
   }
 }
+
+/* v480: 7-item emoji picker stays compact and neat on phone. */
+@media (pointer:coarse){
+  #note-emoji-popover.note-emoji-popover{
+    width:310px!important;
+    max-width:calc(100vw - 24px)!important;
+  }
+}
