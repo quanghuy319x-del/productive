@@ -24,11 +24,11 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=482" count as
+     by their exact URL, so "style.css" and "style.css?v=308" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=482">
+<link rel="stylesheet" href="style.css?v=483">
 </head>
 <body>
 <div id="app">
@@ -639,8 +639,6 @@
     <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😐" title="Okay">😐</button>
     <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙁" title="Low">🙁</button>
     <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😞" title="Bad">😞</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="⭐" title="Star">⭐</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🔥" title="Fire">🔥</button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-animated-fire-choice" data-animated-fire="1" title="Moving fire"><span class="note-animated-fire">🔥</span></button>
   </div>
 </div>
@@ -850,19 +848,92 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  // v478: passive SW registration; GIS click readiness fix. Do not force update, skipWaiting,
-  // controller reload, or fresh-index replacement during app startup.
-  // Those refresh mechanisms caused the Android/PWA refresh loop.
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=482", { updateViaCache: "none" })
-      .catch(err => console.warn("Service worker registration failed:", err));
+  const APP_VERSION = "464";
+  let swReloading = false;
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swReloading) return;
+    swReloading = true;
+    location.reload();
   });
+
+  async function updateServiceWorker() {
+    try {
+      // Keep ONE stable registration URL. Changing ?v= on sw.js can leave
+      // installed Android PWAs attached to the older registration/update URL.
+      const reg = await navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
+      await reg.update();
+      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    } catch (err) {
+      console.warn("Service worker update failed:", err);
+    }
+  }
+
+  async function checkFreshIndex() {
+    try {
+      const url = new URL("./index.html", location.href);
+      url.searchParams.set("_update", Date.now());
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return;
+      const fresh = await res.text();
+      if (fresh.includes('const APP_VERSION = "464"') && !document.documentElement.dataset.v464Reloaded) {
+        // If this running document is older than the hosted index, bypass the
+        // service-worker navigation cache once and replace it immediately.
+        const running = document.querySelector('script[src*="app.js?v="]')?.src.match(/v=(\d+)/)?.[1];
+        if (running && running !== APP_VERSION) {
+          document.documentElement.dataset.v464Reloaded = "1";
+          location.replace(url.href);
+        }
+      }
+    } catch (_) {}
+  }
+
+  window.addEventListener("load", () => { updateServiceWorker(); checkFreshIndex(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { updateServiceWorker(); checkFreshIndex(); }
+  });
+  window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=482"></script>
-<script src="phase2-layout.js?v=482"></script>
-
-<script src="app.js?v=482"></script>
+<script src="phase1-editors.js?v=483"></script>
+<script src="phase2-layout.js?v=483"></script>
+<script>
+/* v389 mobile OAuth guard: background prompt=none must never navigate away
+   from Branchline. Explicit user-triggered OAuth remains unchanged. */
+(() => {
+  let patched = false;
+  const patch = () => {
+    if (patched || !window.google?.accounts?.oauth2?.initTokenClient) return false;
+    const oauth2 = window.google.accounts.oauth2;
+    const originalInit = oauth2.initTokenClient.bind(oauth2);
+    oauth2.initTokenClient = (config) => {
+      const client = originalInit(config);
+      const originalRequest = client.requestAccessToken.bind(client);
+      client.requestAccessToken = (opts = {}) => {
+        if (opts.prompt === "none") {
+          queueMicrotask(() => {
+            if (typeof config.error_callback === "function") {
+              config.error_callback({ type: "silent_auth_disabled" });
+            } else if (typeof config.callback === "function") {
+              config.callback({ error: "interaction_required" });
+            }
+          });
+          return;
+        }
+        return originalRequest(opts);
+      };
+      return client;
+    };
+    patched = true;
+    return true;
+  };
+  if (!patch()) {
+    const timer = setInterval(() => { if (patch()) clearInterval(timer); }, 25);
+    setTimeout(() => clearInterval(timer), 15000);
+  }
+})();
+</script>
+<script src="app.js?v=483"></script>
 <script>
 (() => {
   function insertText(editor, text) {
