@@ -7533,15 +7533,7 @@ kbd{
   }
 }
 
-/* v480: 7-item emoji picker stays compact and neat on phone. */
-@media (pointer:coarse){
-  #note-emoji-popover.note-emoji-popover{
-    width:310px!important;
-    max-width:calc(100vw - 24px)!important;
-  }
-}
-
-/* v481: GIF-like animated fire inline with Note text. */
+/* v483: retained GIF-like animated fire on the restored v473 baseline. */
 .note-animated-fire{display:inline-block;transform-origin:50% 100%;animation:noteFireFlicker .55s ease-in-out infinite alternate;will-change:transform,filter;vertical-align:-.08em}
 @keyframes noteFireFlicker{0%{transform:translateY(1px) rotate(-4deg) scale(.94,1.02);filter:brightness(.96)}45%{transform:translateY(-1px) rotate(3deg) scale(1.05,.97);filter:brightness(1.12)}100%{transform:translateY(-2px) rotate(-2deg) scale(.98,1.08);filter:brightness(1.04)}}
 @media (prefers-reduced-motion:reduce){.note-animated-fire{animation:none}}
