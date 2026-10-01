@@ -1,4 +1,4 @@
-const CACHE_NAME = "branchline-pwa-v496";
+const CACHE_NAME = "branchline-pwa-v497";
 const APP_SHELL = [
   "./",
   "./index.html",
