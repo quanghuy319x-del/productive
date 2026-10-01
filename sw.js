@@ -1,11 +1,12 @@
-const CACHE_NAME = "branchline-pwa-v488";
+const CACHE_NAME = "branchline-pwa-v489";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=488",
-  "./phase1-editors.js?v=488",
-  "./phase2-layout.js?v=488",
-  "./app.js?v=488",
+  "./style.css?v=489",
+  "./phase1-editors.js?v=489",
+  "./phase2-layout.js?v=489",
+  "./app.js?v=489",
+  "./sidebar-hotfix-v489.js",
   "./favicon.svg",
   "./manifest.webmanifest?v=314",
   "./pwa-icon-192.png",
@@ -50,10 +51,21 @@ self.addEventListener("fetch", (event) => {
   if (isDocument) {
     event.respondWith(
       fetch(event.request, { cache: "no-store" })
-        .then((response) => {
+        .then(async (response) => {
           if (response && response.ok && !url.pathname.endsWith("/sw.js")) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", copy));
+            const type = response.headers.get("content-type") || "";
+            if (type.includes("text/html")) {
+              let html = await response.text();
+              if (!html.includes("sidebar-hotfix-v489.js")) {
+                html = html.replace("</body>", '<script src="./sidebar-hotfix-v489.js?v=489"></script></body>');
+              }
+              const headers = new Headers(response.headers);
+              headers.delete("content-length");
+              const patched = new Response(html, {status: response.status, statusText: response.statusText, headers});
+              caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", patched.clone()));
+              return patched;
+            }
+            caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", response.clone()));
           }
           return response;
         })
