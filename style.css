@@ -7400,3 +7400,21 @@ kbd{
   opacity:1 !important;
   pointer-events:auto !important;
 }
+
+/* v467 — compact font picker in the Note toolbar. */
+.note-font-picker{ display:inline-flex; height:22px; }
+.note-font-select{
+  height:22px;
+  max-width:78px;
+  padding:0 3px;
+  border:1px solid var(--paper-border);
+  border-radius:5px;
+  background:#fff;
+  color:var(--paper-text);
+  font-size:10.5px;
+  line-height:1;
+  cursor:pointer;
+}
+@media (max-width:640px){
+  .note-font-select{ max-width:68px; font-size:10px; }
+}
