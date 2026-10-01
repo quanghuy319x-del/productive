@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=472">
+<link rel="stylesheet" href="style.css?v=473">
 </head>
 <body>
 <div id="app">
@@ -607,10 +607,6 @@
         </button>
       </div>
       <span class="note-tool-sep"></span>
-      <div class="note-color-picker">
-        <button type="button" id="note-tool-symbol" class="note-tool-btn" title="Insert a symbol">➡️</button>
-      </div>
-      <span class="note-tool-sep"></span>
       <label class="note-font-picker" title="Font">
         <select id="note-tool-font" class="note-font-select" aria-label="Note font">
           <option value="georgia">Georgia</option>
@@ -898,8 +894,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=472"></script>
-<script src="phase2-layout.js?v=472"></script>
+<script src="phase1-editors.js?v=473"></script>
+<script src="phase2-layout.js?v=473"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -936,7 +932,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=472"></script>
+<script src="app.js?v=473"></script>
 <script>
 (() => {
   function insertText(editor, text) {
