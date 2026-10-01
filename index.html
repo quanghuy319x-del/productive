@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=492">
+<link rel="stylesheet" href="style.css?v=493">
 </head>
 <body>
 <div id="app">
@@ -634,43 +634,45 @@
       <input type="color" id="note-color-custom" value="#2b2a25">
     </label>
   </div>
-  <div id="note-emoji-popover" class="note-color-popover note-emoji-popover hidden" aria-label="Add emoji">
-    <!-- v492: classic Yahoo Messenger-style favorites, inserted as normal Unicode emoji text. -->
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙂" title="Yahoo :) — Happy">🙂</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙁" title="Yahoo :( — Sad">🙁</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😉" title="Yahoo ;) — Wink">😉</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😀" title="Yahoo :D — Big grin">😀</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😍" title="Yahoo ;;) — Batting eyelashes">😍</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤗" title="Yahoo >:D< — Big hug">🤗</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😕" title="Yahoo :-/ — Confused">😕</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😘" title="Yahoo :x — Love struck">😘</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😊" title="Yahoo :&quot;> — Blushing">😊</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😛" title="Yahoo :P — Tongue">😛</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😗" title="Yahoo :-* — Kiss">😗</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="💔" title="Yahoo =(( — Broken heart">💔</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😮" title="Yahoo :-O — Surprised">😮</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😡" title="Yahoo X( — Angry">😡</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😏" title="Yahoo :> — Smug">😏</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😐" title="Yahoo :| — Straight face">😐</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😭" title="Yahoo :(( — Crying">😭</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤔" title="Yahoo :-? — Thinking">🤔</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤫" title="Yahoo :-$ — Secret">🤫</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤓" title="Yahoo :-B — Nerd">🤓</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😨" title="Yahoo :-SS — Nail biting">😨</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤣" title="Yahoo =)) — Rolling laugh">🤣</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😎" title="Yahoo B-) — Cool">😎</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😇" title="Yahoo O:) — Angel">😇</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😈" title="Yahoo >:) — Devil">😈</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😴" title="Yahoo |-) — Sleepy">😴</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤠" title="Yahoo <):) — Cowboy">🤠</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="👏" title="Yahoo =D> — Applause">👏</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="👍" title="Yahoo :-bd — Thumbs up">👍</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="👎" title="Yahoo :-q — Thumbs down">👎</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🌹" title="Yahoo @};- — Rose">🌹</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="☕" title="Yahoo ~o) — Coffee">☕</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤘" title="Yahoo \m/ — Rock">🤘</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="⭐" title="Yahoo (*) — Star">⭐</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch note-animated-fire-choice" data-animated-fire="1" title="Moving fire"><span class="note-animated-fire">🔥</span></button>
+  <div id="note-emoji-popover" class="note-color-popover note-emoji-popover hidden" aria-label="Add animated emoji">
+    <!-- v493: animated classic Yahoo Messenger emoticons. -->
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/smile-or-happy-face.gif" data-yahoo-title="Happy" title="Yahoo — Happy"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/smile-or-happy-face.gif" alt="Happy" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/sad-or-frown-face.gif" data-yahoo-title="Sad" title="Yahoo — Sad"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/sad-or-frown-face.gif" alt="Sad" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/winking.gif" data-yahoo-title="Wink" title="Yahoo — Wink"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/winking.gif" alt="Wink" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/big-grin.gif" data-yahoo-title="Big grin" title="Yahoo — Big grin"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/big-grin.gif" alt="Big grin" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/batting-eyelashes.gif" data-yahoo-title="Batting eyelashes" title="Yahoo — Batting eyelashes"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/batting-eyelashes.gif" alt="Batting eyelashes" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/big-hug.gif" data-yahoo-title="Big hug" title="Yahoo — Big hug"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/big-hug.gif" alt="Big hug" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/confused.gif" data-yahoo-title="Confused" title="Yahoo — Confused"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/confused.gif" alt="Confused" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/love-struck.gif" data-yahoo-title="Love struck" title="Yahoo — Love struck"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/love-struck.gif" alt="Love struck" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/blushing.gif" data-yahoo-title="Blushing" title="Yahoo — Blushing"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/blushing.gif" alt="Blushing" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/frustrated-or-sticking-tongue-out.gif" data-yahoo-title="Tongue" title="Yahoo — Tongue"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/frustrated-or-sticking-tongue-out.gif" alt="Tongue" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/kiss.gif" data-yahoo-title="Kiss" title="Yahoo — Kiss"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/kiss.gif" alt="Kiss" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/broken-heart.gif" data-yahoo-title="Broken heart" title="Yahoo — Broken heart"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/broken-heart.gif" alt="Broken heart" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/surprised.gif" data-yahoo-title="Surprised" title="Yahoo — Surprised"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/surprised.gif" alt="Surprised" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/angry-or-grumpy.gif" data-yahoo-title="Angry" title="Yahoo — Angry"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/angry-or-grumpy.gif" alt="Angry" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/crying.gif" data-yahoo-title="Crying" title="Yahoo — Crying"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/crying.gif" alt="Crying" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/thinking.gif" data-yahoo-title="Thinking" title="Yahoo — Thinking"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/thinking.gif" alt="Thinking" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/do-not-tell-anyone.gif" data-yahoo-title="Secret" title="Yahoo — Secret"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/do-not-tell-anyone.gif" alt="Secret" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/nerd.gif" data-yahoo-title="Nerd" title="Yahoo — Nerd"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/nerd.gif" alt="Nerd" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/nail-biting.gif" data-yahoo-title="Nail biting" title="Yahoo — Nail biting"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/nail-biting.gif" alt="Nail biting" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/rolling-on-the-floor-laughing.gif" data-yahoo-title="ROFL" title="Yahoo — ROFL"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/rolling-on-the-floor-laughing.gif" alt="ROFL" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/sunglasses-or-cool.gif" data-yahoo-title="Cool" title="Yahoo — Cool"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/sunglasses-or-cool.gif" alt="Cool" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/angel.gif" data-yahoo-title="Angel" title="Yahoo — Angel"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/angel.gif" alt="Angel" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/devil.gif" data-yahoo-title="Devil" title="Yahoo — Devil"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/devil.gif" alt="Devil" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/sleepy.gif" data-yahoo-title="Sleepy" title="Yahoo — Sleepy"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/sleepy.gif" alt="Sleepy" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/cowboy.gif" data-yahoo-title="Cowboy" title="Yahoo — Cowboy"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/cowboy.gif" alt="Cowboy" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/applause.gif" data-yahoo-title="Applause" title="Yahoo — Applause"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/applause.gif" alt="Applause" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/thumbs-up.gif" data-yahoo-title="Thumbs up" title="Yahoo — Thumbs up"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/thumbs-up.gif" alt="Thumbs up" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/thumbs-down.gif" data-yahoo-title="Thumbs down" title="Yahoo — Thumbs down"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/thumbs-down.gif" alt="Thumbs down" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/wave.gif" data-yahoo-title="Wave" title="Yahoo — Wave"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/wave.gif" alt="Wave" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/dancing.gif" data-yahoo-title="Dancing" title="Yahoo — Dancing"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/dancing.gif" alt="Dancing" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/party.gif" data-yahoo-title="Party" title="Yahoo — Party"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/party.gif" alt="Party" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/rolling-eyes.gif" data-yahoo-title="Rolling eyes" title="Yahoo — Rolling eyes"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/rolling-eyes.gif" alt="Rolling eyes" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/daydreaming.gif" data-yahoo-title="Daydreaming" title="Yahoo — Daydreaming"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/daydreaming.gif" alt="Daydreaming" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/whistling.gif" data-yahoo-title="Whistling" title="Yahoo — Whistling"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/whistling.gif" alt="Whistling" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/praying.gif" data-yahoo-title="Praying" title="Yahoo — Praying"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/praying.gif" alt="Praying" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/rocking.gif" data-yahoo-title="Rocking" title="Yahoo — Rocking"><img src="https://raw.githubusercontent.com/quangbahoa/yahoo-emoji/41722a335a605692782c776304fd6dbd7bd2a12a/yahoo-emo/rocking.gif" alt="Rocking" loading="lazy" draggable="false"></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-animated-fire-choice" data-moving-fire-v493="1" title="Moving fire"><span class="note-animated-fire">🔥</span></button>
   </div>
 </div>
 
@@ -931,8 +933,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=492"></script>
-<script src="phase2-layout.js?v=492"></script>
+<script src="phase1-editors.js?v=493"></script>
+<script src="phase2-layout.js?v=493"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -992,8 +994,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=492"></script>
-<script src="app.js?v=492"></script>
+<script src="sidebar-hotfix-v490.js?v=493"></script>
+<script src="app.js?v=493"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1463,6 +1465,102 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   try { saved = localStorage.getItem('branchline-note-font') || saved; } catch (_) {}
   apply(saved);
   select.addEventListener('change', () => apply(select.value));
+})();
+</script>
+
+<script>
+/* v493: animated Yahoo emoji insertion + restored moving fire.
+   Runs independently from app.js so the picker still works if another startup block fails. */
+(() => {
+  const editor = document.getElementById("note-textarea");
+  const popover = document.getElementById("note-emoji-popover");
+  if (!editor || !popover) return;
+
+  let savedRange = null;
+  const rememberRange = () => {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) savedRange = range.cloneRange();
+  };
+  document.addEventListener("selectionchange", rememberRange);
+  ["keyup","mouseup","touchend","input","focus"].forEach((name) => editor.addEventListener(name, rememberRange));
+
+  function insertionRange() {
+    if (savedRange) {
+      try {
+        if (editor.contains(savedRange.commonAncestorContainer)) return savedRange.cloneRange();
+      } catch (_) {}
+    }
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    return range;
+  }
+
+  function insertAnimatedNode(node) {
+    const range = insertionRange();
+    range.deleteContents();
+    const gap = document.createTextNode("\u00A0");
+    const frag = document.createDocumentFragment();
+    frag.append(node, gap);
+    range.insertNode(frag);
+
+    const sel = window.getSelection();
+    const after = document.createRange();
+    after.setStartAfter(gap);
+    after.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(after);
+    savedRange = after.cloneRange();
+    editor.focus({preventScroll:true});
+    editor.dispatchEvent(new InputEvent("input", {bubbles:true, inputType:"insertText", data:null}));
+  }
+
+  // Keep the caret stored in the editor while a picker button is pressed.
+  popover.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("[data-yahoo-gif],[data-moving-fire-v493]")) event.preventDefault();
+  }, true);
+
+  popover.addEventListener("click", (event) => {
+    const choice = event.target.closest("[data-yahoo-gif],[data-moving-fire-v493]");
+    if (!choice) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    if (choice.dataset.yahooGif) {
+      const img = document.createElement("img");
+      img.src = choice.dataset.yahooGif;
+      img.alt = choice.dataset.yahooTitle || "Yahoo emoticon";
+      img.title = choice.dataset.yahooTitle || "Yahoo emoticon";
+      img.className = "note-inline-yahoo-emoji";
+      img.draggable = false;
+      img.setAttribute("contenteditable", "false");
+      insertAnimatedNode(img);
+    } else {
+      const fire = document.createElement("span");
+      fire.className = "note-animated-fire note-inline-moving-fire";
+      fire.dataset.noteAnimatedFire = "1";
+      fire.textContent = "🔥";
+      insertAnimatedNode(fire);
+    }
+    popover.classList.add("hidden");
+  }, true);
+
+  // app.js in the user's v491 baseline still reports its older internal version.
+  // Keep the visible build badge aligned with this UI/cache release.
+  const badge = document.getElementById("version-badge");
+  if (badge) {
+    let applying = false;
+    const show493 = () => {
+      if (applying || badge.textContent === "v493") return;
+      applying = true;
+      badge.textContent = "v493";
+      applying = false;
+    };
+    new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
+    setTimeout(show493, 0);
+  }
 })();
 </script>
 </body>
