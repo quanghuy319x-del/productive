@@ -1585,6 +1585,14 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
     event.preventDefault();
     event.stopImmediatePropagation();
 
+    // v501: app.js now handles these on pointerdown. Keep this click
+    // listener only as a startup-failure fallback, and never insert twice.
+    if (choice.dataset.branchlineEmojiHandled === "1") {
+      delete choice.dataset.branchlineEmojiHandled;
+      popover.classList.add("hidden");
+      return;
+    }
+
     if (choice.dataset.yahooGif) {
       // v496: use a span with animated GIF background instead of <img>.
       // The Note editor has its own photo/image handling; raw inline <img>
