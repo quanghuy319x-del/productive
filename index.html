@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=501">
+<link rel="manifest" href="manifest.webmanifest?v=502">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=501">
+<link rel="stylesheet" href="style.css?v=502">
 </head>
 <body>
 <div id="app">
@@ -672,6 +672,19 @@
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/whistling.gif" data-yahoo-title="Whistling" title="Yahoo — Whistling"><img src="./assets/yahoo/whistling.gif" alt="Whistling" draggable="false"></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/praying.gif" data-yahoo-title="Praying" title="Yahoo — Praying"><img src="./assets/yahoo/praying.gif" alt="Praying" draggable="false"></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/rocking.gif" data-yahoo-title="Rocking" title="Yahoo — Rocking"><img src="./assets/yahoo/rocking.gif" alt="Rocking" draggable="false"></button>
+    <!-- v502: lightweight CSS-animated motivational/action emojis. -->
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🚀" data-motion="rocket" title="Launch"><span class="note-moving-emoji note-motion-rocket">🚀</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="⚡" data-motion="pulse" title="Energy"><span class="note-moving-emoji note-motion-pulse">⚡</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="💪" data-motion="pump" title="Strong"><span class="note-moving-emoji note-motion-pump">💪</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="✨" data-motion="sparkle" title="Sparkle"><span class="note-moving-emoji note-motion-sparkle">✨</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🎉" data-motion="party" title="Celebrate"><span class="note-moving-emoji note-motion-party">🎉</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🏃" data-motion="run" title="Go"><span class="note-moving-emoji note-motion-run">🏃</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🌟" data-motion="star" title="Shine"><span class="note-moving-emoji note-motion-star">🌟</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="😄" data-motion="cheer" title="Cheerful"><span class="note-moving-emoji note-motion-cheer">😄</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="👏" data-motion="clap" title="Applause"><span class="note-moving-emoji note-motion-clap">👏</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🎯" data-motion="target" title="Focus"><span class="note-moving-emoji note-motion-target">🎯</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🏆" data-motion="trophy" title="Win"><span class="note-moving-emoji note-motion-trophy">🏆</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🙌" data-motion="raise" title="Yes!"><span class="note-moving-emoji note-motion-raise">🙌</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-animated-fire-choice" data-moving-fire-v493="1" title="Moving fire"><span class="note-animated-fire">🔥</span></button>
   </div>
 </div>
@@ -933,8 +946,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=501"></script>
-<script src="phase2-layout.js?v=501"></script>
+<script src="phase1-editors.js?v=502"></script>
+<script src="phase2-layout.js?v=502"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -943,7 +956,7 @@ if ("serviceWorker" in navigator) {
   const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
   const missing = need.filter(([g]) => !window[g]);
   missing.forEach(([g, f]) => {
-    document.write('<script src="' + f + '?v=501&r=' + Date.now() + '"><\/script>');
+    document.write('<script src="' + f + '?v=502&r=' + Date.now() + '"><\/script>');
   });
   window.__branchlineMissingModules = missing.map(([, f]) => f);
 })();
@@ -994,8 +1007,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=501"></script>
-<script src="app.js?v=501"></script>
+<script src="sidebar-hotfix-v490.js?v=502"></script>
+<script src="app.js?v=502"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1576,11 +1589,11 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 
   // Keep the caret stored in the editor while a picker button is pressed.
   popover.addEventListener("pointerdown", (event) => {
-    if (event.target.closest("[data-yahoo-gif],[data-moving-fire-v493]")) event.preventDefault();
+    if (event.target.closest("[data-yahoo-gif],[data-moving-fire-v493],[data-moving-emoji]")) event.preventDefault();
   }, true);
 
   popover.addEventListener("click", (event) => {
-    const choice = event.target.closest("[data-yahoo-gif],[data-moving-fire-v493]");
+    const choice = event.target.closest("[data-yahoo-gif],[data-moving-fire-v493],[data-moving-emoji]");
     if (!choice) return;
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -1614,6 +1627,16 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
       yahoo.style.backgroundImage = 'url("' + choice.dataset.yahooGif.replace(/"/g, "%22") + '")';
       yahoo.textContent = "\u00A0";
       insertAnimatedNode(yahoo);
+    } else if (choice.dataset.movingEmoji === "1") {
+      const moving = document.createElement("span");
+      const motion = (choice.dataset.motion || "cheer").toLowerCase().replace(/[^a-z0-9-]/g, "");
+      moving.className = "note-moving-emoji note-motion-" + motion;
+      moving.dataset.movingEmoji = "1";
+      moving.dataset.motion = motion;
+      moving.setAttribute("contenteditable", "false");
+      moving.setAttribute("aria-label", choice.title || "animated emoji");
+      moving.textContent = choice.dataset.emoji || choice.textContent || "✨";
+      insertAnimatedNode(moving);
     } else {
       const fire = document.createElement("span");
       fire.className = "note-animated-fire note-inline-moving-fire";
@@ -1630,9 +1653,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v501") return;
+      if (applying || badge.textContent === "v502") return;
       applying = true;
-      badge.textContent = "v501";
+      badge.textContent = "v502";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
