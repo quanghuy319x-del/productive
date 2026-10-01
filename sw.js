@@ -1,11 +1,11 @@
-const CACHE_NAME = "branchline-pwa-v483";
+const CACHE_NAME = "branchline-pwa-v484";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=483",
-  "./phase1-editors.js?v=483",
-  "./phase2-layout.js?v=483",
-  "./app.js?v=483",
+  "./style.css?v=484",
+  "./phase1-editors.js?v=484",
+  "./phase2-layout.js?v=484",
+  "./app.js?v=484",
   "./favicon.svg",
   "./manifest.webmanifest?v=314",
   "./pwa-icon-192.png",
