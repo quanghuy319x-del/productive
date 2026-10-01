@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=466">
+<link rel="stylesheet" href="style.css?v=467">
 </head>
 <body>
 <div id="app">
@@ -584,6 +584,13 @@
       
       
       <span class="note-tool-sep"></span>
+      <label class="note-font-picker" title="Font">
+        <select id="note-tool-font" class="note-font-select" aria-label="Note font">
+          <option value="georgia">Georgia</option>
+          <option value="sans">Sans</option>
+          <option value="mono">Mono</option>
+        </select>
+      </label>
       <button type="button" id="note-tool-title-mode" class="note-tool-btn" title="Title mode: bold uppercase until first dot or -----">T.</button>
       <button type="button" id="note-tool-bold" class="note-tool-btn" title="Bold"><b>B</b></button>
       <button type="button" id="note-tool-bold-upper" class="note-tool-btn" title="Bold + UPPERCASE selected text"><b>BB</b></button>
@@ -890,8 +897,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("pageshow", () => { updateServiceWorker(); checkFreshIndex(); });
 }
 </script>
-<script src="phase1-editors.js?v=466"></script>
-<script src="phase2-layout.js?v=466"></script>
+<script src="phase1-editors.js?v=467"></script>
+<script src="phase2-layout.js?v=467"></script>
 <script>
 /* v389 mobile OAuth guard: background prompt=none must never navigate away
    from Branchline. Explicit user-triggered OAuth remains unchanged. */
@@ -928,7 +935,7 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="app.js?v=466"></script>
+<script src="app.js?v=467"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1371,6 +1378,32 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
     el.addEventListener('focus', hide, true);
     el.addEventListener('input', hide, true);
   });
+})();
+</script>
+<script>
+/* v467: Note font picker. The same note editor is reused by Note/DRC/Brainstorm,
+   so the chosen family follows that shared editor consistently. */
+(() => {
+  const select = document.getElementById('note-tool-font');
+  const note = document.getElementById('note-textarea');
+  const title = document.getElementById('note-title-input');
+  if (!select || !note) return;
+  const families = {
+    georgia: 'Georgia, "Times New Roman", serif',
+    sans: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Arial, sans-serif',
+    mono: '"SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace'
+  };
+  const apply = (key) => {
+    key = families[key] ? key : 'georgia';
+    note.style.fontFamily = families[key];
+    if (title) title.style.fontFamily = families[key];
+    select.value = key;
+    try { localStorage.setItem('branchline-note-font', key); } catch (_) {}
+  };
+  let saved = 'georgia';
+  try { saved = localStorage.getItem('branchline-note-font') || saved; } catch (_) {}
+  apply(saved);
+  select.addEventListener('change', () => apply(select.value));
 })();
 </script>
 </body>
