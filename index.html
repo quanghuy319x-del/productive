@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=491">
+<link rel="stylesheet" href="style.css?v=492">
 </head>
 <body>
 <div id="app">
@@ -635,11 +635,41 @@
     </label>
   </div>
   <div id="note-emoji-popover" class="note-color-popover note-emoji-popover hidden" aria-label="Add emoji">
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😀" title="Great">😀</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙂" title="Good">🙂</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😐" title="Okay">😐</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙁" title="Low">🙁</button>
-    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😞" title="Bad">😞</button>
+    <!-- v492: classic Yahoo Messenger-style favorites, inserted as normal Unicode emoji text. -->
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙂" title="Yahoo :) — Happy">🙂</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🙁" title="Yahoo :( — Sad">🙁</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😉" title="Yahoo ;) — Wink">😉</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😀" title="Yahoo :D — Big grin">😀</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😍" title="Yahoo ;;) — Batting eyelashes">😍</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤗" title="Yahoo >:D< — Big hug">🤗</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😕" title="Yahoo :-/ — Confused">😕</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😘" title="Yahoo :x — Love struck">😘</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😊" title="Yahoo :&quot;> — Blushing">😊</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😛" title="Yahoo :P — Tongue">😛</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😗" title="Yahoo :-* — Kiss">😗</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="💔" title="Yahoo =(( — Broken heart">💔</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😮" title="Yahoo :-O — Surprised">😮</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😡" title="Yahoo X( — Angry">😡</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😏" title="Yahoo :> — Smug">😏</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😐" title="Yahoo :| — Straight face">😐</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😭" title="Yahoo :(( — Crying">😭</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤔" title="Yahoo :-? — Thinking">🤔</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤫" title="Yahoo :-$ — Secret">🤫</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤓" title="Yahoo :-B — Nerd">🤓</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😨" title="Yahoo :-SS — Nail biting">😨</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤣" title="Yahoo =)) — Rolling laugh">🤣</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😎" title="Yahoo B-) — Cool">😎</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😇" title="Yahoo O:) — Angel">😇</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😈" title="Yahoo >:) — Devil">😈</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="😴" title="Yahoo |-) — Sleepy">😴</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤠" title="Yahoo <):) — Cowboy">🤠</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="👏" title="Yahoo =D> — Applause">👏</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="👍" title="Yahoo :-bd — Thumbs up">👍</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="👎" title="Yahoo :-q — Thumbs down">👎</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🌹" title="Yahoo @};- — Rose">🌹</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="☕" title="Yahoo ~o) — Coffee">☕</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="🤘" title="Yahoo \m/ — Rock">🤘</button>
+    <button type="button" class="note-tool-btn note-emoji-swatch" data-emoji="⭐" title="Yahoo (*) — Star">⭐</button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-animated-fire-choice" data-animated-fire="1" title="Moving fire"><span class="note-animated-fire">🔥</span></button>
   </div>
 </div>
@@ -901,8 +931,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=491"></script>
-<script src="phase2-layout.js?v=491"></script>
+<script src="phase1-editors.js?v=492"></script>
+<script src="phase2-layout.js?v=492"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -962,8 +992,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=491"></script>
-<script src="app.js?v=491"></script>
+<script src="sidebar-hotfix-v490.js?v=492"></script>
+<script src="app.js?v=492"></script>
 <script>
 (() => {
   function insertText(editor, text) {
