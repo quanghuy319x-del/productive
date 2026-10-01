@@ -1,12 +1,48 @@
-const CACHE_NAME = "branchline-pwa-v493";
+const CACHE_NAME = "branchline-pwa-v494";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=493",
-  "./phase1-editors.js?v=493",
-  "./phase2-layout.js?v=493",
-  "./app.js?v=493",
+  "./style.css?v=494",
+  "./phase1-editors.js?v=494",
+  "./phase2-layout.js?v=494",
+  "./app.js?v=494",
   "./sidebar-hotfix-v490.js",
+  "./assets/yahoo/smile-or-happy-face.gif",
+  "./assets/yahoo/sad-or-frown-face.gif",
+  "./assets/yahoo/winking.gif",
+  "./assets/yahoo/big-grin.gif",
+  "./assets/yahoo/batting-eyelashes.gif",
+  "./assets/yahoo/big-hug.gif",
+  "./assets/yahoo/confused.gif",
+  "./assets/yahoo/love-struck.gif",
+  "./assets/yahoo/blushing.gif",
+  "./assets/yahoo/frustrated-or-sticking-tongue-out.gif",
+  "./assets/yahoo/kiss.gif",
+  "./assets/yahoo/broken-heart.gif",
+  "./assets/yahoo/surprised.gif",
+  "./assets/yahoo/angry-or-grumpy.gif",
+  "./assets/yahoo/crying.gif",
+  "./assets/yahoo/thinking.gif",
+  "./assets/yahoo/do-not-tell-anyone.gif",
+  "./assets/yahoo/nerd.gif",
+  "./assets/yahoo/nail-biting.gif",
+  "./assets/yahoo/rolling-on-the-floor-laughing.gif",
+  "./assets/yahoo/sunglasses-or-cool.gif",
+  "./assets/yahoo/angel.gif",
+  "./assets/yahoo/devil.gif",
+  "./assets/yahoo/sleepy.gif",
+  "./assets/yahoo/cowboy.gif",
+  "./assets/yahoo/applause.gif",
+  "./assets/yahoo/thumbs-up.gif",
+  "./assets/yahoo/thumbs-down.gif",
+  "./assets/yahoo/wave.gif",
+  "./assets/yahoo/dancing.gif",
+  "./assets/yahoo/party.gif",
+  "./assets/yahoo/rolling-eyes.gif",
+  "./assets/yahoo/daydreaming.gif",
+  "./assets/yahoo/whistling.gif",
+  "./assets/yahoo/praying.gif",
+  "./assets/yahoo/rocking.gif",
   "./favicon.svg",
   "./manifest.webmanifest?v=314",
   "./pwa-icon-192.png",
@@ -40,25 +76,6 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  const isYahooEmoji =
-    url.hostname === "raw.githubusercontent.com" &&
-    url.pathname.startsWith("/quangbahoa/yahoo-emoji/");
-  if (isYahooEmoji) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        const cached = await cache.match(event.request);
-        if (cached) return cached;
-        try {
-          const response = await fetch(event.request, { cache: "force-cache" });
-          if (response && response.ok) cache.put(event.request, response.clone());
-          return response;
-        } catch (_) {
-          return cached || Response.error();
-        }
-      })
-    );
-    return;
-  }
   if (url.origin !== self.location.origin) return;
 
   const isDocument =
