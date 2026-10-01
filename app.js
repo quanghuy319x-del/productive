@@ -20715,6 +20715,41 @@
         }));
         scheduleNoteAutosave();
         btn.dataset.branchlineEmojiHandled = "1";
+      } else if (btn.dataset.movingEmoji === "1") {
+        const sel = window.getSelection();
+        let range = null;
+        if (sel && sel.rangeCount) {
+          const candidate = sel.getRangeAt(0);
+          if (noteTextarea.contains(candidate.commonAncestorContainer)) range = candidate.cloneRange();
+        }
+        noteTextarea.focus();
+        if (!range) { range = document.createRange(); range.selectNodeContents(noteTextarea); range.collapse(false); }
+
+        notePushUndo();
+        range.deleteContents();
+
+        const moving = document.createElement("span");
+        moving.className = "note-moving-emoji";
+        const motion = (btn.dataset.motion || "cheer").toLowerCase().replace(/[^a-z0-9-]/g, "");
+        moving.classList.add("note-motion-" + motion);
+        moving.dataset.movingEmoji = "1";
+        moving.dataset.motion = motion;
+        moving.setAttribute("contenteditable", "false");
+        moving.setAttribute("aria-label", btn.title || "animated emoji");
+        moving.textContent = btn.dataset.emoji || btn.textContent || "✨";
+
+        range.insertNode(moving);
+        range.setStartAfter(moving);
+        range.collapse(true);
+        if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+
+        noteTextarea.dispatchEvent(new InputEvent("input", {
+          bubbles:true,
+          inputType:"insertText",
+          data:moving.textContent
+        }));
+        scheduleNoteAutosave();
+        btn.dataset.branchlineEmojiHandled = "1";
       } else if (btn.dataset.animatedFire === "1" || btn.dataset.movingFireV493 === "1") {
         const sel = window.getSelection();
         let range = null;
