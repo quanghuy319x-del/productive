@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=497">
+<link rel="stylesheet" href="style.css?v=498">
 </head>
 <body>
 <div id="app">
@@ -933,8 +933,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=497"></script>
-<script src="phase2-layout.js?v=497"></script>
+<script src="phase1-editors.js?v=498"></script>
+<script src="phase2-layout.js?v=498"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -943,7 +943,7 @@ if ("serviceWorker" in navigator) {
   const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
   const missing = need.filter(([g]) => !window[g]);
   missing.forEach(([g, f]) => {
-    document.write('<script src="' + f + '?v=497&r=' + Date.now() + '"><\/script>');
+    document.write('<script src="' + f + '?v=498&r=' + Date.now() + '"><\/script>');
   });
   window.__branchlineMissingModules = missing.map(([, f]) => f);
 })();
@@ -994,8 +994,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=497"></script>
-<script src="app.js?v=497"></script>
+<script src="sidebar-hotfix-v490.js?v=498"></script>
+<script src="app.js?v=498"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1616,9 +1616,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v497") return;
+      if (applying || badge.textContent === "v498") return;
       applying = true;
-      badge.textContent = "v497";
+      badge.textContent = "v498";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
