@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=494">
+<link rel="stylesheet" href="style.css?v=495">
 </head>
 <body>
 <div id="app">
@@ -933,8 +933,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=494"></script>
-<script src="phase2-layout.js?v=494"></script>
+<script src="phase1-editors.js?v=495"></script>
+<script src="phase2-layout.js?v=495"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -994,8 +994,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=494"></script>
-<script src="app.js?v=494"></script>
+<script src="sidebar-hotfix-v490.js?v=495"></script>
+<script src="app.js?v=495"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1119,7 +1119,7 @@ if ("serviceWorker" in navigator) {
     // everything typed afterward in normal casing/weight.
     function titleEnded(text) {
       const s = String(text || "").replace(/\u200B/g, "");
-      return s.includes(".") || s.includes("-----");
+      return s.includes(".") || s.includes("-----") || s.includes("\t");
     }
 
     function putCaretInsideHeading(range) {
@@ -1207,6 +1207,63 @@ if ("serviceWorker" in navigator) {
       selection.addRange(range);
       return true;
     }
+
+    function finishTitleAtTab(range) {
+      const selection = window.getSelection();
+      const heading = headingAncestor(range.startContainer);
+      if (!heading || !heading.parentNode) return false;
+
+      // End bold/ALL-CAPS at the current caret without turning T. off.
+      // The real Tab action is triggered afterward via the existing toolbar
+      // Tab button, so keyboard Tab and toolbar Tab keep identical spacing.
+      heading.textContent = (heading.textContent || "").replace(/\u200B/g, "");
+
+      const normal = document.createElement("span");
+      normal.className = "title-mode-normal";
+      const anchor = document.createTextNode("\u200B");
+      normal.appendChild(anchor);
+      heading.parentNode.insertBefore(normal, heading.nextSibling);
+
+      range.setStart(anchor, 0);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+
+    // v495: keyboard Tab is also a Title Mode boundary, just like "." or
+    // "------". Keep T. enabled, move the caret into normal text, then
+    // invoke the existing toolbar Tab action so its dot-leader spacing stays
+    // exactly the same on desktop and touch keyboards.
+    editor.addEventListener("keydown", (e) => {
+      if (!enabled || e.key !== "Tab" || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed) return;
+
+      const line = directLineForRange(range);
+      if (titleEnded(textBeforeCaretInLine(range, line))) return;
+      if (!headingAncestor(range.startContainer)) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      if (!finishTitleAtTab(range)) return;
+      const tabButtonId = editorId === "brainstorm-textarea"
+        ? "brainstorm-tool-tab"
+        : "note-tool-tab";
+      const tabButton = document.getElementById(tabButtonId);
+      if (tabButton) {
+        tabButton.click();
+      } else {
+        // Fallback if the toolbar button is ever removed: keep focus in the
+        // normal segment instead of letting browser Tab move focus away.
+        editor.dispatchEvent(new InputEvent("input", {
+          bubbles: true, inputType: "insertText", data: "\t"
+        }));
+      }
+    }, true);
 
     editor.addEventListener("beforeinput", (e) => {
       if (!enabled) return;
@@ -1553,9 +1610,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v494") return;
+      if (applying || badge.textContent === "v495") return;
       applying = true;
-      badge.textContent = "v494";
+      badge.textContent = "v495";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
