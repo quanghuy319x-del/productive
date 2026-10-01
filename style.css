@@ -7438,3 +7438,50 @@ kbd{
     padding:0 7px;
   }
 }
+
+/* v472: phone Note toolbar — font picker and Tab use the same 38px control box
+   as every other toolbar item. Overrides older fixed 22/44px and 54px Tab rules. */
+@media (max-width:640px){
+  #note-modal .note-font-picker{
+    display:flex!important;
+    align-items:stretch!important;
+    height:38px!important;
+    min-height:38px!important;
+    max-height:38px!important;
+    align-self:stretch!important;
+  }
+  #note-modal .note-font-select{
+    box-sizing:border-box!important;
+    width:100%!important;
+    max-width:none!important;
+    height:38px!important;
+    min-height:38px!important;
+    max-height:38px!important;
+    margin:0!important;
+    padding:0 4px!important;
+    border-radius:6px!important;
+    font-size:11px!important;
+  }
+  #note-modal #note-tool-tab{
+    box-sizing:border-box!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    height:38px!important;
+    min-height:38px!important;
+    max-height:38px!important;
+    padding:0 2px!important;
+    font-size:0!important;
+  }
+  #note-modal #note-tool-tab::before{
+    content:"Tab···"!important;
+    display:flex!important;
+    width:100%!important;
+    height:100%!important;
+    align-items:center!important;
+    justify-content:center!important;
+    font-size:10px!important;
+    font-weight:600!important;
+    line-height:1!important;
+  }
+}
