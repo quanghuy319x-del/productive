@@ -28162,42 +28162,15 @@
   }
 
   const googleSigninBtn = $("#btn-google-signin");
-  googleSigninBtn.addEventListener("click", async () => {
+  googleSigninBtn.addEventListener("click", () => {
     if (DriveDB.needsReauth || DriveDB.driveBroken()) {
+      // Auth expiry opens Google; a plain upload failure with a valid token
+      // resumes the existing Drive session and already-uploaded photos.
       runDriveReconnectClick(googleSigninBtn);
-      return;
-    }
-    if (DriveDB.signedIn) {
+    } else if (DriveDB.signedIn) {
       DriveDB.signOut();
-      return;
-    }
-
-    // v478: give immediate feedback and never silently lose the user gesture
-    // while waiting for the async Google GIS script on Android/PWA.
-    if (!DriveDB.ensureTokenClient()) {
-      googleSigninBtn.textContent = "Loading Google…";
-      googleSigninBtn.disabled = true;
-      const ready = await waitForGis(8000);
-      googleSigninBtn.disabled = false;
-      googleSigninBtn.textContent = "Sign in with Google";
-      if (!ready) {
-        alert("Google sign-in could not load. Check the connection, then try again.");
-        return;
-      }
-      // GIS only became ready after this tap. Require a fresh explicit tap so
-      // requestAccessToken remains inside a real browser user gesture.
-      showToast("Google is ready — tap Sign in with Google again.");
-      return;
-    }
-
-    googleSigninBtn.textContent = "Opening Google…";
-    try {
-      await DriveDB.signIn(false);
-    } catch (err) {
-      alert((err && err.message) || "Google sign-in failed.");
-    } finally {
-      if (!DriveDB.signedIn) googleSigninBtn.textContent = "Sign in with Google";
-      googleSigninBtn.disabled = false;
+    } else {
+      DriveDB.signIn(false).catch(err => alert(err.message || "Google sign-in failed."));
     }
   });
   const btnDriveLostReconnect = $("#drive-lost-reconnect");
