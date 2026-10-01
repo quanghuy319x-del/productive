@@ -7595,3 +7595,77 @@ kbd{
     vertical-align:-6px;
   }
 }
+
+
+/* v494: phone-safe animated Yahoo picker. */
+#note-emoji-popover.note-emoji-popover{
+  display:grid;
+  grid-template-columns:repeat(6, 36px);
+  gap:6px;
+  width:auto;
+  max-width:calc(100vw - 16px);
+  max-height:min(380px, 70dvh);
+  overflow-y:auto;
+  overflow-x:hidden;
+  align-content:start;
+  justify-content:center;
+  padding:8px;
+}
+#note-emoji-popover.note-emoji-popover.hidden{display:none;}
+#note-emoji-popover .note-emoji-swatch{
+  width:36px!important;
+  height:36px!important;
+  min-width:36px!important;
+  min-height:36px!important;
+  padding:3px!important;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+#note-emoji-popover .note-yahoo-gif-choice img{
+  width:28px!important;
+  height:28px!important;
+  object-fit:contain;
+  image-rendering:auto;
+}
+.note-animated-fire,
+.note-inline-moving-fire{
+  animation:noteFireFlicker .55s ease-in-out infinite alternate!important;
+}
+@media (prefers-reduced-motion:reduce){
+  .note-animated-fire,
+  .note-inline-moving-fire{
+    animation:noteFireFlicker .55s ease-in-out infinite alternate!important;
+  }
+}
+@media (max-width:640px), (pointer:coarse){
+  #note-emoji-popover.note-emoji-popover{
+    position:fixed!important;
+    left:50%!important;
+    right:auto!important;
+    top:auto!important;
+    bottom:calc(12px + env(safe-area-inset-bottom))!important;
+    transform:translateX(-50%)!important;
+    grid-template-columns:repeat(6, 38px);
+    gap:6px!important;
+    width:max-content!important;
+    max-width:calc(100vw - 16px)!important;
+    max-height:min(420px, 72dvh)!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    padding:8px!important;
+    z-index:2147483000!important;
+  }
+  #note-emoji-popover .note-emoji-swatch{
+    width:38px!important;
+    height:38px!important;
+    min-width:38px!important;
+    min-height:38px!important;
+    flex:0 0 38px!important;
+  }
+  #note-emoji-popover .note-yahoo-gif-choice img{
+    width:30px!important;
+    height:30px!important;
+  }
+}
