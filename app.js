@@ -28273,7 +28273,24 @@
       hidden = saved === null ? true : saved === "1";
     } catch (e) { hidden = true; }
     setSidebarHidden(hidden);
-    $("#btn-toggle-sidebar").addEventListener("click", () => {
+    const sidebarToggle = $("#btn-toggle-sidebar");
+    // v487: use pointerup on touch/PWA because a click can be cancelled by
+    // the sidebar's touch/scroll gesture handling. Keep click for mouse/keyboard.
+    let sidebarTouchToggleAt = 0;
+    sidebarToggle.addEventListener("pointerup", (e) => {
+      if (e.pointerType === "touch" || e.pointerType === "pen") {
+        sidebarTouchToggleAt = Date.now();
+        e.preventDefault();
+        e.stopPropagation();
+        setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
+      }
+    });
+    sidebarToggle.addEventListener("click", (e) => {
+      if (Date.now() - sidebarTouchToggleAt < 700) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       setSidebarHidden(!document.getElementById("app").classList.contains("sidebar-hidden"));
     });
   })();
