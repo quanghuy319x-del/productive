@@ -7537,3 +7537,24 @@ kbd{
 .note-animated-fire{display:inline-block;transform-origin:50% 100%;animation:noteFireFlicker .55s ease-in-out infinite alternate;will-change:transform,filter;vertical-align:-.08em}
 @keyframes noteFireFlicker{0%{transform:translateY(1px) rotate(-4deg) scale(.94,1.02);filter:brightness(.96)}45%{transform:translateY(-1px) rotate(3deg) scale(1.05,.97);filter:brightness(1.12)}100%{transform:translateY(-2px) rotate(-2deg) scale(.98,1.08);filter:brightness(1.04)}}
 @media (prefers-reduced-motion:reduce){.note-animated-fire{animation:none}}
+
+
+/* v492: expanded Yahoo-style Note emoji picker layout. */
+.note-emoji-popover{
+  flex-wrap: wrap;
+  width: 234px;
+  max-width: calc(100vw - 16px);
+  max-height: min(250px, calc(100dvh - 32px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: flex-start;
+  scrollbar-width: thin;
+}
+@media (pointer: coarse){
+  .note-emoji-popover{
+    flex-wrap: wrap;
+    width: 236px;
+    max-width: min(236px, calc(100vw - 16px));
+    max-height: min(300px, calc(100dvh - 24px));
+  }
+}
