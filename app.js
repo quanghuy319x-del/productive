@@ -22764,6 +22764,39 @@
     }
     if (opts.jumpToNode) addItem("Jump to node", "", opts.jumpToNode);
 
+    addItem("Move to Queue Tasks", "", () => {
+      if (!requireSignIn()) return;
+
+      const subtasks = getTaskSubtasks(t).slice();
+      const queueItems = subtasks.length ? subtasks : [t];
+      const queue = getDRCQueueItems().slice();
+      const deleted = getDeletedDRCQueueItems();
+      const now = Date.now();
+
+      pushUndo();
+
+      // A task with subtasks contributes only its subtasks to Queue Tasks.
+      // A standalone task itself becomes one queue subtask.
+      queueItems.forEach((item, index) => {
+        item.updatedAt = now + index;
+        queue.push(item);
+        if (deleted[item.id]) delete deleted[item.id];
+      });
+
+      // In both cases the original normal task is gone after the move.
+      host.tasks = getNodeTasks(host).filter(x => x !== t);
+
+      saveDRCQueueItems(queue);
+      saveDeletedDRCQueueItems(deleted);
+      scheduleTaskTemplateSync();
+
+      persist();
+      rerender();
+      showToast(subtasks.length
+        ? `Moved ${subtasks.length} subtask${subtasks.length === 1 ? "" : "s"} to Queue Tasks`
+        : "Moved task to Queue Tasks");
+    });
+
     addItem("Delete task", "danger", () => {
       if (!requireSignIn()) return;
       if (!confirm(`Delete the task "${t.text || "Untitled task"}"?`)) return;
