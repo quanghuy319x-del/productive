@@ -4257,6 +4257,7 @@
   // found (or failed to fetch) something newer — never merely because
   // the routine poll timer hasn't run yet.
   function isEditingAllowed() {
+    if (!DriveDB.signedIn && localOnlyMode()) return true;
     return !!DriveDB.signedIn && !!DriveDB.dataSynced && isOnline
       && !DriveDB.needsReauth && !DriveDB.driveBroken()
       && !DriveDB.conflictDetected;
@@ -8111,8 +8112,11 @@
   // synced state, so this improves reopen speed without allowing a stale
   // local copy to overwrite a newer remote one.
   let startupLocalPreview = false;
+  function localOnlyMode() {
+    try { return localStorage.getItem("branchline_local_only") === "1"; } catch (e) { return false; }
+  }
   function mapsReadyToShow() {
-    return startupLocalPreview || (!!DriveDB.signedIn && !!DriveDB.dataSynced);
+    return startupLocalPreview || localOnlyMode() || (!!DriveDB.signedIn && !!DriveDB.dataSynced);
   }
 
   // Toggles the body-level CSS gate (canvas/FABs, see style.css) and
@@ -28206,7 +28210,25 @@
   const btnSignedOutSignin = $("#btn-signed-out-signin");
   if (btnSignedOutSignin) {
     btnSignedOutSignin.addEventListener("click", () => {
-      DriveDB.signIn(false).catch(err => alert(err.message || "Google sign-in failed."));
+      showToast("Opening Google sign-in…");
+      DriveDB.signIn(false).catch(err => {
+        const msg = err.message || "Google sign-in failed.";
+        showToast(msg);
+        const p = signedOutState.querySelector("p");
+        if (p) p.textContent = msg;
+        alert(msg);
+      });
+    });
+  }
+  const btnLocalOnly = $("#btn-local-only");
+  if (btnLocalOnly) {
+    btnLocalOnly.addEventListener("click", async () => {
+      try { localStorage.setItem("branchline_local_only", "1"); } catch (e) {}
+      applySignedOutGate();
+      renderSidebar();
+      const list = activeMaps();
+      if (list.length && !state.current) { try { await openMap(list[0].id); } catch (e) {} }
+      renderAll();
     });
   }
 
