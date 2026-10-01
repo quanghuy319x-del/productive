@@ -1,0 +1,23 @@
+name: Export full v490
+on:
+  push:
+    branches:
+      - export-v490-full
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact v490
+        uses: actions/checkout@v4
+        with:
+          ref: 06bf651d28481229a796231c6eb93dbeece8578c
+          fetch-depth: 1
+      - name: Build full v490 zip
+        run: |
+          zip -r productive-full-v490.zip . -x ".git/*"
+      - name: Upload full archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: productive-full-v490
+          path: productive-full-v490.zip
+          if-no-files-found: error
