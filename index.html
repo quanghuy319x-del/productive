@@ -1526,7 +1526,7 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
-/* v496: animated Yahoo emoji insertion + restored moving fire.
+/* v497 (note-close fix; picker logic from v496): animated Yahoo emoji insertion + restored moving fire.
    Runs independently from app.js so the picker still works if another startup block fails. */
 (() => {
   const editor = document.getElementById("note-textarea");
@@ -1616,9 +1616,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v496") return;
+      if (applying || badge.textContent === "v497") return;
       applying = true;
-      badge.textContent = "v496";
+      badge.textContent = "v497";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
