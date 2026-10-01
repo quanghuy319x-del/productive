@@ -44,7 +44,7 @@ const APP_SHELL = [
   "./assets/yahoo/praying.gif",
   "./assets/yahoo/rocking.gif",
   "./favicon.svg",
-  "./manifest.webmanifest?v=497",
+  "./manifest.webmanifest?v=315",
   "./pwa-icon-192.png",
   "./pwa-icon-512.png"
 ];
