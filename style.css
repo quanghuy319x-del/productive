@@ -7558,3 +7558,40 @@ kbd{
     max-height: min(300px, calc(100dvh - 24px));
   }
 }
+
+
+/* v493: animated Yahoo GIF choices + inline note rendering. */
+#note-emoji-popover .note-yahoo-gif-choice{
+  padding:3px!important;
+  overflow:hidden;
+}
+#note-emoji-popover .note-yahoo-gif-choice img{
+  display:block;
+  width:24px;
+  height:24px;
+  object-fit:contain;
+  pointer-events:none;
+}
+.note-inline-yahoo-emoji{
+  display:inline-block;
+  width:24px;
+  height:24px;
+  object-fit:contain;
+  vertical-align:-5px;
+  margin:0 1px;
+}
+.note-inline-moving-fire{
+  font-size:1.15em;
+  margin:0 1px;
+}
+@media (pointer:coarse){
+  #note-emoji-popover .note-yahoo-gif-choice img{
+    width:28px;
+    height:28px;
+  }
+  .note-inline-yahoo-emoji{
+    width:26px;
+    height:26px;
+    vertical-align:-6px;
+  }
+}
