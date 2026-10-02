@@ -7823,3 +7823,25 @@ kbd{
 .note-motion-target{animation:noteMoveTarget .72s ease-in-out infinite;}
 .note-motion-trophy{animation:noteMoveTrophy .9s ease-in-out infinite;}
 .note-motion-raise{animation:noteMoveRaise .68s ease-in-out infinite;}
+
+
+/* v504: Plan subtask icon matches the compact Brainstorm subtask icon footprint.
+   Scope is intentionally limited to Plan icons inside subtask note affordances. */
+.subtask-note-icon .plan-icon-inline{
+  width:13px !important;
+  height:13px !important;
+  min-width:13px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin:0 !important;
+  vertical-align:middle !important;
+  object-fit:contain;
+}
+.subtask-note-icon:has(.plan-icon-inline){
+  width:13px;
+  height:13px;
+  align-items:center;
+  justify-content:center;
+  margin-left:4px;
+}
