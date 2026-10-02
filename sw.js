@@ -1,4 +1,4 @@
-const CACHE_NAME = "branchline-pwa-v506";
+const CACHE_NAME = "branchline-pwa-v507";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -43,6 +43,7 @@ const APP_SHELL = [
   "./assets/yahoo/whistling.gif",
   "./assets/yahoo/praying.gif",
   "./assets/yahoo/rocking.gif",
+  "./assets/maneki-neko-wave.gif",
   "./favicon.svg",
   "./manifest.webmanifest?v=504",
   "./pwa-icon-192.png",
