@@ -5767,18 +5767,18 @@
   // getNodeTasks / enforceSingleStar).
   const MAX_STARRED_TASKS = 1;
   // v511: starred tasks stay deliberately focused: at most five subtasks.
-  const MAX_STARRED_TASK_SUBTASKS = 5;
+  const MAX_STARRED_TASK_SUBTASKS = 6;
   function starredTaskSubtaskCapReached(t, incoming = 1) {
     return getTaskStars(t) > 0 && getTaskSubtasks(t).length + incoming > MAX_STARRED_TASK_SUBTASKS;
   }
   function blockStarredTaskSubtaskOverflow(t, incoming = 1) {
     if (!starredTaskSubtaskCapReached(t, incoming)) return false;
-    showToast("Starred tasks can have maximum 5 subtasks");
+    showToast("Starred tasks can have maximum 6 subtasks");
     return true;
   }
   function blockStarIfTooManySubtasks(t) {
     if (getTaskSubtasks(t).length <= MAX_STARRED_TASK_SUBTASKS) return false;
-    showToast("A task with more than 5 subtasks cannot be starred");
+    showToast("A task with more than 6 subtasks cannot be starred");
     return true;
   }
   // How many times more a starred task counts toward progress.
