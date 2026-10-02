@@ -9272,6 +9272,20 @@
   // listener below), since pinch is a touch-only gesture.
   const activePointers = new Map();
 
+  // v516: a calendar can cover most of a phone screen. Treat a swipe that
+  // begins on its ordinary cell/text surface like a swipe on empty canvas,
+  // while preserving taps for editing and all explicit icon/badge controls.
+  let calendarPanArm = null;
+  function clearCalendarPanArm() { calendarPanArm = null; }
+  function calendarPanSurface(target) {
+    if (!target || !target.closest) return false;
+    const calendar = target.closest(".node-table-calendar");
+    if (!calendar) return false;
+    // Explicit controls keep their own touch behavior.
+    if (target.closest(".node-table-cell-icons, .task-score-badge, button, input, select, textarea, a")) return false;
+    return true;
+  }
+
   // Dragging a node's task ring / progress bar / photo strip onto a
   // *different* node moves (or, with Alt/Option held, copies) that data
   // over — an easy way to reassign a checklist or a batch of photos
@@ -14156,6 +14170,11 @@
         anchorX: (midX - rect.left - state.tx) / state.scale,
         anchorY: (midY - rect.top - state.ty) / state.scale
       };
+    } else if (activePointers.size === 1 && calendarPanSurface(e.target)) {
+      // Do not pan yet: a stationary touch is still a normal calendar tap.
+      // Once the finger moves beyond the same threshold used for node swipes,
+      // pointermove promotes this gesture to canvas panning.
+      calendarPanArm = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
     } else if (activePointers.size === 1 && !e.target.closest(".node") && !e.target.closest("#node-fabs")) {
       startPan(e.clientX, e.clientY);
     }
@@ -14329,6 +14348,15 @@
     // not a hold-to-drag — cancel the pending node drag and start panning
     // the canvas from here instead, same as a touch that started on empty
     // canvas would.
+    if (calendarPanArm && calendarPanArm.pointerId === e.pointerId && !pinchState) {
+      const dx = e.clientX - calendarPanArm.startX;
+      const dy = e.clientY - calendarPanArm.startY;
+      if (Math.hypot(dx, dy) >= TOUCH_DRAG_CANCEL_DIST) {
+        const arm = calendarPanArm;
+        clearCalendarPanArm();
+        startPan(arm.startX, arm.startY);
+      }
+    }
     if (touchDragArm && touchDragArm.pointerId === e.pointerId) {
       const dx = e.clientX - touchDragArm.startClientX;
       const dy = e.clientY - touchDragArm.startClientY;
@@ -14410,6 +14438,7 @@
   function onTouchPointerEnd(e) {
     if (e.pointerType === "mouse") return;
     activePointers.delete(e.pointerId);
+    if (calendarPanArm && calendarPanArm.pointerId === e.pointerId) clearCalendarPanArm();
     // Finger lifted before the hold timer armed a drag — this was just a
     // tap (the click listener already handles that), so drop the pending
     // arm instead of letting a stale timer fire against a released finger.
