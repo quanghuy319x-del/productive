@@ -7792,6 +7792,18 @@
   function persist() {
     unsavedEdits = true;
     try { updateCloudSyncPill(); } catch (e) {}
+
+    // v508: crash/F5 safety. Write the current map to IndexedDB immediately
+    // on every edit. The heavier folder mirror + Google Drive upload stays
+    // debounced below, so typing does not start a network upload per key.
+    // DB.put() structured-clones the map when called, giving sudden reloads
+    // and power loss the smallest practical data-loss window.
+    if (state.current) {
+      state.current.updatedAt = nextUpdatedAt(state.current);
+      state.current.view = { scale: state.scale, tx: state.tx, ty: state.ty };
+      DB.put(state.current).catch((e) => console.error("Immediate local save failed", e));
+    }
+
     if (persistTimer) clearTimeout(persistTimer);
     persistTimer = setTimeout(kickPersist, 500);
   }
@@ -23330,24 +23342,44 @@
         sel.removeAllRanges();
         sel.addRange(range);
       });
+      // v508: save an in-progress subtask rename on every keystroke too.
+      const subtaskEditOriginal = s.text;
+      const subtaskBrainstormBefore = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
+      let subtaskEditUndoPushed = false;
+      stext.addEventListener("input", () => {
+        if (!subtaskEditUndoPushed) { pushUndo(); subtaskEditUndoPushed = true; }
+        s.text = stext.textContent;
+        syncSubtaskNoteTitles(s);
+        persist();
+      });
       stext.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); stext.blur(); }
-        else if (e.key === "Escape") { e.preventDefault(); stext.textContent = s.text; stext.blur(); }
+        else if (e.key === "Escape") {
+          e.preventDefault();
+          s.text = subtaskEditOriginal;
+          stext.textContent = subtaskEditOriginal;
+          syncSubtaskNoteTitles(s);
+          persist();
+          stext.blur();
+        }
       });
       stext.addEventListener("blur", () => {
         const v = stext.textContent.trim();
-        let brainstormVisibilityChanged = false;
-        if (v && v !== s.text) {
-          const beforeBrainstorm = isBrainstormPrefixText(s.text) || hasBrainstormContent(s);
-          pushUndo();
-          s.text = v;
-          syncSubtaskNoteTitles(s);
-          brainstormVisibilityChanged = beforeBrainstorm !== (isBrainstormPrefixText(s.text) || hasBrainstormContent(s));
-          persist();
+        if (v) {
+          if (v !== s.text) {
+            s.text = v;
+            syncSubtaskNoteTitles(s);
+            persist();
+          }
         } else {
-          stext.textContent = s.text;
+          s.text = subtaskEditOriginal;
+          stext.textContent = subtaskEditOriginal;
+          syncSubtaskNoteTitles(s);
+          persist();
         }
+        const brainstormVisibilityChanged = subtaskBrainstormBefore !== (isBrainstormPrefixText(s.text) || hasBrainstormContent(s));
+        stext.textContent = s.text;
         stext.title = s.text;
         stext.contentEditable = "false";
         row.draggable = !window.matchMedia("(max-width: 640px)").matches;
@@ -23659,19 +23691,36 @@
       // is the done indicator and would otherwise be masked by this
       // inline color, which always wins over a class-based rule.
       if (!t.done && !t.failed) text.style.color = taskFontColor(t);
+      // v508: keep the model + IndexedDB current on every keystroke, not
+      // only on blur. This protects an in-progress rename from sudden F5/power loss.
+      const taskEditOriginal = t.text;
+      let taskEditUndoPushed = false;
+      text.addEventListener("input", () => {
+        const live = text.textContent;
+        if (!taskEditUndoPushed) { pushUndo(); taskEditUndoPushed = true; }
+        t.text = live;
+        persist();
+      });
       text.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter") { e.preventDefault(); text.blur(); }
-        else if (e.key === "Escape") { e.preventDefault(); text.textContent = t.text; text.blur(); }
+        else if (e.key === "Escape") {
+          e.preventDefault();
+          t.text = taskEditOriginal;
+          text.textContent = taskEditOriginal;
+          persist();
+          text.blur();
+        }
       });
       text.addEventListener("blur", () => {
         const v = text.textContent.trim();
-        if (v && v !== t.text) {
-          pushUndo();
-          t.text = v;
-          persist();
-        } else {
+        if (v) {
+          if (v !== t.text) { t.text = v; persist(); }
           text.textContent = t.text;
+        } else {
+          t.text = taskEditOriginal;
+          text.textContent = taskEditOriginal;
+          persist();
         }
       });
 
