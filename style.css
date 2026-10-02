@@ -7839,3 +7839,24 @@ kbd{
 }
 .note-motion-wealth { animation: noteWealthBless 1.15s ease-in-out infinite; transform-origin: 50% 80%; }
 .note-motion-maneki { animation: noteManekiWave .72s ease-in-out infinite; transform-origin: 70% 80%; }
+
+/* v514: Optional black-and-white treatment for node/cell attachment markers.
+   Task score badges are intentionally excluded; their Color/Size/Both setting
+   remains independent. Photos are desaturated too so every attachment marker
+   follows the same map-wide icon style. */
+#nodes.map-icons-mono .node-photo-strip > :not(.task-score-badge),
+#nodes.map-icons-mono .node-table-cell-icons > :not(.task-score-badge){
+  filter: grayscale(1) saturate(0) !important;
+}
+#nodes.map-icons-mono .node-note-marker,
+#nodes.map-icons-mono .node-url-marker,
+#nodes.map-icons-mono .node-affirmation-marker,
+#nodes.map-icons-mono .node-brainstorm-marker,
+#nodes.map-icons-mono .node-timer-badge,
+#nodes.map-icons-mono .node-table-cell-affirmation,
+#nodes.map-icons-mono .node-table-cell-brainstorm,
+#nodes.map-icons-mono .node-table-cell-timer{
+  color:#111 !important;
+  background:rgba(255,255,255,.88) !important;
+  border-color:rgba(17,17,17,.5) !important;
+}
