@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=504">
+<link rel="manifest" href="manifest.webmanifest?v=505">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=504">
+<link rel="stylesheet" href="style.css?v=505">
 </head>
 <body>
 <div id="app">
@@ -672,7 +672,7 @@
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/whistling.gif" data-yahoo-title="Whistling" title="Yahoo — Whistling"><img src="./assets/yahoo/whistling.gif" alt="Whistling" draggable="false"></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/praying.gif" data-yahoo-title="Praying" title="Yahoo — Praying"><img src="./assets/yahoo/praying.gif" alt="Praying" draggable="false"></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/rocking.gif" data-yahoo-title="Rocking" title="Yahoo — Rocking"><img src="./assets/yahoo/rocking.gif" alt="Rocking" draggable="false"></button>
-    <!-- v504: lightweight CSS-animated motivational/action emojis. -->
+    <!-- v505: animated motivational/action emojis, including Thần Tài + waving Maneki-neko. -->
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🚀" data-motion="rocket" title="Launch"><span class="note-moving-emoji note-motion-rocket">🚀</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="⚡" data-motion="pulse" title="Energy"><span class="note-moving-emoji note-motion-pulse">⚡</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="💪" data-motion="pump" title="Strong"><span class="note-moving-emoji note-motion-pump">💪</span></button>
@@ -685,6 +685,8 @@
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🎯" data-motion="target" title="Focus"><span class="note-moving-emoji note-motion-target">🎯</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🏆" data-motion="trophy" title="Win"><span class="note-moving-emoji note-motion-trophy">🏆</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🙌" data-motion="raise" title="Yes!"><span class="note-moving-emoji note-motion-raise">🙌</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🧧" data-motion="wealth" title="Thần Tài"><span class="note-moving-emoji note-motion-wealth">🧧</span></button>
+    <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🐱" data-motion="maneki" title="Mèo Thần Tài vẫy tay"><span class="note-moving-emoji note-motion-maneki">🐱</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-animated-fire-choice" data-moving-fire-v493="1" title="Moving fire"><span class="note-animated-fire">🔥</span></button>
   </div>
 </div>
@@ -946,8 +948,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=504"></script>
-<script src="phase2-layout.js?v=504"></script>
+<script src="phase1-editors.js?v=505"></script>
+<script src="phase2-layout.js?v=505"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -956,7 +958,7 @@ if ("serviceWorker" in navigator) {
   const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
   const missing = need.filter(([g]) => !window[g]);
   missing.forEach(([g, f]) => {
-    document.write('<script src="' + f + '?v=504&r=' + Date.now() + '"><\/script>');
+    document.write('<script src="' + f + '?v=505&r=' + Date.now() + '"><\/script>');
   });
   window.__branchlineMissingModules = missing.map(([, f]) => f);
 })();
@@ -1007,8 +1009,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=504"></script>
-<script src="app.js?v=504"></script>
+<script src="sidebar-hotfix-v490.js?v=505"></script>
+<script src="app.js?v=505"></script>
 <script>
 (() => {
   function insertText(editor, text) {
