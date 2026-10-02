@@ -1,12 +1,12 @@
-const CACHE_NAME = "branchline-pwa-v515";
+const CACHE_NAME = "branchline-pwa-v516";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=515",
-  "./phase1-editors.js?v=515",
-  "./phase2-layout.js?v=515",
-  "./app.js?v=515",
-  "./sidebar-hotfix-v490.js?v=515",
+  "./style.css?v=516",
+  "./phase1-editors.js?v=516",
+  "./phase2-layout.js?v=516",
+  "./app.js?v=516",
+  "./sidebar-hotfix-v490.js?v=516",
   "./assets/yahoo/smile-or-happy-face.gif",
   "./assets/yahoo/sad-or-frown-face.gif",
   "./assets/yahoo/winking.gif",
@@ -47,7 +47,7 @@ const APP_SHELL = [
   "./favicon.svg",
   "./manifest.webmanifest?v=504",
   "./pwa-icon-192.png",
-  "./pwa-icon-515.png"
+  "./pwa-icon-516.png"
 ];
 
 self.addEventListener("message", (event) => {
