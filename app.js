@@ -25523,6 +25523,16 @@
     unsavedEdits = true;
     renderBrainstormProgress(host);
     updateBrainstormLiveUI(t);
+
+    // v509: Brainstorm mutates the canonical map before its normal debounce,
+    // so protect every keystroke immediately just like the global persist()
+    // path. Drive/full persistence remains debounced for performance.
+    if (state.current) {
+      state.current.updatedAt = nextUpdatedAt(state.current);
+      state.current.view = { scale: state.scale, tx: state.tx, ty: state.ty };
+      DB.put(state.current).catch((e) => console.error("Immediate Brainstorm local save failed", e));
+    }
+
     clearTimeout(brainstormSaveTimer);
     brainstormSaveTimer = setTimeout(() => { pushUndo(); persist(); }, 500);
   }
