@@ -8829,6 +8829,7 @@
   }
 
   function renderAll() {
+    if (nodesLayer) nodesLayer.classList.toggle("map-icons-mono", mapIconStyle() === "mono");
     if (!state.current) {
       virtualAllNodes = [];
       virtualRenderWindow = null;
@@ -10657,6 +10658,16 @@
   // more. Mirrors the node-level photo/note/link strip (see renderNode)
   // at a smaller scale, and reads/writes node.table.attach[r][c] instead
   // of the node's own fields.
+  function mapIconStyle() {
+    return state.current && state.current.iconStyle === "mono" ? "mono" : "color";
+  }
+  function setMapIconStyle(mode) {
+    if (!state.current || !["color", "mono"].includes(mode)) return;
+    pushUndo();
+    state.current.iconStyle = mode;
+    renderAll();
+    persist();
+  }
   function taskBadgeStyle() {
     const v = state.current && state.current.taskBadgeStyle;
     return v === "color" || v === "size" || v === "both" ? v : "both";
@@ -13559,6 +13570,28 @@
         opt.addEventListener("click", () => {
           closeContextMenu();
           setTaskBadgeStyle(value);
+        });
+        row.appendChild(opt);
+      });
+      ctxMenu.appendChild(row);
+    }
+
+    // v514: node/cell attachment marker style, independent from task badge styling.
+    {
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "◐ Node / cell icon style";
+      ctxMenu.appendChild(label);
+      const row = document.createElement("div");
+      row.className = "ctx-glow-options";
+      const current = mapIconStyle();
+      [["color", "Color"], ["mono", "Black & white"]].forEach(([value, text]) => {
+        const opt = document.createElement("span");
+        opt.className = "ctx-glow-opt" + (current === value ? " active" : "");
+        opt.textContent = text;
+        opt.addEventListener("click", () => {
+          closeContextMenu();
+          setMapIconStyle(value);
         });
         row.appendChild(opt);
       });
