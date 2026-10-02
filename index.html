@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=502">
+<link rel="manifest" href="manifest.webmanifest?v=503">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=502">
+<link rel="stylesheet" href="style.css?v=503">
 </head>
 <body>
 <div id="app">
@@ -672,7 +672,7 @@
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/whistling.gif" data-yahoo-title="Whistling" title="Yahoo — Whistling"><img src="./assets/yahoo/whistling.gif" alt="Whistling" draggable="false"></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/praying.gif" data-yahoo-title="Praying" title="Yahoo — Praying"><img src="./assets/yahoo/praying.gif" alt="Praying" draggable="false"></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-yahoo-gif-choice" data-yahoo-gif="./assets/yahoo/rocking.gif" data-yahoo-title="Rocking" title="Yahoo — Rocking"><img src="./assets/yahoo/rocking.gif" alt="Rocking" draggable="false"></button>
-    <!-- v502: lightweight CSS-animated motivational/action emojis. -->
+    <!-- v503: lightweight CSS-animated motivational/action emojis. -->
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="🚀" data-motion="rocket" title="Launch"><span class="note-moving-emoji note-motion-rocket">🚀</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="⚡" data-motion="pulse" title="Energy"><span class="note-moving-emoji note-motion-pulse">⚡</span></button>
     <button type="button" class="note-tool-btn note-emoji-swatch note-moving-emoji-choice" data-moving-emoji="1" data-emoji="💪" data-motion="pump" title="Strong"><span class="note-moving-emoji note-motion-pump">💪</span></button>
@@ -946,8 +946,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=502"></script>
-<script src="phase2-layout.js?v=502"></script>
+<script src="phase1-editors.js?v=503"></script>
+<script src="phase2-layout.js?v=503"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -956,7 +956,7 @@ if ("serviceWorker" in navigator) {
   const need = [["BranchlineEditors", "phase1-editors.js"], ["BranchlineLayout", "phase2-layout.js"]];
   const missing = need.filter(([g]) => !window[g]);
   missing.forEach(([g, f]) => {
-    document.write('<script src="' + f + '?v=502&r=' + Date.now() + '"><\/script>');
+    document.write('<script src="' + f + '?v=503&r=' + Date.now() + '"><\/script>');
   });
   window.__branchlineMissingModules = missing.map(([, f]) => f);
 })();
@@ -1007,8 +1007,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=502"></script>
-<script src="app.js?v=502"></script>
+<script src="sidebar-hotfix-v490.js?v=503"></script>
+<script src="app.js?v=503"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1539,6 +1539,50 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
 </script>
 
 <script>
+/* v503: make inline animated emoji atomic-deletable from the Note keyboard.
+   Backspace/Delete removes the emoji plus its insertion spacer in one press. */
+(() => {
+  const editor = document.getElementById("note-textarea");
+  if (!editor) return;
+  const isEmoji = (n) => n?.nodeType === Node.ELEMENT_NODE &&
+    n.matches?.(".note-inline-yahoo-emoji,.note-moving-emoji,.note-inline-moving-fire,[data-note-animated-fire]");
+  const isSpacer = (n) => n?.nodeType === Node.TEXT_NODE && /^[\u00A0\u200B ]*$/.test(n.data || "");
+
+  editor.addEventListener("keydown", (e) => {
+    if (e.key !== "Backspace" && e.key !== "Delete" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !sel.isCollapsed || !editor.contains(sel.anchorNode)) return;
+    const r = sel.getRangeAt(0);
+    let target = null, spacer = null;
+
+    if (e.key === "Backspace") {
+      if (r.startContainer.nodeType === Node.TEXT_NODE) {
+        const t = r.startContainer, off = r.startOffset;
+        if (off > 0 && /^[\u00A0\u200B ]$/.test(t.data.charAt(off - 1)) && isEmoji(t.previousSibling)) {
+          target = t.previousSibling; spacer = t;
+        } else if (off === 0 && isEmoji(t.previousSibling)) target = t.previousSibling;
+      } else if (r.startContainer.nodeType === Node.ELEMENT_NODE) {
+        const prev = r.startContainer.childNodes[r.startOffset - 1];
+        if (isSpacer(prev) && isEmoji(prev.previousSibling)) { target = prev.previousSibling; spacer = prev; }
+        else if (isEmoji(prev)) target = prev;
+      }
+    } else {
+      if (r.startContainer.nodeType === Node.TEXT_NODE) {
+        const t = r.startContainer, off = r.startOffset;
+        if (off === t.data.length && isEmoji(t.nextSibling)) target = t.nextSibling;
+      } else if (r.startContainer.nodeType === Node.ELEMENT_NODE) {
+        const next = r.startContainer.childNodes[r.startOffset];
+        if (isEmoji(next)) target = next;
+      }
+    }
+    if (!target) return;
+    e.preventDefault();
+    if (spacer) spacer.remove();
+    target.remove();
+    editor.dispatchEvent(new InputEvent("input", {bubbles:true, inputType:e.key === "Backspace" ? "deleteContentBackward" : "deleteContentForward", data:null}));
+  }, true);
+})();
+
 /* v497 (note-close fix; picker logic from v496): animated Yahoo emoji insertion + restored moving fire.
    Runs independently from app.js so the picker still works if another startup block fails. */
 (() => {
@@ -1653,9 +1697,9 @@ document.getElementById("btn-refresh-app")?.addEventListener("click", () => loca
   if (badge) {
     let applying = false;
     const show493 = () => {
-      if (applying || badge.textContent === "v502") return;
+      if (applying || badge.textContent === "v503") return;
       applying = true;
-      badge.textContent = "v502";
+      badge.textContent = "v503";
       applying = false;
     };
     new MutationObserver(show493).observe(badge, {childList:true, characterData:true, subtree:true});
