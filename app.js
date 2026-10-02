@@ -6010,6 +6010,18 @@
   function saveTaskListTemplates(list) {
     try { localStorage.setItem(TASK_TEMPLATES_KEY, JSON.stringify(list)); } catch (e) {}
   }
+  // v506: resolve a task-list template by name case-insensitively. If the
+  // same name exists more than once, use the most recently updated copy.
+  function findTaskListTemplateByName(name) {
+    const want = (name || "").trim().toLowerCase();
+    let best = null;
+    getTaskListTemplates().forEach((tpl) => {
+      if (!tpl || (tpl.name || "").trim().toLowerCase() !== want) return;
+      if (!Array.isArray(tpl.tasks) || !tpl.tasks.length) return;
+      if (!best || (tpl.updatedAt || 0) > (best.updatedAt || 0)) best = tpl;
+    });
+    return best;
+  }
   // The reusable "shape" of `host`'s current task list — same array
   // saveTaskListAsTemplate/updateTaskListTemplate both store, factored
   // out so a fresh save and an overwrite of an existing template snapshot
@@ -22589,6 +22601,31 @@
     closeContextMenu();
     tasksEditingTarget = { nodeId, r, c };
     tasksMapStateAtOpen = tasksMapStateSignature(tasksEditingTarget);
+
+    // v506: "Add tasks..." on a whole node starts from the saved "Daily Task"
+    // template instead of a blank list. Existing task lists are never touched,
+    // and table/calendar cells keep their old blank-start behavior.
+    // If this device has not pulled templates from Drive yet, retry once after
+    // the normal template sync; only apply if the user still has this same
+    // empty node task list open, so an async sync can never overwrite work.
+    const tryApplyDailyTaskDefault = () => {
+      if (r != null || c != null || getNodeTasks(host).length) return false;
+      const tpl = findTaskListTemplateByName("Daily Task");
+      if (!tpl) return false;
+      insertTaskListTemplate(tpl, host);
+      return true;
+    };
+    if (!tryApplyDailyTaskDefault()) {
+      syncTaskTemplatesWithDrive().then(() => {
+        if (!tasksEditingTarget ||
+            tasksEditingTarget.nodeId !== nodeId ||
+            tasksEditingTarget.r != null || tasksEditingTarget.c != null ||
+            tasksModal.classList.contains("hidden") ||
+            getNodeTasks(host).length) return;
+        if (tryApplyDailyTaskDefault()) renderTasksModal();
+      }).catch(() => {});
+    }
+
     const node = findNode(nodeId);
     const cellText = (r != null && node && node.table && node.table.cells[r]) ? node.table.cells[r][c] : null;
     const label = r == null ? ((node && node.text) || "(untitled)") : (cellText || `Cell (row ${r + 1}, col ${c + 1})`);
