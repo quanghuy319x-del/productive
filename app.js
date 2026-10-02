@@ -5766,6 +5766,21 @@
   // Lists saved before this limit have all their stars removed once (see
   // getNodeTasks / enforceSingleStar).
   const MAX_STARRED_TASKS = 1;
+  // v511: starred tasks stay deliberately focused: at most five subtasks.
+  const MAX_STARRED_TASK_SUBTASKS = 5;
+  function starredTaskSubtaskCapReached(t, incoming = 1) {
+    return getTaskStars(t) > 0 && getTaskSubtasks(t).length + incoming > MAX_STARRED_TASK_SUBTASKS;
+  }
+  function blockStarredTaskSubtaskOverflow(t, incoming = 1) {
+    if (!starredTaskSubtaskCapReached(t, incoming)) return false;
+    showToast("Starred tasks can have maximum 5 subtasks");
+    return true;
+  }
+  function blockStarIfTooManySubtasks(t) {
+    if (getTaskSubtasks(t).length <= MAX_STARRED_TASK_SUBTASKS) return false;
+    showToast("A task with more than 5 subtasks cannot be starred");
+    return true;
+  }
   // How many times more a starred task counts toward progress.
   const STARRED_TASK_WEIGHT = 10;
   function taskStarCapReached(host) {
@@ -22359,6 +22374,8 @@
     const sourceTask = sourceIsQueue ? null : tasks.find(x => x.id === sourceTaskId);
     const targetTask = targetIsQueue ? null : tasks.find(x => x.id === targetTaskId);
     if ((!sourceIsQueue && !sourceTask) || (!targetIsQueue && !targetTask)) return;
+    const sameContainer = sourceTaskId === targetTaskId;
+    if (!sameContainer && !targetIsQueue && blockStarredTaskSubtaskOverflow(targetTask)) return;
 
     const originalQueue = getDRCQueueItems().slice();
     const sourceSubs = sourceIsQueue ? originalQueue.slice() : getTaskSubtasks(sourceTask).slice();
@@ -22368,7 +22385,6 @@
 
     pushUndo();
 
-    const sameContainer = sourceTaskId === targetTaskId;
     let destSubs;
     if (sameContainer) {
       destSubs = sourceSubs;
@@ -22443,6 +22459,7 @@
 
     if (!Array.isArray(targetNode.tasks)) targetNode.tasks = [];
     let targetTask = targetTaskId ? getNodeTasks(targetNode).find(x => x.id === targetTaskId) : null;
+    if (targetTask && blockStarredTaskSubtaskOverflow(targetTask)) return;
     if (!targetTask) {
       targetTask = { id: uid(), text: (newTaskText || "").trim() || "(untitled task)", done: false, stars: 0, due: null, subtasks: [] };
       targetNode.tasks = targetNode.tasks.concat([targetTask]);
@@ -22884,7 +22901,7 @@
     });
     addItem(getTaskStars(t) > 0 ? "☆ Remove star" : "★ Star task", "", () => {
       if (!requireSignIn()) return;
-      if (!getTaskStars(t) && blockedByStarCap(host, t)) return;
+      if (!getTaskStars(t) && (blockedByStarCap(host, t) || blockStarIfTooManySubtasks(t))) return;
       pushUndo();
       t.stars = getTaskStars(t) > 0 ? 0 : 1;
       t.starred = t.stars > 0;
@@ -23518,6 +23535,7 @@
           e.preventDefault();
           const v = addInput.value.trim();
           if (!v) return;
+          if (blockStarredTaskSubtaskOverflow(t)) return;
           pushUndo();
           if (!Array.isArray(t.subtasks)) t.subtasks = [];
           t.subtasks.push({ id: uid(), text: v, done: false });
@@ -23664,6 +23682,7 @@
       star.addEventListener("click", (e) => {
         e.stopPropagation();
         if (blockedByStarCap(host, t)) return;
+        if (stars === 0 && blockStarIfTooManySubtasks(t)) return;
         const next = stars > 0 ? 0 : 1;
         pushUndo();
         t.stars = next;
@@ -24346,6 +24365,7 @@
     star.addEventListener("click", (e) => {
       e.stopPropagation();
       if (blockedByStarCap(host, t)) return;
+      if (stars === 0 && blockStarIfTooManySubtasks(t)) return;
       const next = stars > 0 ? 0 : 1;
       pushUndo();
       t.stars = next;
@@ -24678,6 +24698,7 @@
           e.preventDefault();
           const v = addInput.value.trim();
           if (!v) return;
+          if (blockStarredTaskSubtaskOverflow(t)) return;
           pushUndo();
           if (!Array.isArray(t.subtasks)) t.subtasks = [];
           t.subtasks.push({ id: uid(), text: v, done: false });
