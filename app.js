@@ -18914,6 +18914,14 @@
       });
     });
     addItem("Copy text", "", () => copySubtaskText(s.text || ""));
+    addItem("↔ Move", "", () => {
+      if (!requireSignIn()) return;
+      subtaskTouchMoveMode = { taskId: SHARED_QUEUE_TASK_ID, subtaskId: s.id };
+      document.querySelectorAll(".subtask-row.subtask-move-ready").forEach(el => el.classList.remove("subtask-move-ready"));
+      const armed = tasksListEl && tasksListEl.querySelector(`.subtask-row[data-task-id="${CSS.escape(SHARED_QUEUE_TASK_ID)}"][data-subtask-id="${CSS.escape(s.id)}"]`);
+      if (armed) armed.classList.add("subtask-move-ready");
+      showToast("Move ready — drag this queue subtask");
+    });
 
     // A line break lives on the subtask that follows the selected one
     // (brBefore), so the break is genuinely BETWEEN two pills rather
