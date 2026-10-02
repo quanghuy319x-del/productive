@@ -10657,6 +10657,22 @@
   // more. Mirrors the node-level photo/note/link strip (see renderNode)
   // at a smaller scale, and reads/writes node.table.attach[r][c] instead
   // of the node's own fields.
+  function taskBadgeStyle() {
+    const v = state.current && state.current.taskBadgeStyle;
+    return v === "color" || v === "size" || v === "both" ? v : "both";
+  }
+  function taskBadgeClass(points, extraClass) {
+    const mode = taskBadgeStyle();
+    return "task-score-badge " + extraClass +
+      " task-badge-" + mode + " score-" + cellScoreBand(points);
+  }
+  function setTaskBadgeStyle(mode) {
+    if (!state.current || !["color", "size", "both"].includes(mode)) return;
+    pushUndo();
+    state.current.taskBadgeStyle = mode;
+    renderAll();
+    persist();
+  }
   function cellScoreBand(points) {
     const p = Math.max(0, Number(points) || 0);
     if (p >= 100) return "very-high";
@@ -10676,7 +10692,7 @@
     if (!prog || !hasTasks) return null;
     const points = Math.max(0, Number(prog.done) || 0);
     const badge = document.createElement("span");
-    badge.className = "task-score-badge node-table-cell-score-badge score-" + cellScoreBand(points);
+    badge.className = taskBadgeClass(points, "node-table-cell-score-badge");
     badge.textContent = String(points);
     badge.title = `${points} progress points${prog.total ? ` / ${prog.total} total` : ""} — click to open Tasks`;
     badge.setAttribute("role", "button");
@@ -11912,7 +11928,7 @@
     if (getNodeTasks(node).length && node.id !== state.editingId) {
       const points = Math.max(0, Number(taskProg.done) || 0);
       const badge = document.createElement("span");
-      badge.className = "task-score-badge node-task-score-badge score-" + cellScoreBand(points);
+      badge.className = taskBadgeClass(points, "node-task-score-badge");
       badge.textContent = String(points);
       badge.title = `${points} progress points${taskProg.total ? ` / ${taskProg.total} total` : ""} — click to open Tasks; drag onto another node to move the tasks there (hold Alt to copy)`;
       badge.setAttribute("role", "button");
@@ -13520,6 +13536,29 @@
           closeContextMenu();
           renderAll();
           persist();
+        });
+        row.appendChild(opt);
+      });
+      ctxMenu.appendChild(row);
+    }
+
+    // v513: map-wide Task badge appearance. Stored in the map itself so
+    // phone/PC and Drive copies keep the same visual rule.
+    {
+      const label = document.createElement("div");
+      label.className = "ctx-item"; label.style.cursor = "default";
+      label.textContent = "🏷️ Task badge style";
+      ctxMenu.appendChild(label);
+      const row = document.createElement("div");
+      row.className = "ctx-glow-options";
+      const current = taskBadgeStyle();
+      [["color", "Color"], ["size", "Size"], ["both", "Both"]].forEach(([value, text]) => {
+        const opt = document.createElement("span");
+        opt.className = "ctx-glow-opt" + (current === value ? " active" : "");
+        opt.textContent = text;
+        opt.addEventListener("click", () => {
+          closeContextMenu();
+          setTaskBadgeStyle(value);
         });
         row.appendChild(opt);
       });
