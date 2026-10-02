@@ -7845,3 +7845,18 @@ kbd{
   justify-content:center;
   margin-left:4px;
 }
+
+/* v505: lucky-money / Maneki-neko motion for the two new wealth emojis. */
+@keyframes noteWealthBless {
+  0%,100% { transform: translateY(0) rotate(-4deg) scale(1); }
+  35% { transform: translateY(-3px) rotate(4deg) scale(1.10); }
+  65% { transform: translateY(-1px) rotate(-2deg) scale(1.04); }
+}
+@keyframes noteManekiWave {
+  0%,100% { transform: rotate(-7deg) translateY(0); }
+  25% { transform: rotate(8deg) translateY(-2px); }
+  50% { transform: rotate(-5deg) translateY(0); }
+  75% { transform: rotate(10deg) translateY(-2px); }
+}
+.note-motion-wealth { animation: noteWealthBless 1.15s ease-in-out infinite; transform-origin: 50% 80%; }
+.note-motion-maneki { animation: noteManekiWave .72s ease-in-out infinite; transform-origin: 70% 80%; }
