@@ -1358,17 +1358,26 @@ if ("serviceWorker" in navigator) {
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return;
 
-    let boldOn = false;
-    try { boldOn = document.queryCommandState("bold"); } catch (_) {}
-    document.getElementById("note-tool-bold")?.classList.toggle("active", !!boldOn);
-
     const anchorEl = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
     const inTitle = !!anchorEl?.closest?.(".title-mode-heading");
+    const inTitleNormal = !!anchorEl?.closest?.(".title-mode-normal");
+
+    let boldOn = false;
+    try { boldOn = document.queryCommandState("bold"); } catch (_) {}
+    // Title Mode is CSS-bold, so queryCommandState alone can report false.
+    boldOn = !!boldOn || inTitle;
+    document.getElementById("note-tool-bold")?.classList.toggle("active", boldOn);
+
     const titleBtn = document.getElementById("note-tool-title-mode");
     if (titleBtn) {
-      titleBtn.classList.toggle("is-active", inTitle);
-      titleBtn.classList.toggle("active", inTitle);
-      titleBtn.setAttribute("aria-pressed", String(inTitle));
+      // An armed T. on a brand-new empty line has no heading span yet: keep
+      // its current pressed state until the first character creates one.
+      const hasCaretText = !!(sel.anchorNode.nodeType === Node.TEXT_NODE && (sel.anchorNode.data || "").replace(/\\u200B/g, ""));
+      if (inTitle || inTitleNormal || hasCaretText) {
+        titleBtn.classList.toggle("is-active", inTitle);
+        titleBtn.classList.toggle("active", inTitle);
+        titleBtn.setAttribute("aria-pressed", String(inTitle));
+      }
     }
 
     // BB uppercases characters rather than storing a separate CSS style, so
