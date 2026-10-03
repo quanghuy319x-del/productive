@@ -24089,7 +24089,28 @@
     if (!val) return;
     pushUndo();
     if (!Array.isArray(host.tasks)) host.tasks = [];
-    host.tasks = host.tasks.concat([{ id: uid(), text: val, done: false, stars: 0, due: null }]);
+
+    // v518: every quick "Add task" starts from the saved "Daily Task"
+    // template shape by default. The text the user just entered remains the
+    // new task's title; reusable template fields (subtasks/color/star) are
+    // copied from the first task in Daily Task. If the template is missing,
+    // preserve the old plain-task behavior rather than blocking creation.
+    const dailyTpl = findTaskListTemplateByName("Daily Task");
+    const seed = dailyTpl && Array.isArray(dailyTpl.tasks) ? dailyTpl.tasks[0] : null;
+    let starAvailable = !getNodeTasks(host).some(t => getTaskStars(t) > 0);
+    const wantsStar = !!seed && getTaskStars(seed) > 0;
+    const stars = wantsStar && starAvailable ? 1 : 0;
+    const newTask = {
+      id: uid(), text: val, done: false, stars, starred: stars > 0, due: null,
+      subtasks: seed ? (seed.subtasks || []).map(s => {
+        const sub = { id: uid(), text: s.text, done: false };
+        if (s.brBefore > 0) sub.brBefore = Math.min(5, s.brBefore | 0);
+        return sub;
+      }) : []
+    };
+    if (seed && seed.color) newTask.color = seed.color;
+    host.tasks = host.tasks.concat([newTask]);
+    host.starsReset = true;
     tasksNewInput.value = "";
     autosizeTextarea(tasksNewInput);
     persist();
