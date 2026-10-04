@@ -7879,3 +7879,11 @@ kbd{
 .calendar-summary-icon-strip{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:2px;min-height:18px}
 .calendar-summary-icon-strip .node-table-cell-icon{flex:0 0 auto}
 .calendar-summary-score-badge{position:absolute!important;top:2px!important;right:2px!important;z-index:3}
+
+/* v528: phone Calendar sits near the top, matching the compact child-calendar feel. */
+@media (max-width:480px){
+  #calendar-modal{align-items:flex-start;padding-top:max(6px, env(safe-area-inset-top));}
+  #calendar-modal .calendar-modal-card{margin-top:0;max-height:calc(100dvh - max(12px, env(safe-area-inset-top)));overflow-y:auto;padding-top:10px;}
+  #calendar-modal .modal-back-row{margin-bottom:7px;}
+  #calendar-header{margin-bottom:7px;}
+}
