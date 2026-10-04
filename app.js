@@ -24403,8 +24403,11 @@
       dayNum.textContent = cellDate.getDate();
       dayHead.appendChild(dayNum);
 
-      const dayEntries = entriesByDate[iso] || [];
-      const hostRefs = calendarHostsByDate[iso] || [];
+      // v530: spillover dates keep only their faint day number. Content
+      // belongs exclusively to the month currently being viewed.
+      const inCurrentMonth = cellDate.getMonth() === month && cellDate.getFullYear() === year;
+      const dayEntries = inCurrentMonth ? (entriesByDate[iso] || []) : [];
+      const hostRefs = inCurrentMonth ? (calendarHostsByDate[iso] || []) : [];
       const dayItems = calendarDayItems(dayEntries);
 
       // v527: a top-calendar date is visually/functionally the same mini-node
@@ -24479,7 +24482,7 @@
       });
       cell.appendChild(tasksWrap);
 
-      cell.addEventListener("click", () => openCalDayModal(iso));
+      if (inCurrentMonth) cell.addEventListener("click", () => openCalDayModal(iso));
       calGridEl.appendChild(cell);
     }
   }
