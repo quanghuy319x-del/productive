@@ -19493,6 +19493,12 @@
     if (noteWorkingList.length <= 1) {
       noteWorkingList[0].title = "";
       noteWorkingList[0].html = "";
+      // v572: DRC/Brainstorm notes carry a `kind` marker. If the last note
+      // is "deleted" by only clearing title/html, that marker makes
+      // commitNotesToNode() keep the otherwise-empty note forever, so its
+      // calendar/node icon cannot disappear. Clear the variant marker too;
+      // the blank placeholder is then filtered out exactly like a normal Note.
+      delete noteWorkingList[0].kind;
     } else {
       noteWorkingList.splice(noteActiveIndex, 1);
       noteActiveIndex = clamp(noteActiveIndex, 0, noteWorkingList.length - 1);
