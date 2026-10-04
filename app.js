@@ -8874,6 +8874,21 @@
     titleInput.value = state.current.title || "";
     updateLinkHint();
     applyTransform();
+
+    // v535: the top Calendar is a live summary of the exact Calendar Child
+    // cell objects. Any edit that refreshes the mindmap must refresh an
+    // already-open Calendar too, so Note/Photo/Task/DRC/Brainstorm/etc.
+    // changes appear in both places immediately.
+    if (typeof calendarModal !== "undefined" && calendarModal &&
+        !calendarModal.classList.contains("hidden") &&
+        typeof renderCalendar === "function" && !renderAll._syncingCalendar) {
+      try {
+        renderAll._syncingCalendar = true;
+        renderCalendar();
+      } finally {
+        renderAll._syncingCalendar = false;
+      }
+    }
   }
 
   // Blurs every node/connector except a chosen node and its whole branch
