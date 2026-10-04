@@ -7980,3 +7980,61 @@ kbd{
     max-height:90vh!important;
   }
 }
+
+
+/* v561 — PC Calendar: scale the cell attachment icons and task score
+   badges with the 2× desktop Calendar introduced in v560. Phone unchanged. */
+@media (min-width: 641px){
+  #calendar-modal .calendar-summary-icon-strip{
+    gap:4px!important;
+    padding:4px!important;
+    min-height:36px!important;
+  }
+  #calendar-modal .calendar-summary-icon-strip .node-table-cell-icon{
+    width:20px!important;
+    height:20px!important;
+    min-width:20px!important;
+    font-size:18px!important;
+    border-radius:4px!important;
+  }
+  #calendar-modal .calendar-summary-icon-strip .node-table-cell-timer{
+    width:auto!important;
+    min-width:24px!important;
+    padding:0 4px!important;
+  }
+  #calendar-modal .calendar-summary-icon-strip .node-table-cell-timer span{
+    font-size:14px!important;
+  }
+  #calendar-modal .calendar-summary-icon-strip .node-table-cell-brainstorm{
+    font-size:18px!important;
+  }
+  #calendar-modal .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+    right:-8px!important;
+    top:-8px!important;
+    min-width:14px!important;
+    height:14px!important;
+    padding:0 2px!important;
+    font-size:9px!important;
+    line-height:14px!important;
+  }
+  #calendar-modal .calendar-summary-score-badge{
+    top:6px!important;
+    right:6px!important;
+    transform:scale(1.7)!important;
+    transform-origin:top right!important;
+  }
+  #calendar-modal .calendar-summary-score-badge:hover,
+  #calendar-modal .calendar-summary-score-badge:focus-visible{
+    transform:scale(1.85)!important;
+  }
+  #calendar-modal .calendar-date-icons{
+    gap:4px!important;
+    min-height:32px!important;
+    padding:2px 4px!important;
+  }
+  #calendar-modal .calendar-date-icon{
+    min-width:28px!important;
+    height:28px!important;
+    font-size:22px!important;
+  }
+}
