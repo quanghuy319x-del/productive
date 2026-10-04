@@ -7873,3 +7873,9 @@ kbd{
 .calendar-date-icons{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-height:16px;padding:1px 2px;overflow:hidden}
 .calendar-date-icon{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;font-size:11px;line-height:1}
 @media (max-width:640px){.calendar-date-icons{gap:1px}.calendar-date-icon{min-width:12px;height:12px;font-size:10px}}
+
+/* v527: summary Calendar uses the real Calendar Child mini-node UI. */
+.calendar-summary-node-cell{position:relative}
+.calendar-summary-icon-strip{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:2px;min-height:18px}
+.calendar-summary-icon-strip .node-table-cell-icon{flex:0 0 auto}
+.calendar-summary-score-badge{position:absolute!important;top:2px!important;right:2px!important;z-index:3}
