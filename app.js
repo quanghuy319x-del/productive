@@ -14615,15 +14615,15 @@
   // drifted into overlapping each other after being nudged around.
   function autoArrange() {
     if (!state.current) return;
-    let touched = false;
-    (function check(n) {
-      if (n.ox || n.oy) touched = true;
-      (n.children || []).forEach(check);
-    })(state.current.root);
-    if (!touched) return;
+    // v555: Auto-arrange is an explicit request to recompute layout, not
+    // merely a "clear manual drag offsets" command. Always run it, even
+    // when ox/oy are already zero. Also clear transient layout caches so
+    // collapsed descendants cannot leave stale vertical space behind.
     pushUndo();
     (function clear(n) {
       delete n.ox; delete n.oy;
+      delete n._subtreeH;
+      delete n._x; delete n._y;
       (n.children || []).forEach(clear);
     })(state.current.root);
     renderAll();
