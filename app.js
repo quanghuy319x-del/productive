@@ -19898,9 +19898,20 @@
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
+
+    // v519: inserting the non-editable dot-tab can leave Chrome's collapsed
+    // caret carrying a stale native bold typing state from the inline node
+    // it just exited.  Do not silently change formatting here: re-evaluate
+    // toolbar state from the real caret after the DOM mutation.  The extra
+    // selectionchange is intentionally deferred until Chrome has settled
+    // the caret around the contenteditable=false span.
     editor.dispatchEvent(new InputEvent("input", {
       bubbles: true, inputType: "insertText", data: "\t"
     }));
+    requestAnimationFrame(() => {
+      if (editor === noteTextarea) updateNoteToolActiveStates();
+      else if (editor === brainstormTextarea) updateBrainstormToolActiveStates();
+    });
     return true;
   }
 
@@ -21201,6 +21212,14 @@
       return;
     }
     if (e.key === "Escape") { e.preventDefault(); closeNoteModal(); return; }
+    // v519: Shift+Enter is native (soft line break), but Chrome may settle
+    // the caret into a different inline formatting context only after the
+    // keydown completes. Re-sync B/BB/T. from that final caret so the
+    // toolbar can never disagree with what the next character will use.
+    if (e.key === "Enter" && e.shiftKey) {
+      requestAnimationFrame(updateNoteToolActiveStates);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       if (noteHandleEnter()) {
         e.preventDefault();
@@ -26460,6 +26479,10 @@
       return;
     }
     if (e.key === "Escape") { e.preventDefault(); closeBrainstormModal(); return; }
+    if (e.key === "Enter" && e.shiftKey) {
+      requestAnimationFrame(updateBrainstormToolActiveStates);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       if (brainstormHandleEnter()) {
         e.preventDefault();
