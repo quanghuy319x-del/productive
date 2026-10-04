@@ -24258,7 +24258,6 @@
   const calGridEl = $("#calendar-grid");
   const calPrevBtn = $("#cal-prev-btn");
   const calNextBtn = $("#cal-next-btn");
-  const calTodayBtn = $("#cal-today-btn");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
@@ -24552,7 +24551,6 @@
 
   calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });
   calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });
-  calTodayBtn.addEventListener("click", () => { calCursor = new Date(); calCursor.setDate(1); renderCalendar(); });
   $("#calendar-back").addEventListener("click", closeCalendarModal);
   $("#calendar-close").addEventListener("click", closeCalendarModal);
   calendarModal.addEventListener("click", (e) => { if (e.target === calendarModal) closeCalendarModal(); });
