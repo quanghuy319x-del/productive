@@ -24307,7 +24307,7 @@
   const calendarModal = $("#calendar-modal");
   const calMonthLabelEl = $("#cal-month-label");
   const calWeekdaysEl = $("#calendar-weekdays");
-  const calGridEl = $("#calendar-grid");
+  const calGridEl = $("#calendar-grid");\n  const calPrevBtn = $("#cal-prev-btn");\n  const calNextBtn = $("#cal-next-btn");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
@@ -24606,7 +24606,7 @@
     }
   }
 
-  // v546: swipe the Calendar horizontally to change month. Horizontal
+  // v548: desktop month buttons coexist with phone swipe navigation.\n  calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });\n  calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });\n\n  // v546: swipe the Calendar horizontally to change month. Horizontal
   // intent must clearly dominate vertical movement so normal phone scrolling,
   // icon taps and cell interactions are not hijacked.
   let calSwipeStartX = 0, calSwipeStartY = 0, calSwipeTracking = false;
