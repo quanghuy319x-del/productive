@@ -24444,7 +24444,14 @@
           badge.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            openCalDayModal(iso);
+            // v537: the Calendar score badge is the real cell Task icon.
+            // Open that date's canonical Calendar Child Task List directly.
+            const taskRef = hostRefs.find(ref => getNodeTasks(ref.host).length > 0) || hostRefs[0];
+            if (taskRef) {
+              state.selectedId = taskRef.node.id;
+              state.selectedCell = { nodeId: taskRef.node.id, r: taskRef.r, c: taskRef.c };
+              openTasksModal(taskRef.node.id, taskRef.r, taskRef.c);
+            }
           });
           cell.appendChild(badge);
         }
