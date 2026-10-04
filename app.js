@@ -20339,6 +20339,7 @@
   // nothing needs to be uploaded anywhere and the image travels with the
   // map's .json (export, or the mirrored folder file) automatically.
   const noteImageInput = $("#note-image-input");
+  const noteCameraInput = $("#note-camera-input");
   // Line (and caret-at-start state) captured at the moment the image-toolbar
   // button is clicked, before the native file picker steals focus/selection
   // away from the note.
@@ -20517,6 +20518,24 @@
     }
     noteImageInput.value = ""; // reset so picking the same file(s) again still fires change
   });
+
+  // v520: direct rear-camera capture on touch devices. The captured image
+  // uses the same downscale, PhotoDB insertion and autosave path as gallery photos.
+  const noteCameraBtn = $("#note-tool-camera");
+  if (noteCameraBtn && noteCameraInput) {
+    noteCameraBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    noteCameraBtn.addEventListener("click", () => {
+      noteImageInsertLine = noteCurrentLine();
+      noteImageInsertAtStart = noteCaretIsAtLineStart(noteImageInsertLine);
+      noteCameraInput.click();
+    });
+    noteCameraInput.addEventListener("change", () => {
+      if (noteCameraInput.files && noteCameraInput.files.length) {
+        noteHandleImageFiles(noteCameraInput.files, noteImageInsertLine, noteImageInsertAtStart);
+      }
+      noteCameraInput.value = "";
+    });
+  }
 
   noteTextarea.addEventListener("paste", (e) => {
     const items = e.clipboardData && e.clipboardData.items;
