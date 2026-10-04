@@ -24522,10 +24522,10 @@
 
   function calendarSummaryStyle() {
     const v = state.current && state.current.calendarSummaryStyle;
-    return ["modern", "classic", "transparent", "glass", "paper", "minimal", "dark", "pastel"].includes(v) ? v : "modern";
+    return ["modern", "classic", "warm", "sage", "glass", "paper", "minimal", "pastel"].includes(v) ? v : "modern";
   }
   function setCalendarSummaryStyle(mode) {
-    if (!state.current || !["modern", "classic", "transparent", "glass", "paper", "minimal", "dark", "pastel"].includes(mode)) return;
+    if (!state.current || !["modern", "classic", "warm", "sage", "glass", "paper", "minimal", "pastel"].includes(mode)) return;
     pushUndo();
     state.current.calendarSummaryStyle = mode;
     renderCalendar();
@@ -24533,7 +24533,7 @@
   }
   function applyCalendarSummaryOptions() {
     if (!calendarModal) return;
-    ["modern", "classic", "transparent", "glass", "paper", "minimal", "dark", "pastel"].forEach(mode =>
+    ["modern", "classic", "warm", "sage", "glass", "paper", "minimal", "pastel"].forEach(mode =>
       calendarModal.classList.toggle("calendar-summary-style-" + mode, calendarSummaryStyle() === mode));
     calendarModal.classList.toggle("map-icons-mono", mapIconStyle() === "mono");
   }
@@ -24562,7 +24562,7 @@
       calOptionsMenu.appendChild(row);
     };
     addSection("Calendar style",
-      [["modern","Modern"],["classic","Classic"],["transparent","Transparent"],["glass","Glass"],["paper","Paper"],["minimal","Minimal"],["dark","Dark"],["pastel","Pastel"]],
+      [["modern","Modern"],["classic","Classic"],["warm","Warm"],["sage","Sage"],["glass","Glass"],["paper","Paper"],["minimal","Minimal"],["pastel","Pastel"]],
       calendarSummaryStyle(), setCalendarSummaryStyle);
     addSection("Task badge style",
       [["color","Color"],["size","Size"],["both","Both"]],
