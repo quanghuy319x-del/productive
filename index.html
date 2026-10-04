@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=518">
+<link rel="manifest" href="manifest.webmanifest?v=521">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=520">
+<link rel="stylesheet" href="style.css?v=521">
 </head>
 <body>
 <div id="app">
@@ -898,11 +898,32 @@
      match technically, each file's version is independent. -->
 <script>
 if ("serviceWorker" in navigator) {
-  // v484: passive registration only. Never reload/replace the page from
-  // controllerchange, visibilitychange or pageshow.
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
-      .catch(err => console.warn("Service worker registration failed:", err));
+  // v521: actively check for a new worker on every launch. If one is
+  // waiting, promote it immediately. Reload at most once when the new
+  // controller takes over so installed PWAs cannot remain pinned to an
+  // older app shell indefinitely.
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("./sw.js?v=521", { updateViaCache: "none" });
+      await reg.update();
+      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+      reg.addEventListener("updatefound", () => {
+        const worker = reg.installing;
+        if (!worker) return;
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            worker.postMessage({ type: "SKIP_WAITING" });
+          }
+        });
+      });
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (sessionStorage.getItem("branchline-sw-reloaded-v521")) return;
+        sessionStorage.setItem("branchline-sw-reloaded-v521", "1");
+        location.reload();
+      });
+    } catch (err) {
+      console.warn("Service worker registration/update failed:", err);
+    }
   });
 }
 </script>
@@ -950,8 +971,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=518"></script>
-<script src="phase2-layout.js?v=518"></script>
+<script src="phase1-editors.js?v=521"></script>
+<script src="phase2-layout.js?v=521"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -1011,8 +1032,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=518"></script>
-<script src="app.js?v=520"></script>
+<script src="sidebar-hotfix-v490.js?v=521"></script>
+<script src="app.js?v=521"></script>
 <script>
 (() => {
   function insertText(editor, text) {
