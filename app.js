@@ -25826,6 +25826,14 @@
         host.notes = notes;
         host.note = null;
         syncBrainstormMirrorFromNotes(host);
+
+        // v541: Calendar is a live view of Calendar Child cells. The Brainstorm
+        // marker already exists in canonical cell data at this point, so update
+        // the open summary Calendar immediately instead of waiting for a later
+        // full render / Drive persistence cycle.
+        if (calendarModal && !calendarModal.classList.contains("hidden")) {
+          renderCalendar();
+        }
         persist();
         index = notes.length - 1;
       }
