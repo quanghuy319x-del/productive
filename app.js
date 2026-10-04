@@ -19626,6 +19626,15 @@
         // Calendar-cell Brainstorms use the same lightweight mirror as the
         // node-level Brainstorm marker, but the mirror lives on this cell.
         syncBrainstormMirrorFromNotes(a);
+
+        // v542: a Calendar cell is the same canonical mini-node whether the
+        // edit was launched from the map or from the top Calendar. Paint the
+        // owning mindmap node and the open Calendar immediately; persistence
+        // still uses the normal crash-safe local write + debounced Drive path.
+        refreshNodeOrRenderAll(node.id);
+        if (calendarModal && !calendarModal.classList.contains("hidden")) {
+          renderCalendar();
+        }
         persist();
       }
       return;
@@ -25834,6 +25843,10 @@
         if (calendarModal && !calendarModal.classList.contains("hidden")) {
           renderCalendar();
         }
+        // Also paint the canonical Calendar Child cell immediately. This is
+        // intentionally before persist(): UI synchronization must never wait
+        // for IndexedDB or Drive.
+        refreshNodeOrRenderAll(node.id);
         persist();
         index = notes.length - 1;
       }
