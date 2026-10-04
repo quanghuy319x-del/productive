@@ -9373,7 +9373,9 @@
   }
 
   function clearMarkerDropHighlights() {
-    nodesLayer.querySelectorAll(".node.marker-drop-target, .node-table-cell.marker-drop-target")
+    // v539: include summary-Calendar cells too. They live outside nodesLayer
+    // but are real marker drop targets backed by Calendar Child cells.
+    document.querySelectorAll(".node.marker-drop-target, .node-table-cell.marker-drop-target")
       .forEach(d => d.classList.remove("marker-drop-target"));
   }
 
@@ -9481,10 +9483,14 @@
     if (!hit) return null;
     const cell = hit.closest && hit.closest(".node-table-cell");
     if (cell) {
+      // v539: a top summary-Calendar date is backed by the first canonical
+      // Calendar Child occurrence for that date. Treat it as that exact cell
+      // for touch marker dragging, even though the modal is outside nodesLayer.
+      const summaryNodeId = cell.dataset && cell.dataset.summaryNodeId;
       const nodeEl = cell.closest(".node[data-id]");
-      if (nodeEl) {
+      if (summaryNodeId || nodeEl) {
         const target = {
-          nodeId: nodeEl.dataset.id,
+          nodeId: summaryNodeId || nodeEl.dataset.id,
           r: Number(cell.dataset.r),
           c: Number(cell.dataset.c),
           el: cell
@@ -24481,6 +24487,13 @@
         // in multiple child calendars, new content goes to the first
         // canonical occurrence while all occurrences remain summarized here.
         const primary = hostRefs[0];
+
+        // v539: expose the canonical Calendar Child coordinates on the summary
+        // tile. Month switching is top-Calendar-specific; cell behavior is not.
+        cell.dataset.summaryNodeId = primary.node.id;
+        cell.dataset.r = String(primary.r);
+        cell.dataset.c = String(primary.c);
+
         cell.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -24488,6 +24501,33 @@
           state.selectedCell = { nodeId: primary.node.id, r: primary.r, c: primary.c };
           state.cellRangeAnchor = { nodeId: primary.node.id, r: primary.r, c: primary.c };
           openCellAddMenu(primary.node, primary.r, primary.c, e.clientX, e.clientY);
+        });
+
+        // Desktop marker drag/drop: behave exactly like dropping onto the
+        // canonical Calendar Child cell for this date.
+        cell.addEventListener("dragover", (e) => {
+          if (!markerDragAvailable(e)) return;
+          const drag = markerDragState;
+          if (drag && drag.sourceNodeId === primary.node.id &&
+              drag.sourceR === primary.r && drag.sourceC === primary.c) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+          cell.classList.add("marker-drop-target");
+        });
+        cell.addEventListener("dragleave", (e) => {
+          if (e.relatedTarget && cell.contains(e.relatedTarget)) return;
+          cell.classList.remove("marker-drop-target");
+        });
+        cell.addEventListener("drop", (e) => {
+          const drag = readMarkerDragPayload(e);
+          if (!drag) return;
+          if (drag.sourceNodeId === primary.node.id &&
+              drag.sourceR === primary.r && drag.sourceC === primary.c) return;
+          e.preventDefault();
+          e.stopPropagation();
+          cell.classList.remove("marker-drop-target");
+          completeMarkerDrop(primary.node.id, !!e.altKey, primary.r, primary.c);
         });
       }
 
