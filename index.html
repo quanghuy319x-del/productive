@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=519">
+<link rel="stylesheet" href="style.css?v=520">
 </head>
 <body>
 <div id="app">
@@ -597,7 +597,9 @@
       <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-image" class="note-tool-btn" title="Insert image">🖼</button>
+      <button type="button" id="note-tool-camera" class="note-tool-btn touch-only" title="Take photo" aria-label="Take photo">📷</button>
       <input type="file" id="note-image-input" accept="image/*" multiple hidden>
+      <input type="file" id="note-camera-input" accept="image/*" capture="environment" hidden>
       <span class="note-tool-sep"></span>
       <button type="button" id="note-tool-emoji" class="note-tool-btn" title="Add emoji">😊</button>
       <span class="note-tool-sep"></span>
@@ -1010,7 +1012,7 @@ if ("serviceWorker" in navigator) {
 })();
 </script>
 <script src="sidebar-hotfix-v490.js?v=518"></script>
-<script src="app.js?v=519"></script>
+<script src="app.js?v=520"></script>
 <script>
 (() => {
   function insertText(editor, text) {
