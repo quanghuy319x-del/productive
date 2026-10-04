@@ -24292,8 +24292,6 @@
   const calMonthLabelEl = $("#cal-month-label");
   const calWeekdaysEl = $("#calendar-weekdays");
   const calGridEl = $("#calendar-grid");
-  const calPrevBtn = $("#cal-prev-btn");
-  const calNextBtn = $("#cal-next-btn");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
@@ -24592,8 +24590,27 @@
     }
   }
 
-  calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });
-  calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });
+  // v546: swipe the Calendar horizontally to change month. Horizontal
+  // intent must clearly dominate vertical movement so normal phone scrolling,
+  // icon taps and cell interactions are not hijacked.
+  let calSwipeStartX = 0, calSwipeStartY = 0, calSwipeTracking = false;
+  calendarModal.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 1 || calendarModal.classList.contains("hidden")) return;
+    const t = e.touches[0];
+    calSwipeStartX = t.clientX;
+    calSwipeStartY = t.clientY;
+    calSwipeTracking = true;
+  }, { passive: true });
+  calendarModal.addEventListener("touchend", (e) => {
+    if (!calSwipeTracking || !e.changedTouches.length) return;
+    calSwipeTracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - calSwipeStartX;
+    const dy = t.clientY - calSwipeStartY;
+    if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
+    calCursor.setMonth(calCursor.getMonth() + (dx < 0 ? 1 : -1));
+    renderCalendar();
+  }, { passive: true });
   $("#calendar-back").addEventListener("click", closeCalendarModal);
   $("#calendar-close").addEventListener("click", closeCalendarModal);
   calendarModal.addEventListener("click", (e) => { if (e.target === calendarModal) closeCalendarModal(); });
