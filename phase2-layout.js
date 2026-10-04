@@ -395,11 +395,12 @@
       // node's whole subtree, so its children only ever need to fit inside
       // that local slot.
       function place(node, curSign, y, parentOffset) {
-        const nodeSign = node.side === "left" ? -1 : node.side === "right" ? 1 : curSign;
-        // v558: Timeline level-2+ nodes may explicitly fan their own children
-        // to either side. A child's side is relative to its parent, not the
-        // root spine, so a right child always extends outward to the parent's
-        // right and a left child extends outward to its parent's left.
+        // v559: Timeline's vertical spine defines branch direction. A direct
+        // child of a spine branch (level 2) may live on either side, but once
+        // it is on the right every deeper descendant keeps fanning right;
+        // once it is on the left every deeper descendant keeps fanning left.
+        // Deeper node.side overrides are intentionally ignored.
+        const nodeSign = curSign;
         const offset = parentOffset + gapFor(node);
         node._x = nodeSign * offset;
         if (node.collapsed || !node.children || node.children.length === 0) {
@@ -414,9 +415,7 @@
         let cursor = y - total / 2;
         node.children.forEach(c => {
           const center = cursor + c._subtreeH / 2;
-          const childSign = c.side === "left" ? -1 : c.side === "right" ? 1 : nodeSign;
-          const childOffset = Math.abs(node._x) + node._w / 2;
-          place(c, childSign, center, childOffset);
+          place(c, nodeSign, center, offset + node._w);
           cursor += c._subtreeH + SLOT_GAP;
         });
         const first = node.children[0]._y;
