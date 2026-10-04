@@ -7912,3 +7912,6 @@ kbd{
 @media (max-width:480px){
   #calendar-grid{grid-auto-rows:minmax(68px,auto)}
 }
+
+/* v534: Calendar is the third bottom-right FAB, after child + sibling. */
+.node-fab-calendar{font-size:21px;line-height:1}
