@@ -8180,3 +8180,130 @@ kbd{
     transform:scale(1.30)!important;
   }
 }
+
+
+/* v565 — multi-month Calendar markers scale to the actual compact date-cell
+   footprint. Month view keeps the large v561 markers; Q and 6M progressively
+   shrink every marker/badge and constrain wrapping inside the cell. */
+@media (min-width:641px){
+  /* Q + 6M cells are mini-cells. Nothing from their marker strip may paint
+     outside the date cell even when a busy day has many attachments. */
+  #calendar-grid.calendar-quarter-grid .calendar-cell,
+  #calendar-grid.calendar-six-grid .calendar-cell{
+    container-type:inline-size;
+    overflow:hidden!important;
+  }
+
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip,
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip{
+    left:2px!important;
+    right:2px!important;
+    bottom:2px!important;
+    width:auto!important;
+    max-width:none!important;
+    max-height:calc(100% - 18px)!important;
+    min-height:0!important;
+    padding:1px!important;
+    display:flex!important;
+    flex-wrap:wrap!important;
+    align-content:flex-end!important;
+    align-items:flex-end!important;
+    justify-content:flex-end!important;
+    overflow:hidden!important;
+    box-sizing:border-box!important;
+  }
+
+  /* Quarter: about half the Month marker size, tied to date-cell width. */
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip{
+    gap:1px!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip .node-table-cell-icon{
+    width:clamp(7px, 19cqw, 10px)!important;
+    height:clamp(7px, 19cqw, 10px)!important;
+    min-width:clamp(7px, 19cqw, 10px)!important;
+    font-size:clamp(7px, 17cqw, 9px)!important;
+    border-radius:2px!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip .node-table-cell-timer{
+    width:auto!important;
+    min-width:clamp(9px, 22cqw, 12px)!important;
+    padding:0 1px!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip .node-table-cell-timer span{
+    font-size:clamp(5px, 12cqw, 7px)!important;
+    transform:none!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip .node-table-cell-brainstorm{
+    font-size:clamp(7px, 17cqw, 9px)!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+    right:-3px!important;
+    top:-3px!important;
+    min-width:7px!important;
+    height:7px!important;
+    padding:0 1px!important;
+    font-size:5px!important;
+    line-height:7px!important;
+    border-width:1px!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-score-badge{
+    --task-badge-size:14px!important;
+    --task-badge-pad:2px!important;
+    --task-badge-font:7px!important;
+    top:2px!important;
+    right:2px!important;
+    transform:none!important;
+    border-width:1px!important;
+  }
+  #calendar-grid.calendar-quarter-grid .calendar-summary-score-badge:hover,
+  #calendar-grid.calendar-quarter-grid .calendar-summary-score-badge:focus-visible{
+    transform:scale(1.08)!important;
+  }
+
+  /* 6M: a little smaller again because six panels share the desktop view. */
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip{
+    gap:1px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-icon{
+    width:clamp(6px, 15cqw, 8px)!important;
+    height:clamp(6px, 15cqw, 8px)!important;
+    min-width:clamp(6px, 15cqw, 8px)!important;
+    font-size:clamp(6px, 14cqw, 7.5px)!important;
+    border-radius:1.5px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-timer{
+    width:auto!important;
+    min-width:8px!important;
+    padding:0 1px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-timer span{
+    font-size:5px!important;
+    transform:none!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-brainstorm{
+    font-size:7px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-icon > .node-marker-count{
+    right:-2px!important;
+    top:-2px!important;
+    min-width:6px!important;
+    height:6px!important;
+    padding:0!important;
+    font-size:4px!important;
+    line-height:6px!important;
+    border-width:1px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-score-badge{
+    --task-badge-size:11px!important;
+    --task-badge-pad:1px!important;
+    --task-badge-font:5.5px!important;
+    top:2px!important;
+    right:2px!important;
+    transform:none!important;
+    border-width:1px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-score-badge:hover,
+  #calendar-grid.calendar-six-grid .calendar-summary-score-badge:focus-visible{
+    transform:scale(1.08)!important;
+  }
+}
