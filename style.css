@@ -7860,3 +7860,8 @@ kbd{
   background:rgba(255,255,255,.88) !important;
   border-color:rgba(17,17,17,.5) !important;
 }
+
+
+/* v522: de-emphasize the divider glyph without fading the button itself. */
+#note-tool-divider .divider-faded,
+#note-tool-shift-divider .divider-faded{opacity:.32;font-weight:500}
