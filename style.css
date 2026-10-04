@@ -7906,3 +7906,9 @@ kbd{
 #note-modal{z-index:1250!important}
 #photo-modal.photo-modal-above-note{z-index:1300!important}
 .ctx-menu{z-index:1400!important}
+
+/* v533: taller top Calendar date cells; keep the same 7-column width. */
+#calendar-grid{grid-auto-rows:minmax(82px,auto)}
+@media (max-width:480px){
+  #calendar-grid{grid-auto-rows:minmax(68px,auto)}
+}
