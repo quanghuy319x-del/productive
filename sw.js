@@ -1,12 +1,12 @@
-const CACHE_NAME = "branchline-pwa-v557";
+const CACHE_NAME = "branchline-pwa-v558";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=557",
-  "./phase1-editors.js?v=557",
-  "./phase2-layout.js?v=557",
-  "./app.js?v=557",
-  "./sidebar-hotfix-v490.js?v=557",
+  "./style.css?v=558",
+  "./phase1-editors.js?v=558",
+  "./phase2-layout.js?v=558",
+  "./app.js?v=558",
+  "./sidebar-hotfix-v490.js?v=558",
   "./assets/yahoo/smile-or-happy-face.gif",
   "./assets/yahoo/sad-or-frown-face.gif",
   "./assets/yahoo/winking.gif",
@@ -45,7 +45,7 @@ const APP_SHELL = [
   "./assets/yahoo/rocking.gif",
   "./assets/maneki-neko-wave.gif",
   "./favicon.svg",
-  "./manifest.webmanifest?v=557",
+  "./manifest.webmanifest?v=558",
   "./pwa-icon-192.png",
   "./pwa-icon-516.png"
 ];
