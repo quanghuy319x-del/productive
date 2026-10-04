@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=543">
+<link rel="manifest" href="manifest.webmanifest?v=544">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=543">
+<link rel="stylesheet" href="style.css?v=544">
 </head>
 <body>
 <div id="app">
@@ -903,7 +903,7 @@ if ("serviceWorker" in navigator) {
   // older app shell indefinitely.
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./sw.js?v=543", { updateViaCache: "none" });
+      const reg = await navigator.serviceWorker.register("./sw.js?v=544", { updateViaCache: "none" });
       await reg.update();
       if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
       reg.addEventListener("updatefound", () => {
@@ -970,8 +970,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=543"></script>
-<script src="phase2-layout.js?v=543"></script>
+<script src="phase1-editors.js?v=544"></script>
+<script src="phase2-layout.js?v=544"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -1031,8 +1031,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=543"></script>
-<script src="app.js?v=543"></script>
+<script src="sidebar-hotfix-v490.js?v=544"></script>
+<script src="app.js?v=544"></script>
 <script>
 (() => {
   function insertText(editor, text) {
