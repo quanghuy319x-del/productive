@@ -24313,7 +24313,9 @@
   const calendarModal = $("#calendar-modal");
   const calMonthLabelEl = $("#cal-month-label");
   const calWeekdaysEl = $("#calendar-weekdays");
-  const calGridEl = $("#calendar-grid");\n  const calPrevBtn = $("#cal-prev-btn");\n  const calNextBtn = $("#cal-next-btn");
+  const calGridEl = $("#calendar-grid");
+  const calPrevBtn = $("#cal-prev-btn");
+  const calNextBtn = $("#cal-next-btn");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
