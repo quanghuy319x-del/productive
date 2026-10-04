@@ -24642,17 +24642,9 @@
         });
       }
 
-      const tasksWrap = document.createElement("div");
-      tasksWrap.className = "calendar-day-tasks";
-      tasksWrap.style.fontSize = calendarBoxFontSize(dayItems.length);
-      dayItems.forEach((it) => {
-        const box = document.createElement("span");
-        box.className = "calendar-task-box" + (it.done ? " done" : "") + (it.failed ? " failed" : "") + (it.kind === "subtask" ? " calendar-subtask-box" : "");
-        box.textContent = it.done ? "☑" : (it.failed ? "☒" : "☐");
-        box.title = it.label || "Untitled task";
-        tasksWrap.appendChild(box);
-      });
-      cell.appendChild(tasksWrap);
+      // v571: Task Lists in the summary Calendar are represented by the
+      // modern score badge above. Do not also render the legacy per-task
+      // checkbox glyphs (☐/☑/☒) below the cell icons.
       gridEl.appendChild(cell);
     }
   }
