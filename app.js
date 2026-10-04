@@ -24614,7 +24614,11 @@
     }
   }
 
-  // v548: desktop month buttons coexist with phone swipe navigation.\n  calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });\n  calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });\n\n  // v546: swipe the Calendar horizontally to change month. Horizontal
+  // v562: desktop month buttons coexist with phone swipe navigation.
+  calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });
+  calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });
+
+  // v546: swipe the Calendar horizontally to change month. Horizontal
   // intent must clearly dominate vertical movement so normal phone scrolling,
   // icon taps and cell interactions are not hijacked.
   let calSwipeStartX = 0, calSwipeStartY = 0, calSwipeTracking = false;
