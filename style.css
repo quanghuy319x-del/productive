@@ -8748,3 +8748,46 @@ kbd{
     width:min(320px,calc(100vw - 76px))!important;
   }
 }
+
+
+/* v580: top Calendar mirrors the Calendar Table's seven named paint themes. */
+#calendar-modal.calendar-summary-style-glass .calendar-modal-card{
+  background:rgba(220,228,240,.78)!important;
+  backdrop-filter:blur(10px) saturate(1.12);
+  -webkit-backdrop-filter:blur(10px) saturate(1.12);
+}
+#calendar-modal.calendar-summary-style-glass .calendar-cell,
+#calendar-modal.calendar-summary-style-glass .calendar-quarter-month{
+  background:rgba(255,255,255,.30)!important;
+  border-color:rgba(255,255,255,.55)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34)!important;
+}
+#calendar-modal.calendar-summary-style-paper .calendar-modal-card{background:#eee9dc!important;color:#322d25!important}
+#calendar-modal.calendar-summary-style-paper .calendar-cell,
+#calendar-modal.calendar-summary-style-paper .calendar-quarter-month{
+  background:#fbf8ef!important;color:#322d25!important;
+  border-color:rgba(79,65,42,.20)!important;
+}
+#calendar-modal.calendar-summary-style-paper .other-month{background:#f2ede1!important}
+#calendar-modal.calendar-summary-style-dark .calendar-modal-card{background:#171a21!important;color:#eef2f7!important}
+#calendar-modal.calendar-summary-style-dark #calendar-header,
+#calendar-modal.calendar-summary-style-dark .calendar-weekday,
+#calendar-modal.calendar-summary-style-dark .calendar-quarter-month-title,
+#calendar-modal.calendar-summary-style-dark .calendar-quarter-weekdays{color:#eef2f7!important}
+#calendar-modal.calendar-summary-style-dark .calendar-cell,
+#calendar-modal.calendar-summary-style-dark .calendar-quarter-month{
+  background:#191d25!important;color:#eef2f7!important;
+  border-color:rgba(255,255,255,.10)!important;
+}
+#calendar-modal.calendar-summary-style-dark .other-month{background:#161a21!important;opacity:.38}
+#calendar-modal.calendar-summary-style-dark .calendar-options-menu{background:#20242d!important;border-color:rgba(255,255,255,.14)!important}
+#calendar-modal.calendar-summary-style-dark .calendar-options-title{color:#aeb6c2!important}
+#calendar-modal.calendar-summary-style-dark .calendar-option-choice{background:#292e38!important;color:#e8edf4!important;border-color:#414854!important}
+#calendar-modal.calendar-summary-style-dark .calendar-option-choice.active{background:#183d72!important;color:#9dc4ff!important;border-color:#4d8df7!important}
+#calendar-modal.calendar-summary-style-pastel .calendar-modal-card{background:#f3eef7!important;color:#3d3545!important}
+#calendar-modal.calendar-summary-style-pastel .calendar-cell,
+#calendar-modal.calendar-summary-style-pastel .calendar-quarter-month{
+  background:#fbf8fd!important;color:#3d3545!important;
+  border-color:rgba(80,55,96,.13)!important;
+}
+#calendar-modal.calendar-summary-style-pastel .calendar-cell:nth-child(even){background:#f9f4fb!important}
