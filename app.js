@@ -12209,6 +12209,28 @@
       : "";
     return value || `Cell ${r + 1},${c + 1}`;
   }
+  // v525: label used for auto-naming Brainstorm/DRC notes. Calendar date
+  // cells include their real month (including spillover dates), e.g. 30/9.
+  function contentHostAutoTitleBase(node, cellPos) {
+    if (!cellPos) return contentNodeLabel(node);
+    const r = cellPos.r, c = cellPos.c;
+    if (node && node.table && node.table.calendar && r >= 2) {
+      const year = Number(node.table.calendarYear);
+      const month = Number(node.table.calendarMonth);
+      if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+        const start = Number.isFinite(Number(node.table.calendarStart))
+          ? Number(node.table.calendarStart)
+          : (new Date(year, month - 1, 1).getDay() + 6) % 7;
+        const offset = (r - 2) * 7 + c - start;
+        const d = new Date(year, month - 1, 1 + offset);
+        return `${d.getDate()}/${d.getMonth() + 1}`;
+      }
+    }
+    return contentCellLabel(node, r, c);
+  }
+  function specialNoteAutoTitle(node, cellPos, kind) {
+    return `${contentHostAutoTitleBase(node, cellPos)} ${kind}`.trim();
+  }
   function collectContentHosts() {
     const out = [];
     collectAllNodesFlat().forEach((node) => {
@@ -18789,7 +18811,7 @@
       if (existingDRCIndex >= 0) {
         noteActiveIndex = existingDRCIndex;
       } else {
-        noteWorkingList.push({ id: uid(), title: "DRC", html: noteHtmlFromDRCTemplate(getDRCTemplateText()), createdAt: Date.now(), updatedAt: Date.now() });
+        noteWorkingList.push({ id: uid(), title: specialNoteAutoTitle(node, noteEditingCellPos, "DRC"), html: noteHtmlFromDRCTemplate(getDRCTemplateText()), kind: "drc", createdAt: Date.now(), updatedAt: Date.now() });
         noteActiveIndex = noteWorkingList.length - 1;
       }
     } else {
@@ -25621,7 +25643,7 @@
         pushUndo();
         notes.push({
           id: uid(),
-          title: "",
+          title: specialNoteAutoTitle(node, { r, c }, "Brainstorm"),
           html: legacyHtml,
           kind: "brainstorm",
           createdAt: Date.now(),
@@ -25649,7 +25671,7 @@
     if (index < 0) {
       const legacyHtml = hasBrainstormContent(node) ? getBrainstormHtml(node) : "";
       pushUndo();
-      notes.push({ id: uid(), title: "", html: legacyHtml, kind: "brainstorm", createdAt: Date.now(), updatedAt: Date.now() });
+      notes.push({ id: uid(), title: specialNoteAutoTitle(node, null, "Brainstorm"), html: legacyHtml, kind: "brainstorm", createdAt: Date.now(), updatedAt: Date.now() });
       node.notes = notes;
       node.note = "";
       syncBrainstormMirrorFromNotes(node);
