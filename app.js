@@ -24268,6 +24268,64 @@
     return out;
   }
 
+  // v526: calendar-table cells are the canonical dated mini-nodes shown by
+  // the top Calendar. Multiple calendar cells representing the same real
+  // date are combined into one top-calendar cell.
+  function allCalendarDateHosts() {
+    const byDate = {};
+    if (!state.current) return byDate;
+    (function walk(node) {
+      const t = node.table;
+      if (t && t.calendar && Array.isArray(t.cells) && Array.isArray(t.attach)) {
+        const year = Number(t.calendarYear), month = Number(t.calendarMonth);
+        const start = Number.isFinite(Number(t.calendarStart))
+          ? Number(t.calendarStart)
+          : (new Date(year, month - 1, 1).getDay() + 6) % 7;
+        if (Number.isFinite(year) && Number.isFinite(month)) {
+          for (let r = 2; r < t.cells.length; r++) for (let col = 0; col < 7; col++) {
+            const offset = (r - 2) * 7 + col - start;
+            const d = new Date(year, month - 1, 1 + offset);
+            const iso = toISODate(d);
+            const host = getCellAttach(node, r, col);
+            (byDate[iso] = byDate[iso] || []).push({ node, r, c: col, host });
+          }
+        }
+      }
+      (node.children || []).forEach(walk);
+    })(state.current.root);
+    return byDate;
+  }
+
+  function calendarHostIcons(host) {
+    const icons = [];
+    const photos = getNodeImageIds(host).length;
+    if (photos) icons.push({ text: "🖼", title: `${photos} photo${photos === 1 ? "" : "s"}` });
+    const notes = getNodeNotes(host);
+    notes.filter(n => !isBrainstormNote(n)).forEach(n =>
+      icons.push({ text: isDRCNote(n) ? "📋" : (isPlanNote(n) ? "☑" : "📝"), title: n.title || notePreviewText(n) }));
+    getNodeUrls(host).forEach(u => icons.push({ text: isYouTubeUrl(u) ? "▶" : "🔗", title: getLinkTitle(host, u) || u }));
+    if (hasBrainstormContent(host) || getNodeTasks(host).some(t => getTaskSubtasks(t).some(subtaskHasBrainstormMarker)))
+      icons.push({ text: "🧠", title: "Brainstorm" });
+    const played = getNodeTimePlayed(host);
+    if (played) icons.push({ text: "⏱", title: formatTimePlayed(played) });
+    const wins = nodeAffirmationWins(host);
+    if (wins) icons.push({ text: "✓", title: `Affirmation ×${wins}` });
+    return icons;
+  }
+
+  function calendarCombinedDateInfo(hostRefs, dueEntries) {
+    const icons = [];
+    let score = 0;
+    (hostRefs || []).forEach(ref => {
+      icons.push(...calendarHostIcons(ref.host));
+      score += nodeTaskProgress(ref.host).points || 0;
+    });
+    // Keep ordinary due-dated tasks visible too; tasks already living in a
+    // calendar cell are represented by that cell's score/icons.
+    const dayItems = calendarDayItems(dueEntries || []);
+    return { icons, score, dayItems };
+  }
+
   function calendarBoxFontSize(count) {
     const base = 13, min = 6.5, step = 0.35, freeSlots = 8;
     const size = base - Math.max(0, count - freeSlots) * step;
@@ -24326,6 +24384,7 @@
     allTasksWithNodes().forEach((entry) => {
       if (entry.task.due) (entriesByDate[entry.task.due] = entriesByDate[entry.task.due] || []).push(entry);
     });
+    const calendarHostsByDate = allCalendarDateHosts();
 
     for (let i = 0; i < 42; i++) {
       const cellDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
@@ -24344,18 +24403,28 @@
       dayHead.appendChild(dayNum);
 
       const dayEntries = entriesByDate[iso] || [];
-      const dayItems = calendarDayItems(dayEntries);
-      if (dayItems.length) {
-        const doneCount = dayItems.filter((it) => it.done).length;
+      const combined = calendarCombinedDateInfo(calendarHostsByDate[iso] || [], dayEntries);
+      const dayItems = combined.dayItems;
+      if (combined.score > 0 || dayItems.length) {
         const counter = document.createElement("span");
-        counter.className = "calendar-day-counter" + (doneCount === dayItems.length ? " all-done" : "");
-        counter.textContent = `✓${doneCount}`;
-        const failedCount = dayItems.filter((it) => it.failed).length;
-        counter.title = `${doneCount} of ${dayItems.length} done` + (failedCount ? `, ${failedCount} failed` : "");
+        counter.className = "calendar-day-counter";
+        counter.textContent = combined.score > 0 ? String(combined.score) : `✓${dayItems.filter(it => it.done).length}`;
+        counter.title = combined.score > 0 ? `Combined date-cell score: ${combined.score}` : `${dayItems.filter(it => it.done).length} of ${dayItems.length} done`;
         dayHead.appendChild(counter);
       }
 
       cell.appendChild(dayHead);
+
+      const iconsWrap = document.createElement("div");
+      iconsWrap.className = "calendar-date-icons";
+      combined.icons.forEach((it) => {
+        const icon = document.createElement("span");
+        icon.className = "calendar-date-icon";
+        icon.textContent = it.text;
+        icon.title = it.title || "";
+        iconsWrap.appendChild(icon);
+      });
+      cell.appendChild(iconsWrap);
 
       const tasksWrap = document.createElement("div");
       tasksWrap.className = "calendar-day-tasks";
