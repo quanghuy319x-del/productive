@@ -8791,3 +8791,38 @@ kbd{
   border-color:rgba(80,55,96,.13)!important;
 }
 #calendar-modal.calendar-summary-style-pastel .calendar-cell:nth-child(even){background:#f9f4fb!important}
+
+
+/* v582: iOS-like Calendar month paging on touch phones. */
+@media(max-width:640px){
+  #calendar-grid{
+    will-change:transform,opacity;
+    backface-visibility:hidden;
+    transform:translate3d(0,0,0);
+  }
+  #calendar-grid.calendar-month-slide-out{
+    transform:translate3d(var(--cal-slide-x),0,0)!important;
+    opacity:.18!important;
+    transition:transform 145ms cubic-bezier(.4,0,.8,.4),opacity 145ms ease!important;
+  }
+  #calendar-grid.calendar-month-slide-in{
+    transform:translate3d(var(--cal-slide-enter-x),0,0)!important;
+    opacity:.18!important;
+    transition:none!important;
+  }
+  #calendar-grid.calendar-month-slide-in.calendar-month-slide-in-active{
+    transform:translate3d(0,0,0)!important;
+    opacity:1!important;
+    transition:transform 255ms cubic-bezier(.22,.82,.28,1),opacity 210ms ease-out!important;
+  }
+  #calendar-grid.calendar-month-snap-back{
+    transform:translate3d(0,0,0)!important;
+    opacity:1!important;
+    transition:transform 220ms cubic-bezier(.22,.82,.28,1),opacity 180ms ease-out!important;
+  }
+  #cal-month-label{transition:opacity 130ms ease,transform 180ms cubic-bezier(.22,.82,.28,1)}
+  #cal-month-label.calendar-month-label-fade{opacity:.25;transform:scale(.985)}
+}
+@media(max-width:640px) and (prefers-reduced-motion:reduce){
+  #calendar-grid,#cal-month-label{transition:none!important}
+}
