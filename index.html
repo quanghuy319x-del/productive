@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=521">
+<link rel="manifest" href="manifest.webmanifest?v=522">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -28,7 +28,7 @@
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
-<link rel="stylesheet" href="style.css?v=521">
+<link rel="stylesheet" href="style.css?v=522">
 </head>
 <body>
 <div id="app">
@@ -589,10 +589,10 @@
       <button type="button" id="note-tool-bold-upper" class="note-tool-btn" title="Bold + UPPERCASE selected text"><b>BB</b></button>
       <button type="button" id="note-tool-strike" class="note-tool-btn" title="Strikethrough"><s>S</s></button>
       <button type="button" id="note-tool-tab" class="note-tool-btn" title="Tab to the next stop using dot leaders">Tab···</button>
-      <button type="button" id="note-tool-divider" class="note-tool-btn" title="Insert -----">------</button>
+      <button type="button" id="note-tool-divider" class="note-tool-btn" title="Insert -----"><span class="divider-faded">------</span></button>
       <button type="button" id="note-tool-arrow" class="note-tool-btn" title="Insert → with spaces">→</button>
       <button type="button" id="note-tool-shift-enter" class="note-tool-btn tool-shift-enter" title="Shift+Enter">↵</button>
-      <button type="button" id="note-tool-shift-divider" class="note-tool-btn" title="Shift+Enter + ------">↵ ------</button>
+      <button type="button" id="note-tool-shift-divider" class="note-tool-btn" title="Shift+Enter + ------">↵ <span class="divider-faded">------</span></button>
       <button type="button" id="note-tool-ol" class="note-tool-btn" title="Numbered list (1. 2. 3.) — each number gets its own auto color while 🎨 is on">1.</button>
       <button type="button" id="note-tool-check" class="note-tool-btn" title="Checklist">☑</button>
       <span class="note-tool-sep"></span>
@@ -904,7 +904,7 @@ if ("serviceWorker" in navigator) {
   // older app shell indefinitely.
   window.addEventListener("load", async () => {
     try {
-      const reg = await navigator.serviceWorker.register("./sw.js?v=521", { updateViaCache: "none" });
+      const reg = await navigator.serviceWorker.register("./sw.js?v=522", { updateViaCache: "none" });
       await reg.update();
       if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
       reg.addEventListener("updatefound", () => {
@@ -971,8 +971,8 @@ if ("serviceWorker" in navigator) {
   });
 })();
 </script>
-<script src="phase1-editors.js?v=521"></script>
-<script src="phase2-layout.js?v=521"></script>
+<script src="phase1-editors.js?v=522"></script>
+<script src="phase2-layout.js?v=522"></script>
 <script>
 /* v491: app.js refuses to start without these two modules. If one failed to
    load (404, stale service-worker copy, interrupted download) retry it once,
@@ -1032,8 +1032,8 @@ if ("serviceWorker" in navigator) {
   }
 })();
 </script>
-<script src="sidebar-hotfix-v490.js?v=521"></script>
-<script src="app.js?v=521"></script>
+<script src="sidebar-hotfix-v490.js?v=522"></script>
+<script src="app.js?v=522"></script>
 <script>
 (() => {
   function insertText(editor, text) {
