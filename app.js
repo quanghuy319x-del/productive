@@ -23763,6 +23763,30 @@
     return wrap;
   }
 
+  // v543: Task score/count changes must repaint their node/cell badge while
+  // the Task List is still open. Previously the canonical badge was usually
+  // refreshed only when Tasks closed, which made Calendar badges look delayed.
+  // Cache the score signature so UI-only Task renders (expand/collapse, focus
+  // timer ticks, etc.) do not trigger expensive map/Calendar redraws.
+  let liveTaskBadgeSignature = "";
+  function syncOpenTaskBadgeUI(target, host) {
+    if (!target || !host) return;
+    const prog = nodeTaskProgress(host);
+    const sig = [
+      target.nodeId, target.r == null ? "" : target.r, target.c == null ? "" : target.c,
+      getNodeTasks(host).length, Number(prog.done) || 0, Number(prog.total) || 0
+    ].join("|");
+    if (sig === liveTaskBadgeSignature) return;
+    liveTaskBadgeSignature = sig;
+
+    // Paint from the already-mutated in-memory task objects first. Never wait
+    // for IndexedDB/Drive persistence before the badge reflects the edit.
+    refreshNodeOrRenderAll(target.nodeId);
+    if (calendarModal && !calendarModal.classList.contains("hidden")) {
+      renderCalendar();
+    }
+  }
+
   function renderTasksModal() {
     const target = tasksEditingTarget;
     if (!target) return;
@@ -24103,6 +24127,9 @@
     tasksRandomBtn.disabled = unfinishedSubtasksOfHost(host).length === 0;
     if (tasksDeleteListBtn) tasksDeleteListBtn.disabled = tasks.length === 0;
     updateTaskFontColorToggleBtn();
+
+    // v543: repaint score badge immediately after any score/count mutation.
+    syncOpenTaskBadgeUI(target, host);
   }
 
   // 🎲 Random — picks one unfinished subtask uniformly from every task in
