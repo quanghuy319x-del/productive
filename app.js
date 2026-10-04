@@ -24311,6 +24311,8 @@
   const MONTH_LABELS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   const calendarModal = $("#calendar-modal");
+  const calendarCard = calendarModal.querySelector(".calendar-modal-card");
+  const calendarResizeHandle = $("#calendar-resize-handle");
   const calMonthLabelEl = $("#cal-month-label");
   const calWeekdaysEl = $("#calendar-weekdays");
   const calGridEl = $("#calendar-grid");
@@ -24343,6 +24345,53 @@
   function calendarSixActive() {
     return calendarDesktopViewMode() === "six";
   }
+
+  // v570: same custom two-axis resize behavior as the Note window.
+  // Calendar contents are CSS-grid/container-query based, so Month/Q/6M
+  // reflow continuously while the card is being resized.
+  let calendarIsResizing = false;
+  (function setupCalendarResize() {
+    if (!calendarCard || !calendarResizeHandle) return;
+    let startX, startY, startW, startH;
+
+    function onMove(e) {
+      const dw = e.clientX - startX;
+      const dh = e.clientY - startY;
+      const maxW = window.innerWidth * 0.96;
+      const maxH = window.innerHeight * 0.92;
+      calendarCard.style.width = clamp(startW + dw, 420, maxW) + "px";
+      calendarCard.style.height = clamp(startH + dh, 320, maxH) + "px";
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.body.style.userSelect = "";
+      setTimeout(() => { calendarIsResizing = false; }, 0);
+    }
+    function onResizeStart(e) {
+      if (window.matchMedia("(max-width: 640px)").matches) return;
+      e.preventDefault();
+      e.stopPropagation();
+      calendarIsResizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = calendarCard.getBoundingClientRect();
+      startW = rect.width;
+      startH = rect.height;
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    }
+    calendarResizeHandle.addEventListener("mousedown", onResizeStart);
+    calendarResizeHandle.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      onResizeStart(e);
+    });
+  })();
 
   // Every task on every node, anywhere in the tree — deliberately
   // ignores node.collapsed (unlike the render walks) so a task due
@@ -24733,7 +24782,13 @@
   }, { passive: true });
   $("#calendar-back").addEventListener("click", closeCalendarModal);
   $("#calendar-close").addEventListener("click", closeCalendarModal);
-  calendarModal.addEventListener("click", (e) => { if (e.target === calendarModal) closeCalendarModal(); });
+  let calendarBackdropMousedown = false;
+  calendarModal.addEventListener("mousedown", (e) => {
+    calendarBackdropMousedown = (e.target === calendarModal);
+  });
+  calendarModal.addEventListener("click", (e) => {
+    if (!calendarIsResizing && e.target === calendarModal && calendarBackdropMousedown) closeCalendarModal();
+  });
   $("#btn-calendar").addEventListener("click", openCalendarModal);
 
   /* ---- Day detail popup — now the same rich, hover-revealed row used
