@@ -7951,3 +7951,32 @@ kbd{
     grid-auto-rows:minmax(68px,auto)!important;
   }
 }
+
+
+/* v560 — PC Calendar: use roughly 2× the previous desktop footprint.
+   Phone/touch layout remains governed by the existing <=480px rules. */
+@media (min-width: 641px){
+  #calendar-modal .calendar-modal-card{
+    width:min(1280px, 96vw)!important;
+    max-width:96vw!important;
+    max-height:94vh!important;
+    overflow:auto!important;
+  }
+  #calendar-modal #calendar-grid{
+    grid-auto-rows:minmax(164px, auto)!important;
+  }
+  #calendar-modal #calendar-weekdays,
+  #calendar-modal #calendar-grid{
+    gap:8px!important;
+  }
+  #calendar-modal .calendar-cell{
+    padding:8px 8px 10px!important;
+    gap:6px!important;
+  }
+
+  /* Calendar day-detail window: 464px -> 928px on PC. */
+  #cal-day-modal-backdrop .day-modal{
+    max-width:928px!important;
+    max-height:90vh!important;
+  }
+}
