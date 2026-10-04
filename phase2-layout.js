@@ -341,7 +341,10 @@
       // to explicitly flip its own side would shift those counts and could
       // flip a completely different, untouched sibling to the other side
       // too. Caching means only a node you actually drag ever changes side.
-      const bChildren = branch.children || [];
+      // v556: a collapsed top-level Timeline branch is a true leaf.
+      // Its hidden direct children must not enter either side list at all;
+      // otherwise their subtree heights still determine this spine row.
+      const bChildren = branch.collapsed ? [] : (branch.children || []);
       const right = [], left = [];
       if (bChildren.length) {
         let rightCount = bChildren.filter(c => c.side === "right" || (!c.side && c._autoSide === "right")).length;
