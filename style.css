@@ -8855,3 +8855,33 @@ kbd{
     justify-content:flex-start!important;
   }
 }
+
+
+/* v584: two calm, everyday Calendar themes replacing Dark + Transparent. */
+#calendar-modal.calendar-summary-style-warm .calendar-modal-card{
+  background:#f7f1e7!important;color:#4a4035!important;
+}
+#calendar-modal.calendar-summary-style-warm .calendar-cell,
+#calendar-modal.calendar-summary-style-warm .calendar-quarter-month{
+  background:#fffaf2!important;color:#4a4035!important;
+  border-color:#e4d7c4!important;
+  box-shadow:0 1px 2px rgba(93,72,43,.05)!important;
+}
+#calendar-modal.calendar-summary-style-warm .calendar-cell:nth-child(even){background:#fcf6ec!important}
+#calendar-modal.calendar-summary-style-warm .other-month{background:#f3ecdf!important;opacity:.5}
+#calendar-modal.calendar-summary-style-warm .calendar-weekday,
+#calendar-modal.calendar-summary-style-warm .calendar-day-num{color:#786b5b!important}
+
+#calendar-modal.calendar-summary-style-sage .calendar-modal-card{
+  background:#edf2eb!important;color:#344238!important;
+}
+#calendar-modal.calendar-summary-style-sage .calendar-cell,
+#calendar-modal.calendar-summary-style-sage .calendar-quarter-month{
+  background:#f8fbf6!important;color:#344238!important;
+  border-color:#cfdccd!important;
+  box-shadow:0 1px 2px rgba(48,74,53,.05)!important;
+}
+#calendar-modal.calendar-summary-style-sage .calendar-cell:nth-child(even){background:#f2f7f0!important}
+#calendar-modal.calendar-summary-style-sage .other-month{background:#e7eee4!important;opacity:.48}
+#calendar-modal.calendar-summary-style-sage .calendar-weekday,
+#calendar-modal.calendar-summary-style-sage .calendar-day-num{color:#657668!important}
