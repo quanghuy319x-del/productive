@@ -8695,3 +8695,56 @@ kbd{
   .calendar-options-menu{right:8px;top:72px;width:min(310px,calc(100vw - 24px))}
   .calendar-option-choice{padding:6px 9px}
 }
+
+
+/* v579: Calendar options belongs to the title and uses the Calendar's light UI. */
+#calendar-modal .modal-back-row{position:relative}
+#calendar-modal .calendar-title-options-btn{
+  width:32px;height:32px;min-width:32px;margin-left:3px;padding:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:50%;background:transparent;color:#686868;
+  font-size:16px;line-height:1;cursor:pointer;
+}
+#calendar-modal .calendar-title-options-btn:hover,
+#calendar-modal .calendar-title-options-btn:active{
+  background:#f1f3f5;color:#222;
+}
+#calendar-modal .calendar-options-menu{
+  position:absolute!important;
+  left:66px!important;right:auto!important;top:43px!important;
+  width:min(330px,calc(100vw - 92px))!important;
+  padding:12px!important;
+  color:#252525!important;
+  background:rgba(255,255,255,.98)!important;
+  border:1px solid #dedede!important;
+  border-radius:14px!important;
+  box-shadow:0 12px 32px rgba(0,0,0,.16)!important;
+  backdrop-filter:blur(14px);
+}
+#calendar-modal .calendar-options-title{
+  color:#666!important;opacity:1!important;font-size:11px!important;
+  font-weight:700!important;letter-spacing:.01em;margin:6px 3px 5px!important;
+}
+#calendar-modal .calendar-options-title:first-child{margin-top:0!important}
+#calendar-modal .calendar-options-row{gap:6px!important;margin-bottom:9px!important}
+#calendar-modal .calendar-option-choice{
+  color:#454545!important;background:#f7f7f7!important;
+  border:1px solid #dedede!important;border-radius:999px!important;
+  padding:6px 11px!important;font-weight:600!important;
+  box-shadow:none!important;
+}
+#calendar-modal .calendar-option-choice:hover{
+  background:#eef3ff!important;border-color:#b7c9f8!important;
+}
+#calendar-modal .calendar-option-choice.active{
+  color:#1558c9!important;background:#eaf2ff!important;
+  border-color:#4d8df7!important;
+  box-shadow:0 0 0 1px rgba(77,141,247,.08)!important;
+}
+@media(max-width:640px){
+  #calendar-modal .calendar-title-options-btn{width:30px;height:30px;min-width:30px;font-size:15px}
+  #calendar-modal .calendar-options-menu{
+    left:48px!important;top:42px!important;
+    width:min(320px,calc(100vw - 76px))!important;
+  }
+}
