@@ -8826,3 +8826,32 @@ kbd{
 @media(max-width:640px) and (prefers-reduced-motion:reduce){
   #calendar-grid,#cal-month-label{transition:none!important}
 }
+
+
+/* v583: Calendar markers grow from the bottom of every date cell.
+   New wrapped rows stack upward while the date/task badge stay at the top. */
+#calendar-modal .calendar-summary-node-cell{position:relative!important;overflow:hidden}
+#calendar-modal .calendar-summary-icon-strip{
+  position:absolute!important;
+  left:2px!important;right:2px!important;bottom:2px!important;
+  width:auto!important;max-width:none!important;
+  max-height:calc(100% - 18px)!important;
+  margin:0!important;padding:1px!important;
+  display:flex!important;flex-wrap:wrap-reverse!important;
+  align-content:flex-start!important;align-items:flex-end!important;
+  justify-content:flex-start!important;
+  overflow:hidden!important;box-sizing:border-box!important;
+}
+@media(min-width:641px){
+  #calendar-modal #calendar-grid .calendar-summary-icon-strip{
+    left:var(--cal-child-edge-x)!important;
+    right:var(--cal-child-edge-x)!important;
+    bottom:var(--cal-child-edge-y)!important;
+    max-width:none!important;
+    max-height:calc(100% - 20cqw)!important;
+    flex-wrap:wrap-reverse!important;
+    align-content:flex-start!important;
+    align-items:flex-end!important;
+    justify-content:flex-start!important;
+  }
+}
