@@ -7931,3 +7931,23 @@ kbd{
     grid-template-rows:repeat(6,minmax(72px,1fr));
   }
 }
+
+
+/* v538: fit the summary Calendar to its visible month rows; keep a useful bottom breathing gap instead of stretching empty white space. */
+@media (max-width:480px){
+  #calendar-modal{
+    padding-bottom:max(18px, calc(env(safe-area-inset-bottom) + 12px))!important;
+  }
+  #calendar-modal .calendar-modal-card{
+    height:auto!important;
+    max-height:calc(100dvh - max(8px, env(safe-area-inset-top)) - max(18px, calc(env(safe-area-inset-bottom) + 12px)))!important;
+    margin-bottom:0!important;
+    padding-bottom:8px!important;
+  }
+  #calendar-grid{
+    flex:0 0 auto!important;
+    min-height:0!important;
+    grid-template-rows:none!important;
+    grid-auto-rows:minmax(68px,auto)!important;
+  }
+}
