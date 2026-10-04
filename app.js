@@ -19656,6 +19656,13 @@
       node.notes = cleaned;
       node.note = "";
       syncBrainstormMirrorFromNotes(node);
+
+      // v547: note/DRC/brainstorm icon appearance AND disappearance must be
+      // reflected immediately while the editor is still open. Persistence is
+      // deliberately after the repaint so deleting a note never leaves a
+      // stale icon waiting for editor close or storage work.
+      refreshNodeOrRenderAll(node.id);
+      if (calendarModal && !calendarModal.classList.contains("hidden")) renderCalendar();
       persist();
     }
   }
@@ -24182,6 +24189,15 @@
     if (Object.prototype.hasOwnProperty.call(host, "task")) host.task = null;
 
     closeTaskListActionUI();
+
+    // v547: deletion is a visual mutation first. Remove the task badge/icon
+    // from the owning node/cell (and open top Calendar) before any persistence
+    // work, so the UI never waits on IndexedDB/Drive/close-modal cleanup.
+    const deletedTarget = tasksEditingTarget && { ...tasksEditingTarget };
+    if (deletedTarget) {
+      refreshNodeOrRenderAll(deletedTarget.nodeId);
+      if (calendarModal && !calendarModal.classList.contains("hidden")) renderCalendar();
+    }
     persist();
     showToast("Task list deleted");
     closeTasksModal();
