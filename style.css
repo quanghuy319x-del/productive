@@ -7862,6 +7862,6 @@ kbd{
 }
 
 
-/* v522: de-emphasize the divider glyph without fading the button itself. */
-#note-tool-divider .divider-faded,
-#note-tool-shift-divider .divider-faded{opacity:.32;font-weight:500}
+
+/* v523: divider inserted into Note/Brainstorm body is intentionally faint. */
+.note-textarea .note-inline-divider{opacity:.28;font-weight:400}
