@@ -18842,9 +18842,15 @@
         // "Plan" note template (if one is saved) instead of a blank note.
         const planSeed = (noteEditingTaskId && !noteWorkingList.length)
           ? planTemplateSeedFor(noteEditingNoteOwner(taskHost)) : null;
+        const isCalendarCellNote = !!(noteEditingCellPos && !noteEditingTaskId &&
+          node.table && node.table.calendar);
         const ownerTitle = noteEditingSubtaskId
           ? ((noteEditingNoteOwner(taskHost) && noteEditingNoteOwner(taskHost).text) || "").trim()
-          : (planSeed ? planSeed.title : "");
+          : (planSeed ? planSeed.title
+            : (isCalendarCellNote ? contentHostAutoTitleBase(node, noteEditingCellPos) : ""));
+        // v549: a normal Note created from a Calendar date keeps the same
+        // date-based auto-name logic already used by Calendar Brainstorm/DRC
+        // (e.g. "6/10"). Existing/custom titles remain untouched.
         noteWorkingList.push({ id: uid(), title: ownerTitle, html: planSeed ? planSeed.html : "", createdAt: Date.now(), updatedAt: Date.now() });
       }
       noteActiveIndex = wantsNew ? noteWorkingList.length - 1
