@@ -24796,13 +24796,49 @@
     }
   }
 
-  // v569: Month and 6M both move one month per click; Q moves one quarter.
+  // v582: iPhone-like horizontal month transition on phones. Desktop/Q/6M
+  // keep their immediate navigation behavior.
+  let calMonthAnimating = false;
+  function animateCalendarMonthChange(direction) {
+    const phoneMonth = window.matchMedia("(max-width: 640px)").matches && calendarDesktopViewMode() === "month";
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!phoneMonth || reduceMotion) {
+      calCursor.setMonth(calCursor.getMonth() + direction);
+      renderCalendar();
+      return;
+    }
+    if (calMonthAnimating) return;
+    calMonthAnimating = true;
+    const outX = direction > 0 ? "-22%" : "22%";
+    calGridEl.style.setProperty("--cal-slide-x", outX);
+    calGridEl.classList.add("calendar-month-slide-out");
+    calMonthLabelEl.classList.add("calendar-month-label-fade");
+    setTimeout(() => {
+      calCursor.setMonth(calCursor.getMonth() + direction);
+      renderCalendar();
+      calGridEl.classList.remove("calendar-month-slide-out");
+      calGridEl.style.setProperty("--cal-slide-enter-x", direction > 0 ? "28%" : "-28%");
+      calGridEl.classList.add("calendar-month-slide-in");
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        calGridEl.classList.add("calendar-month-slide-in-active");
+        calMonthLabelEl.classList.remove("calendar-month-label-fade");
+      }));
+      setTimeout(() => {
+        calGridEl.classList.remove("calendar-month-slide-in", "calendar-month-slide-in-active");
+        calGridEl.style.removeProperty("--cal-slide-x");
+        calGridEl.style.removeProperty("--cal-slide-enter-x");
+        calMonthAnimating = false;
+      }, 270);
+    }, 145);
+  }
   calPrevBtn.addEventListener("click", () => {
+    if (window.matchMedia("(max-width: 640px)").matches) return animateCalendarMonthChange(-1);
     const step = calendarQuarterActive() ? 3 : 1;
     calCursor.setMonth(calCursor.getMonth() - step);
     renderCalendar();
   });
   calNextBtn.addEventListener("click", () => {
+    if (window.matchMedia("(max-width: 640px)").matches) return animateCalendarMonthChange(1);
     const step = calendarQuarterActive() ? 3 : 1;
     calCursor.setMonth(calCursor.getMonth() + step);
     renderCalendar();
@@ -24838,13 +24874,25 @@
   // v546: swipe the Calendar horizontally to change month. Horizontal
   // intent must clearly dominate vertical movement so normal phone scrolling,
   // icon taps and cell interactions are not hijacked.
-  let calSwipeStartX = 0, calSwipeStartY = 0, calSwipeTracking = false;
+  let calSwipeStartX = 0, calSwipeStartY = 0, calSwipeTracking = false, calSwipeDx = 0;
   calendarModal.addEventListener("touchstart", (e) => {
-    if (e.touches.length !== 1 || calendarModal.classList.contains("hidden")) return;
+    if (e.touches.length !== 1 || calendarModal.classList.contains("hidden") || calMonthAnimating) return;
     const t = e.touches[0];
     calSwipeStartX = t.clientX;
     calSwipeStartY = t.clientY;
+    calSwipeDx = 0;
     calSwipeTracking = true;
+  }, { passive: true });
+  calendarModal.addEventListener("touchmove", (e) => {
+    if (!calSwipeTracking || !e.touches.length || calendarDesktopViewMode() !== "month") return;
+    const t = e.touches[0];
+    const dx = t.clientX - calSwipeStartX;
+    const dy = t.clientY - calSwipeStartY;
+    if (Math.abs(dx) < Math.abs(dy) * 1.15) return;
+    calSwipeDx = dx;
+    const limited = Math.max(-72, Math.min(72, dx * .34));
+    calGridEl.style.transform = `translate3d(${limited}px,0,0)`;
+    calGridEl.style.opacity = String(1 - Math.min(.14, Math.abs(limited) / 520));
   }, { passive: true });
   calendarModal.addEventListener("touchend", (e) => {
     if (!calSwipeTracking || !e.changedTouches.length) return;
@@ -24852,9 +24900,14 @@
     const t = e.changedTouches[0];
     const dx = t.clientX - calSwipeStartX;
     const dy = t.clientY - calSwipeStartY;
-    if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.35) return;
-    calCursor.setMonth(calCursor.getMonth() + (dx < 0 ? 1 : -1));
-    renderCalendar();
+    calGridEl.style.transform = "";
+    calGridEl.style.opacity = "";
+    if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.35) {
+      calGridEl.classList.add("calendar-month-snap-back");
+      setTimeout(() => calGridEl.classList.remove("calendar-month-snap-back"), 220);
+      return;
+    }
+    animateCalendarMonthChange(dx < 0 ? 1 : -1);
   }, { passive: true });
   $("#calendar-back").addEventListener("click", closeCalendarModal);
   $("#calendar-close").addEventListener("click", closeCalendarModal);
