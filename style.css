@@ -7868,3 +7868,8 @@ kbd{
 
 /* v524: only the six divider dashes are faded; following typing is normal. */
 .note-textarea .note-after-divider{opacity:1;font-weight:inherit;color:inherit;text-transform:none}
+
+/* v526: top Calendar mirrors calendar-table mini-node icon strips. */
+.calendar-date-icons{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-height:16px;padding:1px 2px;overflow:hidden}
+.calendar-date-icon{display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:14px;font-size:11px;line-height:1}
+@media (max-width:640px){.calendar-date-icons{gap:1px}.calendar-date-icon{min-width:12px;height:12px;font-size:10px}}
