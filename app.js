@@ -24482,7 +24482,8 @@
       });
       cell.appendChild(tasksWrap);
 
-      if (inCurrentMonth) cell.addEventListener("click", () => openCalDayModal(iso));
+      // v532: normal tap/click on a summary Calendar date is passive.
+      // Use its real mini-node icons/badge or the cell context menu instead.
       calGridEl.appendChild(cell);
     }
   }
