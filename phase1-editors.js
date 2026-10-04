@@ -25,7 +25,12 @@
       isPlanText(text) { return (text || "").trim().toLowerCase() === "plan"; }
     },
     drc: {
-      isNote(note) { return !!(note && (note.title || "").trim().toUpperCase() === "DRC"); },
+      isNote(note) {
+        if (!note) return false;
+        if (note.kind === "drc") return true;
+        const title = (note.title || "").trim();
+        return /(?:^|\\s)DRC$/i.test(title);
+      },
       isFilled(note, templateLines) {
         const labels = Array.isArray(templateLines) ? templateLines : [];
         const lines = api.note.linesFromHtml(note && note.html)
