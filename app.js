@@ -19078,7 +19078,11 @@
         if (live.failed) live.done = false;
       });
     });
-    addItem(s.emergencyGlow ? "🚨 Turn off emergency glow" : "🚨 Emergency glow", "", () => {\n      if (!requireSignIn()) return;\n      updateDRCQueueSubtask(s.id, (live) => { live.emergencyGlow = !live.emergencyGlow; });\n    });\n    addItem("Copy text", "", () => copySubtaskText(s.text || ""));
+    addItem(s.emergencyGlow ? "🚨 Turn off emergency glow" : "🚨 Emergency glow", "", () => {
+      if (!requireSignIn()) return;
+      updateDRCQueueSubtask(s.id, (live) => { live.emergencyGlow = !live.emergencyGlow; });
+    });
+    addItem("Copy text", "", () => copySubtaskText(s.text || ""));
     addItem("↔ Move", "", () => {
       if (!requireSignIn()) return;
       subtaskTouchMoveMode = { taskId: SHARED_QUEUE_TASK_ID, subtaskId: s.id };
@@ -22966,7 +22970,14 @@
       persist();
       rerender();
     });
-    addItem(s.emergencyGlow ? "🚨 Turn off emergency glow" : "🚨 Emergency glow", "", () => {\n      if (!requireSignIn()) return;\n      pushUndo();\n      s.emergencyGlow = !s.emergencyGlow;\n      persist();\n      rerender();\n    });\n    addItem("Copy text", "", () => copySubtaskText(s.text));
+    addItem(s.emergencyGlow ? "🚨 Turn off emergency glow" : "🚨 Emergency glow", "", () => {
+      if (!requireSignIn()) return;
+      pushUndo();
+      s.emergencyGlow = !s.emergencyGlow;
+      persist();
+      rerender();
+    });
+    addItem("Copy text", "", () => copySubtaskText(s.text));
     addItem("↔ Move", "", () => {
       if (!requireSignIn()) return;
       subtaskTouchMoveMode = { taskId: t.id, subtaskId: s.id };
