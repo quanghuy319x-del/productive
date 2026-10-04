@@ -24228,7 +24228,7 @@
      inside collapsed branches). Tapping a day opens a popup with that
      day's full due list; each row can be checked off and jumped to on
      the canvas, same as tapping a task normally would. */
-  const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const MONTH_LABELS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   const calendarModal = $("#calendar-modal");
@@ -24376,7 +24376,8 @@
 
     calGridEl.innerHTML = "";
     const year = calCursor.getFullYear(), month = calCursor.getMonth();
-    const startWeekday = new Date(year, month, 1).getDay();
+    // v528: match Calendar Child — weeks run Monday through Sunday.
+    const startWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
     const gridStart = new Date(year, month, 1 - startWeekday);
     const today = new Date();
 
