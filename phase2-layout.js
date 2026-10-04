@@ -396,10 +396,10 @@
       // that local slot.
       function place(node, curSign, y, parentOffset) {
         const nodeSign = node.side === "left" ? -1 : node.side === "right" ? 1 : curSign;
-        // Measured from the parent's own OUTER edge (not just its anchor
-        // point), so a wide parent — one whose text pushed its box wider
-        // than the default gap — still leaves enough room before its own
-        // child starts, instead of the child's edge landing inside it.
+        // v558: Timeline level-2+ nodes may explicitly fan their own children
+        // to either side. A child's side is relative to its parent, not the
+        // root spine, so a right child always extends outward to the parent's
+        // right and a left child extends outward to its parent's left.
         const offset = parentOffset + gapFor(node);
         node._x = nodeSign * offset;
         if (node.collapsed || !node.children || node.children.length === 0) {
@@ -414,7 +414,9 @@
         let cursor = y - total / 2;
         node.children.forEach(c => {
           const center = cursor + c._subtreeH / 2;
-          place(c, nodeSign, center, offset + node._w);
+          const childSign = c.side === "left" ? -1 : c.side === "right" ? 1 : nodeSign;
+          const childOffset = Math.abs(node._x) + node._w / 2;
+          place(c, childSign, center, childOffset);
           cursor += c._subtreeH + SLOT_GAP;
         });
         const first = node.children[0]._y;
