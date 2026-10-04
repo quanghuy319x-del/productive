@@ -24341,6 +24341,13 @@
           for (let r = 2; r < t.cells.length; r++) for (let col = 0; col < 7; col++) {
             const offset = (r - 2) * 7 + col - start;
             const d = new Date(year, month - 1, 1 + offset);
+
+            // v545: adjacent-month cells are visual spillover only. A date
+            // belongs to exactly its own Calendar Child month for top-Calendar
+            // aggregation. E.g. 1 Oct shown at the end of September must NOT
+            // contribute a second set of October icons/tasks.
+            if (d.getFullYear() !== year || d.getMonth() + 1 !== month) continue;
+
             const iso = toISODate(d);
             const host = getCellAttach(node, r, col);
             (byDate[iso] = byDate[iso] || []).push({ node, r, c: col, host });
@@ -24349,60 +24356,6 @@
       }
       (node.children || []).forEach(walk);
     })(state.current.root);
-    // v544: the same real date can physically exist in two adjacent
-    // Calendar Children (for example 6 Oct in September's spillover row and
-    // again in October). Those cells are one logical mini-node. Alias every
-    // duplicate date to one canonical attachment object so edits made from
-    // the top Calendar, September, or October are immediately the same data
-    // rather than two copies that merely look combined in the summary.
-    Object.values(byDate).forEach((refs) => {
-      if (!refs || refs.length < 2) return;
-
-      // Prefer a cell whose own calendar month actually owns the date, rather
-      // than an adjacent month's spillover cell. This makes 6 Oct canonical
-      // to the October Calendar Child even if September appears first in tree order.
-      const iso = (() => {
-        const sample = refs[0];
-        const t = sample && sample.node && sample.node.table;
-        if (!t) return "";
-        const start = Number.isFinite(Number(t.calendarStart))
-          ? Number(t.calendarStart)
-          : (new Date(Number(t.calendarYear), Number(t.calendarMonth) - 1, 1).getDay() + 6) % 7;
-        const offset = (sample.r - 2) * 7 + sample.c - start;
-        return toISODate(new Date(Number(t.calendarYear), Number(t.calendarMonth) - 1, 1 + offset));
-      })();
-      const date = iso ? fromISODate(iso) : null;
-      const owner = date && refs.find((ref) => {
-        const t = ref.node && ref.node.table;
-        return t && Number(t.calendarYear) === date.getFullYear() &&
-          Number(t.calendarMonth) === date.getMonth() + 1;
-      });
-      const canonical = (owner || refs[0]).host;
-      if (!canonical) return;
-
-      refs.forEach((ref) => {
-        if (ref.host === canonical) return;
-        // Preserve content that may already have been entered independently
-        // into the duplicate before v544, then make both coordinates point
-        // at exactly the same object for all future edits.
-        const other = ref.host || {};
-        ["images", "notes", "urls", "tasks"].forEach((key) => {
-          const a = Array.isArray(canonical[key]) ? canonical[key] : [];
-          const b = Array.isArray(other[key]) ? other[key] : [];
-          if (!b.length) return;
-          const seen = new Set(a.map((x) => x && typeof x === "object" ? (x.id || JSON.stringify(x)) : String(x)));
-          b.forEach((x) => {
-            const id = x && typeof x === "object" ? (x.id || JSON.stringify(x)) : String(x);
-            if (!seen.has(id)) { a.push(x); seen.add(id); }
-          });
-          canonical[key] = a;
-        });
-        if (!canonical.brainstorm && other.brainstorm) canonical.brainstorm = other.brainstorm;
-        if (!canonical.timePlayedSec && other.timePlayedSec) canonical.timePlayedSec = other.timePlayedSec;
-        ref.node.table.attach[ref.r][ref.c] = canonical;
-        ref.host = canonical;
-      });
-    });
     return byDate;
   }
 
