@@ -1,4 +1,4 @@
-/* Branchline Phase 2 layout domain — v341
+/* Branchline Phase 2 layout domain — v554
    Extracted from app.js: layout engine, text measurement/wrapping,
    node box geometry, and branch-color resolution.
    The module owns no app state; app.js injects the live dependencies. */
@@ -182,8 +182,19 @@
     // an unrelated node at the same depth in a different branch never needs
     // to line up with it, and can't be pushed into it either.
     function subtreeExtent(node) {
+      // v554: a collapsed node is a true layout leaf. Do not let any
+      // previously measured descendant extent leak into Auto-arrange.
       if (node.collapsed || !node.children || node.children.length === 0) {
-        return (node._subtreeH = node._h || NODE_H);
+        node._subtreeH = node._h || NODE_H;
+        if (node.collapsed) {
+          (function clearHiddenExtent(n) {
+            (n.children || []).forEach(c => {
+              c._subtreeH = 0;
+              clearHiddenExtent(c);
+            });
+          })(node);
+        }
+        return node._subtreeH;
       }
       let total = 0;
       node.children.forEach((c, i) => {
@@ -351,8 +362,19 @@
       // branch or any node elsewhere at the "same level". That's what lets
       // each node's children be spaced purely relative to each other.
       function subtreeExtent(node) {
+        // v554: collapsed descendants consume zero row space; only the
+        // collapsed node's own visible box participates in arrangement.
         if (node.collapsed || !node.children || node.children.length === 0) {
-          return (node._subtreeH = node._h || NODE_H);
+          node._subtreeH = node._h || NODE_H;
+          if (node.collapsed) {
+            (function clearHiddenExtent(n) {
+              (n.children || []).forEach(c => {
+                c._subtreeH = 0;
+                clearHiddenExtent(c);
+              });
+            })(node);
+          }
+          return node._subtreeH;
         }
         let total = 0;
         node.children.forEach((c, i) => {
