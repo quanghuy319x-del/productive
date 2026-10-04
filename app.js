@@ -24620,8 +24620,8 @@
     calMonthViewBtn.setAttribute("aria-pressed", viewMode === "month" ? "true" : "false");
     calQuarterViewBtn.setAttribute("aria-pressed", quarter ? "true" : "false");
     calSixViewBtn.setAttribute("aria-pressed", six ? "true" : "false");
-    calPrevBtn.title = quarter ? "Previous quarter" : six ? "Previous 6 months" : "Previous month";
-    calNextBtn.title = quarter ? "Next quarter" : six ? "Next 6 months" : "Next month";
+    calPrevBtn.title = quarter ? "Previous quarter" : "Previous month";
+    calNextBtn.title = quarter ? "Next quarter" : "Next month";
 
     const entriesByDate = {};
     allTasksWithNodes().forEach((entry) => {
@@ -24646,9 +24646,9 @@
       panelCount = 3;
       calMonthLabelEl.textContent = `Q${quarterIndex + 1} ${year}`;
     } else {
-      // v564: "recent 6 months" means the month at calCursor plus the five
-      // immediately before it. Navigation moves this six-month window in
-      // six-month blocks while keeping calCursor as the window's end month.
+      // v569: "recent 6 months" means the month at calCursor plus the five
+      // immediately before it. Previous/Next shifts this rolling window by
+      // one month at a time while calCursor remains the window's end month.
       firstMonthDate = new Date(calCursor.getFullYear(), calCursor.getMonth() - 5, 1);
       panelCount = 6;
       const lastMonthDate = new Date(calCursor.getFullYear(), calCursor.getMonth(), 1);
@@ -24683,14 +24683,14 @@
     }
   }
 
-  // v564: Previous/Next follows Month / Quarter / recent-6-month view.
+  // v569: Month and 6M both move one month per click; Q moves one quarter.
   calPrevBtn.addEventListener("click", () => {
-    const step = calendarQuarterActive() ? 3 : calendarSixActive() ? 6 : 1;
+    const step = calendarQuarterActive() ? 3 : 1;
     calCursor.setMonth(calCursor.getMonth() - step);
     renderCalendar();
   });
   calNextBtn.addEventListener("click", () => {
-    const step = calendarQuarterActive() ? 3 : calendarSixActive() ? 6 : 1;
+    const step = calendarQuarterActive() ? 3 : 1;
     calCursor.setMonth(calCursor.getMonth() + step);
     renderCalendar();
   });
