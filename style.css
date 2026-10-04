@@ -8514,3 +8514,16 @@ kbd{
     overflow:hidden!important;
   }
 }
+
+
+/* v568 — top Calendar standard marker = 20% of its own date-cell width.
+   Month/Q/6M all inherit this same proportional rule. Related glyph sizing
+   follows the icon so the marker keeps the same internal proportions. */
+@media (min-width:641px){
+  #calendar-modal #calendar-grid .calendar-cell{
+    --cal-child-icon:20cqw!important;
+    --cal-child-icon-gap:2cqw!important;
+    --cal-child-radius:4cqw!important;
+    --cal-child-brain-font:18cqw!important;
+  }
+}
