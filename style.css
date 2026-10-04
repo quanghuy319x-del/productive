@@ -8648,3 +8648,50 @@ kbd{
     box-shadow:0 0 8px 3px rgba(255,35,35,.95),0 0 18px 7px rgba(255,135,0,.7)!important;
   }
 }
+
+
+/* v578: compact visual-options menu for the top Calendar. */
+#calendar-header{position:relative}
+.cal-options-btn{min-width:32px}
+.calendar-options-menu{
+  position:absolute;right:12px;top:76px;z-index:40;
+  width:min(330px,calc(100vw - 34px));padding:10px;
+  border:1px solid rgba(90,90,90,.24);border-radius:12px;
+  background:var(--panel,#fff);box-shadow:0 10px 30px rgba(0,0,0,.18);
+}
+.calendar-options-menu.hidden{display:none!important}
+.calendar-options-title{font-size:11px;font-weight:700;opacity:.65;margin:5px 2px 4px}
+.calendar-options-title:first-child{margin-top:0}
+.calendar-options-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+.calendar-option-choice{
+  border:1px solid rgba(100,100,100,.28);border-radius:999px;
+  background:transparent;padding:5px 9px;font-size:12px;cursor:pointer;
+}
+.calendar-option-choice.active{border-color:#3b82f6;background:rgba(59,130,246,.16);color:#1d4ed8}
+
+/* Current leaves the existing Calendar untouched. */
+#calendar-modal.calendar-summary-style-minimal .calendar-cell{
+  background:transparent!important;box-shadow:none!important;border-color:rgba(120,120,120,.16)!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-day-head{opacity:.78}
+#calendar-modal.calendar-summary-style-transparent .calendar-modal-card,
+#calendar-modal.calendar-summary-style-transparent .calendar-cell,
+#calendar-modal.calendar-summary-style-transparent .calendar-quarter-month{
+  background:rgba(255,255,255,.14)!important;box-shadow:none!important;
+}
+#calendar-modal.calendar-summary-style-transparent .calendar-cell{border-color:rgba(110,110,110,.16)!important}
+#calendar-modal.calendar-summary-style-classic .calendar-cell{
+  background:#fffdf7!important;border:1px solid #c9c2b2!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)!important;
+}
+#calendar-modal.calendar-summary-style-classic .calendar-day-head{
+  border-bottom:1px solid rgba(130,115,85,.18);
+}
+
+/* Top Calendar participates in the same map-wide monochrome icon setting. */
+#calendar-modal.map-icons-mono .calendar-summary-icon-strip > *:not(.node-table-cell-score-badge){
+  filter:grayscale(1)!important;
+}
+@media(max-width:640px){
+  .calendar-options-menu{right:8px;top:72px;width:min(310px,calc(100vw - 24px))}
+  .calendar-option-choice{padding:6px 9px}
+}
