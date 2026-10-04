@@ -24316,6 +24316,8 @@
   const calGridEl = $("#calendar-grid");
   const calPrevBtn = $("#cal-prev-btn");
   const calNextBtn = $("#cal-next-btn");
+  const calMonthViewBtn = $("#cal-view-month");
+  const calQuarterViewBtn = $("#cal-view-quarter");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
@@ -24326,6 +24328,14 @@
   calCursor.setDate(1); // first of the currently-displayed month
   let calDayModalDate = null; // "YYYY-MM-DD" of the day currently shown, or null when closed
   let calDaySortMode = "off"; // "off" | "star" | "color" — view-only sort toggle for the day popup, reset each time it opens
+  let calViewMode = "month";
+  try {
+    const savedCalView = localStorage.getItem("branchline_calendar_view");
+    if (savedCalView === "quarter") calViewMode = "quarter";
+  } catch (e) {}
+  function calendarQuarterActive() {
+    return calViewMode === "quarter" && window.matchMedia("(min-width: 641px)").matches;
+  }
 
   // Every task on every node, anywhere in the tree — deliberately
   // ignores node.collapsed (unlike the render walks) so a task due
@@ -24447,30 +24457,27 @@
     zoomModalClose(calendarModal);
   }
 
-  function renderCalendar() {
-    calMonthLabelEl.textContent = `${MONTH_LABELS[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
+  function ensureCalendarWeekdays(container) {
+    if (container.childElementCount) return;
+    WEEKDAY_LABELS.forEach((w) => {
+      const el = document.createElement("div");
+      el.className = "calendar-weekday";
+      el.textContent = w;
+      container.appendChild(el);
+    });
+  }
 
-    if (!calWeekdaysEl.childElementCount) {
-      WEEKDAY_LABELS.forEach((w) => {
-        const el = document.createElement("div");
-        el.className = "calendar-weekday";
-        el.textContent = w;
-        calWeekdaysEl.appendChild(el);
-      });
-    }
+  // v563: one reusable month renderer powers both the normal Month view and
+  // each of the three month panels in the desktop Quarter view. All icon,
+  // task badge, context-menu and marker drag/drop behavior stays identical.
+  function renderCalendarMonthInto(gridEl, weekdaysEl, cursorDate, entriesByDate, calendarHostsByDate) {
+    ensureCalendarWeekdays(weekdaysEl);
+    gridEl.innerHTML = "";
 
-    calGridEl.innerHTML = "";
-    const year = calCursor.getFullYear(), month = calCursor.getMonth();
-    // v528: match Calendar Child — weeks run Monday through Sunday.
+    const year = cursorDate.getFullYear(), month = cursorDate.getMonth();
     const startWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
     const gridStart = new Date(year, month, 1 - startWeekday);
     const today = new Date();
-
-    const entriesByDate = {};
-    allTasksWithNodes().forEach((entry) => {
-      if (entry.task.due) (entriesByDate[entry.task.due] = entriesByDate[entry.task.due] || []).push(entry);
-    });
-    const calendarHostsByDate = allCalendarDateHosts();
 
     for (let i = 0; i < 42; i++) {
       const cellDate = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
@@ -24488,17 +24495,11 @@
       dayNum.textContent = cellDate.getDate();
       dayHead.appendChild(dayNum);
 
-      // v530: spillover dates keep only their faint day number. Content
-      // belongs exclusively to the month currently being viewed.
       const inCurrentMonth = cellDate.getMonth() === month && cellDate.getFullYear() === year;
       const dayEntries = inCurrentMonth ? (entriesByDate[iso] || []) : [];
       const hostRefs = inCurrentMonth ? (calendarHostsByDate[iso] || []) : [];
       const dayItems = calendarDayItems(dayEntries);
 
-      // v527: a top-calendar date is visually/functionally the same mini-node
-      // as a Calendar Child cell. Reuse the real cell icon renderer instead
-      // of maintaining a second icon vocabulary here. Duplicate date cells
-      // simply contribute their real icon strips into this one summary cell.
       cell.classList.add("node-table-cell", "calendar-summary-node-cell");
       if (hostRefs.length) {
         const combinedPoints = hostRefs.reduce((sum, ref) => {
@@ -24514,8 +24515,6 @@
           badge.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            // v537: the Calendar score badge is the real cell Task icon.
-            // Open that date's canonical Calendar Child Task List directly.
             const taskRef = hostRefs.find(ref => getNodeTasks(ref.host).length > 0) || hostRefs[0];
             if (taskRef) {
               state.selectedId = taskRef.node.id;
@@ -24547,13 +24546,7 @@
         });
         cell.appendChild(summaryStrip);
 
-        // Same right-click menu as Calendar Child. When the date is present
-        // in multiple child calendars, new content goes to the first
-        // canonical occurrence while all occurrences remain summarized here.
         const primary = hostRefs[0];
-
-        // v539: expose the canonical Calendar Child coordinates on the summary
-        // tile. Month switching is top-Calendar-specific; cell behavior is not.
         cell.dataset.summaryNodeId = primary.node.id;
         cell.dataset.r = String(primary.r);
         cell.dataset.c = String(primary.c);
@@ -24567,8 +24560,6 @@
           openCellAddMenu(primary.node, primary.r, primary.c, e.clientX, e.clientY);
         });
 
-        // Desktop marker drag/drop: behave exactly like dropping onto the
-        // canonical Calendar Child cell for this date.
         cell.addEventListener("dragover", (e) => {
           if (!markerDragAvailable(e)) return;
           const drag = markerDragState;
@@ -24595,7 +24586,6 @@
         });
       }
 
-      // Preserve ordinary due-date task boxes below the mini-node icon strip.
       const tasksWrap = document.createElement("div");
       tasksWrap.className = "calendar-day-tasks";
       tasksWrap.style.fontSize = calendarBoxFontSize(dayItems.length);
@@ -24607,16 +24597,82 @@
         tasksWrap.appendChild(box);
       });
       cell.appendChild(tasksWrap);
-
-      // v532: normal tap/click on a summary Calendar date is passive.
-      // Use its real mini-node icons/badge or the cell context menu instead.
-      calGridEl.appendChild(cell);
+      gridEl.appendChild(cell);
     }
   }
 
-  // v562: desktop month buttons coexist with phone swipe navigation.
-  calPrevBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() - 1); renderCalendar(); });
-  calNextBtn.addEventListener("click", () => { calCursor.setMonth(calCursor.getMonth() + 1); renderCalendar(); });
+  function renderCalendar() {
+    const quarter = calendarQuarterActive();
+    calendarModal.classList.toggle("calendar-quarter-view", quarter);
+    calMonthViewBtn.classList.toggle("active", !quarter);
+    calQuarterViewBtn.classList.toggle("active", quarter);
+    calMonthViewBtn.setAttribute("aria-pressed", quarter ? "false" : "true");
+    calQuarterViewBtn.setAttribute("aria-pressed", quarter ? "true" : "false");
+    calPrevBtn.title = quarter ? "Previous quarter" : "Previous month";
+    calNextBtn.title = quarter ? "Next quarter" : "Next month";
+
+    const entriesByDate = {};
+    allTasksWithNodes().forEach((entry) => {
+      if (entry.task.due) (entriesByDate[entry.task.due] = entriesByDate[entry.task.due] || []).push(entry);
+    });
+    const calendarHostsByDate = allCalendarDateHosts();
+
+    if (!quarter) {
+      calMonthLabelEl.textContent = `${MONTH_LABELS[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
+      calWeekdaysEl.classList.remove("hidden");
+      calGridEl.classList.remove("calendar-quarter-grid");
+      renderCalendarMonthInto(calGridEl, calWeekdaysEl, calCursor, entriesByDate, calendarHostsByDate);
+      return;
+    }
+
+    const year = calCursor.getFullYear();
+    const quarterIndex = Math.floor(calCursor.getMonth() / 3);
+    const firstMonth = quarterIndex * 3;
+    calMonthLabelEl.textContent = `Q${quarterIndex + 1} ${year}`;
+    calWeekdaysEl.classList.add("hidden");
+    calGridEl.innerHTML = "";
+    calGridEl.classList.add("calendar-quarter-grid");
+
+    for (let offset = 0; offset < 3; offset++) {
+      const monthDate = new Date(year, firstMonth + offset, 1);
+      const panel = document.createElement("section");
+      panel.className = "calendar-quarter-month";
+
+      const title = document.createElement("div");
+      title.className = "calendar-quarter-month-title";
+      title.textContent = `${MONTH_LABELS[monthDate.getMonth()]} ${monthDate.getFullYear()}`;
+
+      const weekdays = document.createElement("div");
+      weekdays.className = "calendar-quarter-weekdays";
+
+      const grid = document.createElement("div");
+      grid.className = "calendar-quarter-month-grid";
+
+      panel.append(title, weekdays, grid);
+      calGridEl.appendChild(panel);
+      renderCalendarMonthInto(grid, weekdays, monthDate, entriesByDate, calendarHostsByDate);
+    }
+  }
+
+  // v563: Previous/Next follows the active desktop Calendar view.
+  calPrevBtn.addEventListener("click", () => {
+    calCursor.setMonth(calCursor.getMonth() - (calendarQuarterActive() ? 3 : 1));
+    renderCalendar();
+  });
+  calNextBtn.addEventListener("click", () => {
+    calCursor.setMonth(calCursor.getMonth() + (calendarQuarterActive() ? 3 : 1));
+    renderCalendar();
+  });
+  calMonthViewBtn.addEventListener("click", () => {
+    calViewMode = "month";
+    try { localStorage.setItem("branchline_calendar_view", calViewMode); } catch (e) {}
+    renderCalendar();
+  });
+  calQuarterViewBtn.addEventListener("click", () => {
+    calViewMode = "quarter";
+    try { localStorage.setItem("branchline_calendar_view", calViewMode); } catch (e) {}
+    renderCalendar();
+  });
 
   // v546: swipe the Calendar horizontally to change month. Horizontal
   // intent must clearly dominate vertical movement so normal phone scrolling,
