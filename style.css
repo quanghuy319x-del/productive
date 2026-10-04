@@ -7915,3 +7915,19 @@ kbd{
 
 /* v534: Calendar is the third bottom-right FAB, after child + sibling. */
 .node-fab-calendar{font-size:21px;line-height:1}
+
+/* v536: let the phone Calendar use the screen down to the bottom edge. */
+@media (max-width:480px){
+  #calendar-modal{padding-bottom:max(2px, env(safe-area-inset-bottom));}
+  #calendar-modal .calendar-modal-card{
+    margin-bottom:0;
+    padding-bottom:4px;
+    height:calc(100dvh - max(8px, env(safe-area-inset-top)) - max(2px, env(safe-area-inset-bottom)));
+    max-height:none;
+  }
+  #calendar-grid{
+    flex:1;
+    min-height:0;
+    grid-template-rows:repeat(6,minmax(72px,1fr));
+  }
+}
