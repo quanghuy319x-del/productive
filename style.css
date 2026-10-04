@@ -7887,3 +7887,17 @@ kbd{
   #calendar-modal .modal-back-row{margin-bottom:7px;}
   #calendar-header{margin-bottom:7px;}
 }
+
+/* v529: child editors/viewers opened from Calendar must stack above it. */
+#tasks-modal,
+#note-modal,
+#brainstorm-modal,
+#photo-modal,
+#video-modal,
+#timer-modal,
+#affirmation-modal,
+#affirmation-quotes-modal,
+#link-comment-modal{z-index:1200!important}
+#note-modal{z-index:1250!important}
+#photo-modal.photo-modal-above-note{z-index:1300!important}
+.ctx-menu{z-index:1400!important}
