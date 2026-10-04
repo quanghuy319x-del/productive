@@ -24338,6 +24338,8 @@
   const calMonthViewBtn = $("#cal-view-month");
   const calQuarterViewBtn = $("#cal-view-quarter");
   const calSixViewBtn = $("#cal-view-six");
+  const calOptionsBtn = $("#cal-options-btn");
+  const calOptionsMenu = $("#cal-options-menu");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
@@ -24518,6 +24520,58 @@
     return items;
   }
 
+  function calendarSummaryStyle() {
+    const v = state.current && state.current.calendarSummaryStyle;
+    return ["current", "minimal", "transparent", "classic"].includes(v) ? v : "current";
+  }
+  function setCalendarSummaryStyle(mode) {
+    if (!state.current || !["current", "minimal", "transparent", "classic"].includes(mode)) return;
+    pushUndo();
+    state.current.calendarSummaryStyle = mode;
+    renderCalendar();
+    persist();
+  }
+  function applyCalendarSummaryOptions() {
+    if (!calendarModal) return;
+    ["current", "minimal", "transparent", "classic"].forEach(mode =>
+      calendarModal.classList.toggle("calendar-summary-style-" + mode, calendarSummaryStyle() === mode));
+    calendarModal.classList.toggle("map-icons-mono", mapIconStyle() === "mono");
+  }
+  function renderCalendarOptionsMenu() {
+    if (!calOptionsMenu) return;
+    calOptionsMenu.innerHTML = "";
+    const addSection = (title, options, current, setter) => {
+      const head = document.createElement("div");
+      head.className = "calendar-options-title";
+      head.textContent = title;
+      calOptionsMenu.appendChild(head);
+      const row = document.createElement("div");
+      row.className = "calendar-options-row";
+      options.forEach(([value, label]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "calendar-option-choice" + (current === value ? " active" : "");
+        btn.textContent = label;
+        btn.addEventListener("click", (e) => {
+          e.preventDefault(); e.stopPropagation();
+          setter(value);
+          renderCalendarOptionsMenu();
+        });
+        row.appendChild(btn);
+      });
+      calOptionsMenu.appendChild(row);
+    };
+    addSection("Calendar style",
+      [["current","Current"],["minimal","Minimal"],["transparent","Transparent"],["classic","Classic"]],
+      calendarSummaryStyle(), setCalendarSummaryStyle);
+    addSection("Task badge style",
+      [["color","Color"],["size","Size"],["both","Both"]],
+      taskBadgeStyle(), (v) => { setTaskBadgeStyle(v); renderCalendar(); });
+    addSection("Icon style",
+      [["mono","B&W"],["color","Color"]],
+      mapIconStyle(), (v) => { setMapIconStyle(v); renderCalendar(); });
+  }
+
   function openCalendarModal() {
     commitEditIfActive();
     closeContextMenu();
@@ -24667,6 +24721,7 @@
   }
 
   function renderCalendar() {
+    applyCalendarSummaryOptions();
     const viewMode = calendarDesktopViewMode();
     const quarter = viewMode === "quarter";
     const six = viewMode === "six";
@@ -24767,6 +24822,18 @@
     try { localStorage.setItem("branchline_calendar_view", calViewMode); } catch (e) {}
     renderCalendar();
   });
+  if (calOptionsBtn && calOptionsMenu) {
+    calOptionsBtn.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const opening = calOptionsMenu.classList.contains("hidden");
+      if (opening) renderCalendarOptionsMenu();
+      calOptionsMenu.classList.toggle("hidden", !opening);
+    });
+    calendarCard.addEventListener("click", (e) => {
+      if (!calOptionsMenu.classList.contains("hidden") && !calOptionsMenu.contains(e.target) && e.target !== calOptionsBtn)
+        calOptionsMenu.classList.add("hidden");
+    });
+  }
 
   // v546: swipe the Calendar horizontally to change month. Horizontal
   // intent must clearly dominate vertical movement so normal phone scrolling,
