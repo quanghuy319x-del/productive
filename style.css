@@ -8141,3 +8141,42 @@ kbd{
     gap:1px 2px;
   }
 }
+
+
+/* v564 — desktop Recent 6 Months view. Uses the same full Calendar-cell
+   behavior as Month/Q, arranged as a 3×2 month dashboard. */
+@media (min-width:641px){
+  #calendar-grid.calendar-six-grid{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    grid-auto-rows:auto!important;
+    gap:14px!important;
+    align-items:start;
+  }
+  #calendar-grid.calendar-six-grid .calendar-quarter-month-grid{
+    grid-auto-rows:minmax(54px,auto);
+  }
+  #calendar-grid.calendar-six-grid .calendar-quarter-month{
+    padding:7px;
+  }
+  #calendar-grid.calendar-six-grid .calendar-quarter-month-title{
+    font-size:13px;
+    padding-bottom:6px;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip .node-table-cell-icon{
+    width:14px!important;
+    height:14px!important;
+    min-width:14px!important;
+    font-size:12px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-icon-strip{
+    min-height:20px!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-score-badge{
+    transform:scale(1.18)!important;
+  }
+  #calendar-grid.calendar-six-grid .calendar-summary-score-badge:hover,
+  #calendar-grid.calendar-six-grid .calendar-summary-score-badge:focus-visible{
+    transform:scale(1.30)!important;
+  }
+}

@@ -24318,6 +24318,7 @@
   const calNextBtn = $("#cal-next-btn");
   const calMonthViewBtn = $("#cal-view-month");
   const calQuarterViewBtn = $("#cal-view-quarter");
+  const calSixViewBtn = $("#cal-view-six");
   const calDayModalBackdrop = $("#cal-day-modal-backdrop");
   const calDayModalTitle = $("#cal-day-modal-title");
   const calDayModalList = $("#cal-day-modal-task-list");
@@ -24331,10 +24332,16 @@
   let calViewMode = "month";
   try {
     const savedCalView = localStorage.getItem("branchline_calendar_view");
-    if (savedCalView === "quarter") calViewMode = "quarter";
+    if (savedCalView === "quarter" || savedCalView === "six") calViewMode = savedCalView;
   } catch (e) {}
+  function calendarDesktopViewMode() {
+    return window.matchMedia("(min-width: 641px)").matches ? calViewMode : "month";
+  }
   function calendarQuarterActive() {
-    return calViewMode === "quarter" && window.matchMedia("(min-width: 641px)").matches;
+    return calendarDesktopViewMode() === "quarter";
+  }
+  function calendarSixActive() {
+    return calendarDesktopViewMode() === "six";
   }
 
   // Every task on every node, anywhere in the tree — deliberately
@@ -24602,14 +24609,19 @@
   }
 
   function renderCalendar() {
-    const quarter = calendarQuarterActive();
+    const viewMode = calendarDesktopViewMode();
+    const quarter = viewMode === "quarter";
+    const six = viewMode === "six";
     calendarModal.classList.toggle("calendar-quarter-view", quarter);
-    calMonthViewBtn.classList.toggle("active", !quarter);
+    calendarModal.classList.toggle("calendar-six-view", six);
+    calMonthViewBtn.classList.toggle("active", viewMode === "month");
     calQuarterViewBtn.classList.toggle("active", quarter);
-    calMonthViewBtn.setAttribute("aria-pressed", quarter ? "false" : "true");
+    calSixViewBtn.classList.toggle("active", six);
+    calMonthViewBtn.setAttribute("aria-pressed", viewMode === "month" ? "true" : "false");
     calQuarterViewBtn.setAttribute("aria-pressed", quarter ? "true" : "false");
-    calPrevBtn.title = quarter ? "Previous quarter" : "Previous month";
-    calNextBtn.title = quarter ? "Next quarter" : "Next month";
+    calSixViewBtn.setAttribute("aria-pressed", six ? "true" : "false");
+    calPrevBtn.title = quarter ? "Previous quarter" : six ? "Previous 6 months" : "Previous month";
+    calNextBtn.title = quarter ? "Next quarter" : six ? "Next 6 months" : "Next month";
 
     const entriesByDate = {};
     allTasksWithNodes().forEach((entry) => {
@@ -24617,26 +24629,43 @@
     });
     const calendarHostsByDate = allCalendarDateHosts();
 
-    if (!quarter) {
+    if (viewMode === "month") {
       calMonthLabelEl.textContent = `${MONTH_LABELS[calCursor.getMonth()]} ${calCursor.getFullYear()}`;
       calWeekdaysEl.classList.remove("hidden");
-      calGridEl.classList.remove("calendar-quarter-grid");
+      calGridEl.classList.remove("calendar-quarter-grid", "calendar-six-grid");
       renderCalendarMonthInto(calGridEl, calWeekdaysEl, calCursor, entriesByDate, calendarHostsByDate);
       return;
     }
 
-    const year = calCursor.getFullYear();
-    const quarterIndex = Math.floor(calCursor.getMonth() / 3);
-    const firstMonth = quarterIndex * 3;
-    calMonthLabelEl.textContent = `Q${quarterIndex + 1} ${year}`;
+    let firstMonthDate;
+    let panelCount;
+    if (quarter) {
+      const year = calCursor.getFullYear();
+      const quarterIndex = Math.floor(calCursor.getMonth() / 3);
+      firstMonthDate = new Date(year, quarterIndex * 3, 1);
+      panelCount = 3;
+      calMonthLabelEl.textContent = `Q${quarterIndex + 1} ${year}`;
+    } else {
+      // v564: "recent 6 months" means the month at calCursor plus the five
+      // immediately before it. Navigation moves this six-month window in
+      // six-month blocks while keeping calCursor as the window's end month.
+      firstMonthDate = new Date(calCursor.getFullYear(), calCursor.getMonth() - 5, 1);
+      panelCount = 6;
+      const lastMonthDate = new Date(calCursor.getFullYear(), calCursor.getMonth(), 1);
+      const firstLabel = `${MONTH_LABELS[firstMonthDate.getMonth()].slice(0,3)} ${firstMonthDate.getFullYear()}`;
+      const lastLabel = `${MONTH_LABELS[lastMonthDate.getMonth()].slice(0,3)} ${lastMonthDate.getFullYear()}`;
+      calMonthLabelEl.textContent = `${firstLabel} – ${lastLabel}`;
+    }
+
     calWeekdaysEl.classList.add("hidden");
     calGridEl.innerHTML = "";
-    calGridEl.classList.add("calendar-quarter-grid");
+    calGridEl.classList.toggle("calendar-quarter-grid", quarter);
+    calGridEl.classList.toggle("calendar-six-grid", six);
 
-    for (let offset = 0; offset < 3; offset++) {
-      const monthDate = new Date(year, firstMonth + offset, 1);
+    for (let offset = 0; offset < panelCount; offset++) {
+      const monthDate = new Date(firstMonthDate.getFullYear(), firstMonthDate.getMonth() + offset, 1);
       const panel = document.createElement("section");
-      panel.className = "calendar-quarter-month";
+      panel.className = "calendar-quarter-month calendar-multi-month-panel";
 
       const title = document.createElement("div");
       title.className = "calendar-quarter-month-title";
@@ -24654,13 +24683,15 @@
     }
   }
 
-  // v563: Previous/Next follows the active desktop Calendar view.
+  // v564: Previous/Next follows Month / Quarter / recent-6-month view.
   calPrevBtn.addEventListener("click", () => {
-    calCursor.setMonth(calCursor.getMonth() - (calendarQuarterActive() ? 3 : 1));
+    const step = calendarQuarterActive() ? 3 : calendarSixActive() ? 6 : 1;
+    calCursor.setMonth(calCursor.getMonth() - step);
     renderCalendar();
   });
   calNextBtn.addEventListener("click", () => {
-    calCursor.setMonth(calCursor.getMonth() + (calendarQuarterActive() ? 3 : 1));
+    const step = calendarQuarterActive() ? 3 : calendarSixActive() ? 6 : 1;
+    calCursor.setMonth(calCursor.getMonth() + step);
     renderCalendar();
   });
   calMonthViewBtn.addEventListener("click", () => {
@@ -24670,6 +24701,11 @@
   });
   calQuarterViewBtn.addEventListener("click", () => {
     calViewMode = "quarter";
+    try { localStorage.setItem("branchline_calendar_view", calViewMode); } catch (e) {}
+    renderCalendar();
+  });
+  calSixViewBtn.addEventListener("click", () => {
+    calViewMode = "six";
     try { localStorage.setItem("branchline_calendar_view", calViewMode); } catch (e) {}
     renderCalendar();
   });
