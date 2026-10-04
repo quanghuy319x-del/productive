@@ -24403,29 +24403,69 @@
       dayHead.appendChild(dayNum);
 
       const dayEntries = entriesByDate[iso] || [];
-      const combined = calendarCombinedDateInfo(calendarHostsByDate[iso] || [], dayEntries);
-      const dayItems = combined.dayItems;
-      if (combined.score > 0 || dayItems.length) {
+      const hostRefs = calendarHostsByDate[iso] || [];
+      const dayItems = calendarDayItems(dayEntries);
+
+      // v527: a top-calendar date is visually/functionally the same mini-node
+      // as a Calendar Child cell. Reuse the real cell icon renderer instead
+      // of maintaining a second icon vocabulary here. Duplicate date cells
+      // simply contribute their real icon strips into this one summary cell.
+      cell.classList.add("node-table-cell", "calendar-summary-node-cell");
+      if (hostRefs.length) {
+        const combinedPoints = hostRefs.reduce((sum, ref) => {
+          const p = nodeTaskProgress(ref.host);
+          return sum + Math.max(0, Number(p && p.done) || 0);
+        }, 0);
+        const hasAnyTasks = hostRefs.some(ref => getNodeTasks(ref.host).length > 0);
+        if (hasAnyTasks) {
+          const badge = document.createElement("span");
+          badge.className = taskBadgeClass(combinedPoints, "node-table-cell-score-badge calendar-summary-score-badge");
+          badge.textContent = String(combinedPoints);
+          badge.title = `${combinedPoints} combined progress points for ${cellDate.getDate()}/${cellDate.getMonth() + 1}`;
+          badge.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openCalDayModal(iso);
+          });
+          cell.appendChild(badge);
+        }
+      } else if (dayItems.length) {
+        const doneCount = dayItems.filter(it => it.done).length;
         const counter = document.createElement("span");
-        counter.className = "calendar-day-counter";
-        counter.textContent = combined.score > 0 ? String(combined.score) : `✓${dayItems.filter(it => it.done).length}`;
-        counter.title = combined.score > 0 ? `Combined date-cell score: ${combined.score}` : `${dayItems.filter(it => it.done).length} of ${dayItems.length} done`;
+        counter.className = "calendar-day-counter" + (doneCount === dayItems.length ? " all-done" : "");
+        counter.textContent = `✓${doneCount}`;
+        counter.title = `${doneCount} of ${dayItems.length} done`;
         dayHead.appendChild(counter);
       }
 
       cell.appendChild(dayHead);
 
-      const iconsWrap = document.createElement("div");
-      iconsWrap.className = "calendar-date-icons";
-      combined.icons.forEach((it) => {
-        const icon = document.createElement("span");
-        icon.className = "calendar-date-icon";
-        icon.textContent = it.text;
-        icon.title = it.title || "";
-        iconsWrap.appendChild(icon);
-      });
-      cell.appendChild(iconsWrap);
+      if (hostRefs.length) {
+        const summaryStrip = document.createElement("div");
+        summaryStrip.className = "node-table-cell-icons calendar-summary-icon-strip";
+        hostRefs.forEach(ref => {
+          const realStrip = buildCellIconStrip(ref.node, ref.r, ref.c);
+          Array.from(realStrip.children).forEach(icon => {
+            if (!icon.classList.contains("node-table-cell-add")) summaryStrip.appendChild(icon);
+          });
+        });
+        cell.appendChild(summaryStrip);
 
+        // Same right-click menu as Calendar Child. When the date is present
+        // in multiple child calendars, new content goes to the first
+        // canonical occurrence while all occurrences remain summarized here.
+        const primary = hostRefs[0];
+        cell.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          state.selectedId = primary.node.id;
+          state.selectedCell = { nodeId: primary.node.id, r: primary.r, c: primary.c };
+          state.cellRangeAnchor = { nodeId: primary.node.id, r: primary.r, c: primary.c };
+          openCellAddMenu(primary.node, primary.r, primary.c, e.clientX, e.clientY);
+        });
+      }
+
+      // Preserve ordinary due-date task boxes below the mini-node icon strip.
       const tasksWrap = document.createElement("div");
       tasksWrap.className = "calendar-day-tasks";
       tasksWrap.style.fontSize = calendarBoxFontSize(dayItems.length);
