@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=598">
+<link rel="manifest" href="manifest.webmanifest?v=599">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,7 +24,7 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=598" count as
+     by their exact URL, so "style.css" and "style.css?v=599" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
@@ -1040,7 +1040,7 @@ if ("serviceWorker" in navigator) {
 })();
 </script>
 <script src="sidebar-hotfix-v490.js?v=588"></script>
-<script src="app.js?v=598"></script>
+<script src="app.js?v=599"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1431,35 +1431,50 @@ if ("serviceWorker" in navigator) {
   setupTitleMode("note-tool-title-mode", "note-textarea");
   setupTitleMode("brainstorm-tool-title-mode", "brainstorm-textarea");
 
-  // v518: keep B / BB / T. pressed state synchronized with the real caret.
-  function syncCaretFormatButtons() {
+  // v599: B / BB / T. state has one simple authority rule:
+  // manual button presses change state immediately; otherwise state is
+  // re-read only when the caret/selection actually MOVES. Typing/input at
+  // the same caret never changes a toolbar button.
+  let lastFormatCaretKey = "";
+
+  function caretFormatKey(sel) {
+    if (!sel || !sel.rangeCount || !sel.anchorNode) return "";
+    const r = sel.getRangeAt(0);
+    return [r.startContainer, r.startOffset, r.endContainer, r.endOffset]
+      .map((v) => typeof v === "number" ? v : String(v && v.nodeType) + ":" + String(v && v.textContent || "").length)
+      .join("|");
+  }
+
+  function syncCaretFormatButtons(force = false) {
     const editor = document.getElementById("note-textarea");
     if (!editor) return;
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return;
 
-    const anchorEl = sel.anchorNode.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode.parentElement;
-    const inTitle = !!anchorEl?.closest?.(".title-mode-heading");
-    const inTitleNormal = !!anchorEl?.closest?.(".title-mode-normal");
+    const key = caretFormatKey(sel);
+    if (!force && key === lastFormatCaretKey) return;
+    lastFormatCaretKey = key;
+
+    const titleBtn = document.getElementById("note-tool-title-mode");
+    const titleEnabled = titleBtn?.dataset.titleModeEnabled === "1";
+
+    // T. is master mode. While it is ON, do not derive B/BB state from
+    // title CSS or typed uppercase text; Title Mode alone controls typing.
+    if (titleEnabled) {
+      titleBtn?.classList.add("is-active", "active");
+      titleBtn?.setAttribute("aria-pressed", "true");
+      return;
+    }
+
+    titleBtn?.classList.remove("is-active", "active");
+    titleBtn?.setAttribute("aria-pressed", "false");
 
     let boldOn = false;
     try { boldOn = document.queryCommandState("bold"); } catch (_) {}
-    // Title Mode is CSS-bold, so queryCommandState alone can report false.
-    boldOn = !!boldOn || inTitle;
-    document.getElementById("note-tool-bold")?.classList.toggle("active", boldOn);
+    document.getElementById("note-tool-bold")?.classList.toggle("active", !!boldOn);
 
-    const titleBtn = document.getElementById("note-tool-title-mode");
-    if (titleBtn) {
-      // v598: setupTitleMode owns T.'s ON/OFF state. Caret inspection must
-      // never turn it back on after the user explicitly switched it off.
-      const titleEnabled = titleBtn.dataset.titleModeEnabled === "1";
-      titleBtn.classList.toggle("is-active", titleEnabled);
-      titleBtn.classList.toggle("active", titleEnabled);
-      titleBtn.setAttribute("aria-pressed", String(titleEnabled));
-    }
-
-    // BB uppercases characters rather than storing a separate CSS style, so
-    // inspect the selected/current word. This also works with already-saved notes.
+    // BB reflects the caret's real BOLD+UPPERCASE formatting only after a
+    // caret move. It is never recalculated just because the user typed.
     let sample = sel.isCollapsed ? "" : sel.toString();
     if (!sample && sel.anchorNode.nodeType === Node.TEXT_NODE) {
       const text = sel.anchorNode.data || "";
@@ -1470,17 +1485,19 @@ if ("serviceWorker" in navigator) {
     }
     const letters = sample.replace(/[^\\p{L}]+/gu, "");
     const uppercaseHere = !!letters && letters === letters.toUpperCase() && letters !== letters.toLowerCase();
+    const bbOn = !!boldOn && uppercaseHere;
     const bbBtn = document.getElementById("note-tool-bold-upper");
-    if (bbBtn && (sample || inTitle || !boldOn)) {
-      const bbOn = !!boldOn && (inTitle || uppercaseHere);
-      bbBtn.classList.toggle("active", bbOn);
-      bbBtn.setAttribute("aria-pressed", String(bbOn));
-    }
+    bbBtn?.classList.toggle("active", bbOn);
+    bbBtn?.setAttribute("aria-pressed", String(bbOn));
   }
-  const queueCaretFormatSync = () => requestAnimationFrame(syncCaretFormatButtons);
-  document.addEventListener("selectionchange", queueCaretFormatSync);
-  ["pointerup", "keyup", "input", "focus"].forEach((type) =>
-    document.getElementById("note-textarea")?.addEventListener(type, queueCaretFormatSync));
+
+  // selectionchange fires for typing too, so compare the actual caret key
+  // before changing status. Pointer/key navigation can force one read after
+  // the browser has placed the caret.
+  document.addEventListener("selectionchange", () => requestAnimationFrame(() => syncCaretFormatButtons(false)));
+  ["pointerup", "keyup"].forEach((type) =>
+    document.getElementById("note-textarea")?.addEventListener(type, () =>
+      requestAnimationFrame(() => syncCaretFormatButtons(true))));
 })();
 </script>
 <script>
