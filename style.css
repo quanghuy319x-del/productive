@@ -8940,3 +8940,42 @@ kbd{
     grid-auto-rows:minmax(54px,auto)!important;
   }
 }
+
+
+/* v595 — top Calendar Minimal now uses the same visual language as
+   Calendar Child's calendar-style-minimal instead of its old approximation. */
+#calendar-modal.calendar-summary-style-minimal .calendar-modal-card{
+  background:transparent!important;
+  box-shadow:none!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell{
+  background:transparent!important;
+  border-color:transparent!important;
+  border-bottom:1px solid color-mix(in srgb,currentColor 13%,transparent)!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-day-head{
+  opacity:1!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-day-num{
+  color:currentColor!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-weekday{
+  color:currentColor!important;
+  opacity:.56!important;
+  font-weight:700!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell.outside-month{
+  background:transparent!important;
+  opacity:.22!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell.today{
+  border:0!important;
+  border-bottom:2px solid #2f6df6!important;
+  box-shadow:none!important;
+  background:rgba(47,109,246,.07)!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell.today .calendar-day-num{
+  color:currentColor!important;
+}
