@@ -8644,11 +8644,12 @@
   function virtualTreeConnectorSpecs(win) {
     const specs = [];
     const layoutMode = state.current.layout || "mindmap";
-    const branches = state.current.root.children || [];
+    const branches = (state.current.root.children || []).filter(n => !n.hidden);
 
     for (const n of virtualAllNodes) {
       if (n.collapsed || !n.children || n.children.length === 0) continue;
       for (const c of n.children) {
+        if (c.hidden) continue;
         if (layoutMode === "timeline" && n === state.current.root) continue;
         if (!virtualRectIntersects(virtualConnectorRect(n, c), win)) continue;
         specs.push({
@@ -8867,6 +8868,7 @@
 
     virtualAllNodes = [];
     (function collect(n) {
+      if (n.hidden && n !== state.current.root) return;
       virtualAllNodes.push(n);
       if (!n.collapsed) (n.children || []).forEach(collect);
     })(state.current.root);
@@ -13404,6 +13406,29 @@
       structureItems.push(["📥 Move to here", () => completeMoveTo(node.id)]);
     }
     structureItems.push([node.struck ? "~~ Remove strikethrough" : "~~ Strikethrough", () => { pushUndo(); node.struck = !node.struck; renderAll(); persist(); }]);
+
+    // v592: Hide keeps the node and its whole branch in the map data but
+    // removes it from the canvas. Restore hidden direct children from their
+    // parent's menu so hiding never strands data with no way back.
+    if (node !== state.current.root) {
+      structureItems.push(["🙈 Hide node", () => {
+        pushUndo();
+        node.hidden = true;
+        const parent = findParent(node.id);
+        state.selectedId = parent ? parent.id : state.current.root.id;
+        renderAll();
+        persist();
+      }]);
+    }
+    const hiddenChildren = (node.children || []).filter(child => child.hidden);
+    if (hiddenChildren.length) {
+      structureItems.push([`👁️ Show hidden nodes (${hiddenChildren.length})`, () => {
+        pushUndo();
+        hiddenChildren.forEach(child => { child.hidden = false; });
+        renderAll();
+        persist();
+      }]);
+    }
     if (node.children && node.children.length > 0) {
       structureItems.push([node.collapsed ? "▸ Expand" : "▾ Collapse", () => { pushUndo(); node.collapsed = !node.collapsed; renderAll(); persist(); }]);
     }
