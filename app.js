@@ -7805,6 +7805,10 @@
   }
 
   function persist() {
+    // Capture Calendar Child contents before the edited live tree is persisted.
+    // If an edit removed a task/list/icon/cell, the previously captured copy
+    // remains in calendarRetained and therefore stays visible in Calendar.
+    syncCalendarRetainedFromLive();
     unsavedEdits = true;
     try { updateCloudSyncPill(); } catch (e) {}
 
@@ -24477,6 +24481,43 @@
       state.current.calendarRetained = {};
     return state.current.calendarRetained;
   }
+
+  // v591: snapshot Calendar Child data before any destructive cell/node edit
+  // can make it disappear from the live tree. This makes deleting a whole
+  // Calendar Child, a Task List, note, photo, etc. non-destructive to the
+  // top Calendar. The snapshot is additive: deletions never flow upward.
+  function syncCalendarRetainedFromLive() {
+    if (!state.current || !state.current.root) return;
+    const retained = calendarRetainedStore();
+    (function walk(node) {
+      const t = node && node.table;
+      if (t && t.calendar && Array.isArray(t.cells) && Array.isArray(t.attach)) {
+        const year = Number(t.calendarYear), month = Number(t.calendarMonth);
+        const start = Number.isFinite(Number(t.calendarStart))
+          ? Number(t.calendarStart)
+          : (new Date(year, month - 1, 1).getDay() + 6) % 7;
+        if (Number.isFinite(year) && Number.isFinite(month)) {
+          for (let r = 2; r < t.cells.length; r++) for (let col = 0; col < 7; col++) {
+            const offset = (r - 2) * 7 + col - start;
+            const d = new Date(year, month - 1, 1 + offset);
+            if (d.getFullYear() !== year || d.getMonth() + 1 !== month) continue;
+            const host = getCellAttach(node, r, col);
+            if (!cellAttachHasAny(host)) continue;
+            const iso = toISODate(d);
+            const sourceKey = node.id + ":" + r + ":" + col;
+            if (!retained[iso] || typeof retained[iso] !== "object") retained[iso] = {};
+            const oldHost = retained[iso][sourceKey] && retained[iso][sourceKey].host;
+            retained[iso][sourceKey] = {
+              sourceKey,
+              host: calendarMergeAdditive(oldHost || {}, host)
+            };
+          }
+        }
+      }
+      (node.children || []).forEach(walk);
+    })(state.current.root);
+  }
+
   function allCalendarDateHosts() {
     const liveByDate = {};
     if (!state.current) return liveByDate;
