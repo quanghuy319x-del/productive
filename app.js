@@ -24553,7 +24553,11 @@
     const notes = getNodeNotes(host);
     notes.filter(n => !isBrainstormNote(n)).forEach(n =>
       icons.push({ text: isDRCNote(n) ? "📋" : (isPlanNote(n) ? "☑" : "📝"), title: n.title || notePreviewText(n) }));
-    getNodeUrls(host).forEach(u => icons.push({ text: isYouTubeUrl(u) ? "▶" : "🔗", title: getLinkTitle(host, u) || u }));
+    getNodeUrls(host).forEach(u => {
+      const raw = typeof u === "string" ? u : ((u && (u.url || u.href)) || "");
+      const isYoutube = /(?:youtube\.com|youtu\.be)/i.test(raw);
+      icons.push({ text: isYoutube ? "▶" : "🔗", title: getLinkTitle(host, u) || raw });
+    });
     if (hasBrainstormContent(host) || getNodeTasks(host).some(t => getTaskSubtasks(t).some(subtaskHasBrainstormMarker)))
       icons.push({ text: "🧠", title: "Brainstorm" });
     const played = getNodeTimePlayed(host);
