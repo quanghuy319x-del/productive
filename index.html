@@ -14,7 +14,7 @@
 <meta http-equiv="Expires" content="0">
 <title>Bản đồ tư duy</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="manifest" href="manifest.webmanifest?v=597">
+<link rel="manifest" href="manifest.webmanifest?v=598">
 <link rel="apple-touch-icon" href="pwa-icon-192.png">
 <meta name="theme-color" content="#15171c">
 <meta name="application-name" content="Branchline">
@@ -24,7 +24,7 @@
 <meta name="apple-mobile-web-app-title" content="Branchline">
 <!-- BUMP_VERSION: bump this number every time you re-upload app.js or
      style.css to GitHub. Browsers (and GitHub's CDN) cache .css/.js files
-     by their exact URL, so "style.css" and "style.css?v=597" count as
+     by their exact URL, so "style.css" and "style.css?v=598" count as
      completely different files to them — bumping this forces everyone's
      browser to fetch your new version instead of reusing an old cached
      one, no hard-refresh needed on their end. -->
@@ -1040,7 +1040,7 @@ if ("serviceWorker" in navigator) {
 })();
 </script>
 <script src="sidebar-hotfix-v490.js?v=588"></script>
-<script src="app.js?v=597"></script>
+<script src="app.js?v=598"></script>
 <script>
 (() => {
   function insertText(editor, text) {
@@ -1145,7 +1145,9 @@ if ("serviceWorker" in navigator) {
 
     button.addEventListener("click", () => {
       enabled = !enabled;
+      button.dataset.titleModeEnabled = enabled ? "1" : "0";
       button.classList.toggle("is-active", enabled);
+      button.classList.toggle("active", enabled);
       button.setAttribute("aria-pressed", String(enabled));
       editor.focus();
     });
@@ -1303,6 +1305,23 @@ if ("serviceWorker" in navigator) {
       return true;
     }
 
+    // v598: toolbar Tab must end the current Title segment BEFORE app.js
+    // inserts its non-editable dot-tab. Otherwise the tab span is inserted
+    // inside .title-mode-heading and Chrome keeps native/CSS bold afterward.
+    const titleTabButtonId = editorId === "brainstorm-textarea"
+      ? "brainstorm-tool-tab"
+      : "note-tool-tab";
+    document.getElementById(titleTabButtonId)?.addEventListener("mousedown", () => {
+      if (!enabled) return;
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return;
+      const range = sel.getRangeAt(0);
+      if (!range.collapsed || !headingAncestor(range.startContainer)) return;
+      const line = directLineForRange(range);
+      if (titleEnded(textBeforeCaretInLine(range, line))) return;
+      finishTitleAtTab(range);
+    }, true);
+
     // v495: keyboard Tab is also a Title Mode boundary, just like "." or
     // "------". Keep T. enabled, move the caret into normal text, then
     // invoke the existing toolbar Tab action so its dot-leader spacing stays
@@ -1327,7 +1346,11 @@ if ("serviceWorker" in navigator) {
         : "note-tool-tab";
       const tabButton = document.getElementById(tabButtonId);
       if (tabButton) {
-        tabButton.click();
+        // app.js owns Tab on mousedown, not click. Dispatch the same event
+        // used by a real toolbar press so keyboard Tab inserts exactly once.
+        tabButton.dispatchEvent(new MouseEvent("mousedown", {
+          bubbles: true, cancelable: true, view: window
+        }));
       } else {
         // Fallback if the toolbar button is ever removed: keep focus in the
         // normal segment instead of letting browser Tab move focus away.
@@ -1427,14 +1450,12 @@ if ("serviceWorker" in navigator) {
 
     const titleBtn = document.getElementById("note-tool-title-mode");
     if (titleBtn) {
-      // An armed T. on a brand-new empty line has no heading span yet: keep
-      // its current pressed state until the first character creates one.
-      const hasCaretText = !!(sel.anchorNode.nodeType === Node.TEXT_NODE && (sel.anchorNode.data || "").replace(/\\u200B/g, ""));
-      if (inTitle || inTitleNormal || hasCaretText) {
-        titleBtn.classList.toggle("is-active", inTitle);
-        titleBtn.classList.toggle("active", inTitle);
-        titleBtn.setAttribute("aria-pressed", String(inTitle));
-      }
+      // v598: setupTitleMode owns T.'s ON/OFF state. Caret inspection must
+      // never turn it back on after the user explicitly switched it off.
+      const titleEnabled = titleBtn.dataset.titleModeEnabled === "1";
+      titleBtn.classList.toggle("is-active", titleEnabled);
+      titleBtn.classList.toggle("active", titleEnabled);
+      titleBtn.setAttribute("aria-pressed", String(titleEnabled));
     }
 
     // BB uppercases characters rather than storing a separate CSS style, so
