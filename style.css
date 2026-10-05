@@ -8921,3 +8921,22 @@ kbd{
 #calendar-modal .calendar-summary-icon-strip .node-marker-count{
   z-index:20!important;
 }
+
+
+/* v594 — give Calendar dates more vertical room for busy icon stacks. */
+#calendar-modal #calendar-grid{grid-auto-rows:minmax(96px,auto)!important}
+@media (max-width:480px){
+  #calendar-modal #calendar-grid{grid-auto-rows:minmax(82px,auto)!important}
+}
+@media (min-width:641px){
+  #calendar-modal #calendar-grid:not(.calendar-quarter-grid):not(.calendar-six-grid){
+    grid-template-rows:repeat(6,minmax(190px,1fr))!important;
+    grid-auto-rows:minmax(190px,auto)!important;
+  }
+  #calendar-modal #calendar-grid.calendar-quarter-grid .calendar-quarter-month-grid{
+    grid-auto-rows:minmax(72px,auto)!important;
+  }
+  #calendar-modal #calendar-grid.calendar-six-grid .calendar-six-month-grid{
+    grid-auto-rows:minmax(54px,auto)!important;
+  }
+}
