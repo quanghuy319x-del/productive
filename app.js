@@ -23135,6 +23135,11 @@
       addItem(n ? `📝 Notes (${n})…` : "📝 Add note…", "", opts.openNotes);
     }
 
+    addItem("＋ Add subtask", "", () => {
+      collapsedSubtaskIds.delete(t.id);
+      subtaskAddOpenFor.add(t.id);
+      rerender();
+    });
     addItem(t.done ? "↩ Mark undone" : "✓ Mark done", "", () => {
       if (!requireSignIn()) return;
       pushUndo();
@@ -24134,23 +24139,6 @@
         }
       });
 
-      // Add-subtask icon — reachable straight from the row, even for a
-      // brand-new task with no subtasks yet, without needing the
-      // double-click gesture first. Clicking it opens (or reveals) this
-      // task's subtask panel with the "add" input already focused.
-      const subtaskBtn = document.createElement("button");
-      subtaskBtn.type = "button";
-      subtaskBtn.className = "task-subtask-btn" + (subProg.total ? " has-subtasks" : "");
-      subtaskBtn.title = subProg.total ? "Add another subtask" : "Add a subtask";
-      subtaskBtn.textContent = "+";
-      subtaskBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-      subtaskBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        collapsedSubtaskIds.delete(t.id);
-        subtaskAddOpenFor.add(t.id);
-        renderTasksModal();
-      });
-
       const del = document.createElement("button");
       del.className = "task-delete";
       del.title = "Delete task";
@@ -24164,13 +24152,12 @@
         renderTasksModal();
       });
 
-      // Keep the row intentionally minimal: reorder handle, task name,
-      // and the one explicit + Add subtask action. Every other task action
-      // lives in the right-click / long-press menu.
+      // Keep the row intentionally minimal: reorder handle and task name.
+      // Add subtask now lives in the right-click / long-press menu; the
+      // trailing + inside the expanded subtask panel remains unchanged.
       li.appendChild(handle);
       li.appendChild(text);
       if (taskIsBrainstorm) li.appendChild(noteBtn);
-      li.appendChild(subtaskBtn);
       tasksListEl.appendChild(li);
 
       if (subExpanded) tasksListEl.appendChild(renderSubtaskPanel(node, t));
