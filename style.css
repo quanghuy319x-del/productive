@@ -8979,3 +8979,19 @@ kbd{
 #calendar-modal.calendar-summary-style-minimal .calendar-cell.today .calendar-day-num{
   color:currentColor!important;
 }
+
+
+/* v596 — Minimal stays minimal, but the top Calendar keeps an opaque light
+   surface; do not let the map/content behind the Calendar show through. */
+#calendar-modal.calendar-summary-style-minimal .calendar-modal-card{
+  background:#f5f5f3!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell{
+  background:#fafaf8!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell.outside-month{
+  background:#f1f1ee!important;
+}
+#calendar-modal.calendar-summary-style-minimal .calendar-cell.today{
+  background:#eaf2ff!important;
+}
