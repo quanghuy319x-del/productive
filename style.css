@@ -8995,3 +8995,26 @@ kbd{
 #calendar-modal.calendar-summary-style-minimal .calendar-cell.today{
   background:#eaf2ff!important;
 }
+
+
+/* v597: Note/Brainstorm toolbar buttons must not show a transient browser
+   focus/press flash. Persistent formatting state is still provided by
+   .active / .is-active (B, BB, T., lists, etc.). */
+.note-toolbar .note-tool-btn:focus,
+.note-toolbar .note-tool-btn:focus-visible,
+.note-toolbar .note-tool-btn:active{
+  outline:none!important;
+  transform:none!important;
+  box-shadow:none!important;
+}
+.note-toolbar .note-tool-btn:not(.active):not(.is-active):active{
+  background:#ffffff!important;
+  border-color:var(--paper-border)!important;
+  color:var(--paper-text)!important;
+}
+.note-toolbar .note-tool-btn.active:active,
+.note-toolbar .note-tool-btn.is-active:active{
+  border-color:#3b6ef0!important;
+  background:#eaf0ff!important;
+  color:#3b6ef0!important;
+}
