@@ -24431,12 +24431,55 @@
     return out;
   }
 
-  // v526: calendar-table cells are the canonical dated mini-nodes shown by
-  // the top Calendar. Multiple calendar cells representing the same real
-  // date are combined into one top-calendar cell.
+  // v589: retention-safe top Calendar. Calendar Child cells stay unchanged,
+  // while the summary keeps an additive snapshot per dated cell. Additions
+  // and edits flow into Calendar; removals and whole-cell deletion do not
+  // erase Calendar history.
+  function calendarClone(v) {
+    try { return structuredClone(v); } catch (_) {
+      try { return JSON.parse(JSON.stringify(v)); } catch (_) { return v; }
+    }
+  }
+  function calendarMergeAdditive(oldValue, liveValue) {
+    if (liveValue == null) return calendarClone(oldValue);
+    if (oldValue == null) return calendarClone(liveValue);
+    if (Array.isArray(liveValue)) {
+      const out = Array.isArray(oldValue) ? calendarClone(oldValue) : [];
+      liveValue.forEach((item) => {
+        if (item && typeof item === "object") {
+          const id = item.id || item._id || item.photoId || null;
+          const idx = id == null ? -1 : out.findIndex(x => x && typeof x === "object" && (x.id || x._id || x.photoId) === id);
+          if (idx >= 0) out[idx] = calendarMergeAdditive(out[idx], item);
+          else {
+            const same = out.findIndex(x => {
+              try { return JSON.stringify(x) === JSON.stringify(item); } catch (_) { return x === item; }
+            });
+            if (same < 0) out.push(calendarClone(item));
+          }
+        } else if (!out.includes(item)) out.push(item);
+      });
+      return out;
+    }
+    if (typeof liveValue === "object") {
+      const out = (oldValue && typeof oldValue === "object" && !Array.isArray(oldValue)) ? calendarClone(oldValue) : {};
+      Object.keys(liveValue).forEach(k => {
+        const v = liveValue[k];
+        if (v == null || v === "") return;
+        out[k] = calendarMergeAdditive(out[k], v);
+      });
+      return out;
+    }
+    return calendarClone(liveValue);
+  }
+  function calendarRetainedStore() {
+    if (!state.current) return {};
+    if (!state.current.calendarRetained || typeof state.current.calendarRetained !== "object")
+      state.current.calendarRetained = {};
+    return state.current.calendarRetained;
+  }
   function allCalendarDateHosts() {
-    const byDate = {};
-    if (!state.current) return byDate;
+    const liveByDate = {};
+    if (!state.current) return liveByDate;
     (function walk(node) {
       const t = node.table;
       if (t && t.calendar && Array.isArray(t.cells) && Array.isArray(t.attach)) {
@@ -24448,22 +24491,59 @@
           for (let r = 2; r < t.cells.length; r++) for (let col = 0; col < 7; col++) {
             const offset = (r - 2) * 7 + col - start;
             const d = new Date(year, month - 1, 1 + offset);
-
-            // v545: adjacent-month cells are visual spillover only. A date
-            // belongs to exactly its own Calendar Child month for top-Calendar
-            // aggregation. E.g. 1 Oct shown at the end of September must NOT
-            // contribute a second set of October icons/tasks.
             if (d.getFullYear() !== year || d.getMonth() + 1 !== month) continue;
-
             const iso = toISODate(d);
             const host = getCellAttach(node, r, col);
-            (byDate[iso] = byDate[iso] || []).push({ node, r, c: col, host });
+            const sourceKey = node.id + ":" + r + ":" + col;
+            (liveByDate[iso] = liveByDate[iso] || []).push({ node, r, c: col, host, sourceKey, live: true });
           }
         }
       }
       (node.children || []).forEach(walk);
     })(state.current.root);
+
+    const retained = calendarRetainedStore();
+    Object.keys(liveByDate).forEach(iso => {
+      if (!retained[iso] || typeof retained[iso] !== "object") retained[iso] = {};
+      liveByDate[iso].forEach(ref => {
+        const old = retained[iso][ref.sourceKey] && retained[iso][ref.sourceKey].host;
+        retained[iso][ref.sourceKey] = {
+          sourceKey: ref.sourceKey,
+          host: calendarMergeAdditive(old || {}, ref.host || {})
+        };
+      });
+    });
+
+    const byDate = {};
+    Object.keys(retained).forEach(iso => {
+      const liveRefs = liveByDate[iso] || [];
+      const liveMap = new Map(liveRefs.map(r => [r.sourceKey, r]));
+      Object.keys(retained[iso] || {}).forEach(sourceKey => {
+        const saved = retained[iso][sourceKey];
+        if (!saved || !saved.host) return;
+        const live = liveMap.get(sourceKey);
+        (byDate[iso] = byDate[iso] || []).push(live
+          ? { ...live, retainedHost: saved.host, host: saved.host }
+          : { node: null, r: null, c: null, sourceKey, live: false, host: saved.host, retainedHost: saved.host });
+      });
+    });
     return byDate;
+  }
+
+  function appendRetainedOnlyIcons(strip, retainedHost, liveHost) {
+    const retainedIcons = calendarHostIcons(retainedHost || {});
+    const liveIcons = calendarHostIcons(liveHost || {});
+    const remaining = new Map();
+    liveIcons.forEach(i => remaining.set(i.text, (remaining.get(i.text) || 0) + 1));
+    retainedIcons.forEach(i => {
+      const n = remaining.get(i.text) || 0;
+      if (n > 0) { remaining.set(i.text, n - 1); return; }
+      const ghost = document.createElement("span");
+      ghost.className = "node-table-cell-icon calendar-retained-icon";
+      ghost.textContent = i.text;
+      ghost.title = (i.title || "Retained Calendar item") + " — retained in Calendar";
+      strip.appendChild(ghost);
+    });
   }
 
   function calendarHostIcons(host) {
@@ -24642,7 +24722,7 @@
           badge.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const taskRef = hostRefs.find(ref => getNodeTasks(ref.host).length > 0) || hostRefs[0];
+            const taskRef = hostRefs.find(ref => ref.live && ref.node && getNodeTasks(getCellAttach(ref.node, ref.r, ref.c)).length > 0);
             if (taskRef) {
               state.selectedId = taskRef.node.id;
               state.selectedCell = { nodeId: taskRef.node.id, r: taskRef.r, c: taskRef.c };
@@ -24666,19 +24746,28 @@
         const summaryStrip = document.createElement("div");
         summaryStrip.className = "node-table-cell-icons calendar-summary-icon-strip";
         hostRefs.forEach(ref => {
-          const realStrip = buildCellIconStrip(ref.node, ref.r, ref.c);
-          Array.from(realStrip.children).forEach(icon => {
-            if (!icon.classList.contains("node-table-cell-add")) summaryStrip.appendChild(icon);
-          });
+          if (ref.live && ref.node) {
+            const liveHost = getCellAttach(ref.node, ref.r, ref.c);
+            const realStrip = buildCellIconStrip(ref.node, ref.r, ref.c);
+            Array.from(realStrip.children).forEach(icon => {
+              if (!icon.classList.contains("node-table-cell-add")) summaryStrip.appendChild(icon);
+            });
+            appendRetainedOnlyIcons(summaryStrip, ref.retainedHost || ref.host, liveHost);
+          } else {
+            appendRetainedOnlyIcons(summaryStrip, ref.host, {});
+          }
         });
         cell.appendChild(summaryStrip);
 
-        const primary = hostRefs[0];
-        cell.dataset.summaryNodeId = primary.node.id;
-        cell.dataset.r = String(primary.r);
-        cell.dataset.c = String(primary.c);
+        const primary = hostRefs.find(ref => ref.live && ref.node) || hostRefs[0];
+        if (primary && primary.live && primary.node) {
+          cell.dataset.summaryNodeId = primary.node.id;
+          cell.dataset.r = String(primary.r);
+          cell.dataset.c = String(primary.c);
+        }
 
         cell.addEventListener("contextmenu", (e) => {
+          if (!primary || !primary.live || !primary.node) return;
           e.preventDefault();
           e.stopPropagation();
           state.selectedId = primary.node.id;
