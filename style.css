@@ -8910,3 +8910,14 @@ kbd{
   background:#eaf2ff!important;
   box-shadow:inset 0 0 0 1px rgba(47,109,246,.18),0 0 0 1px rgba(47,109,246,.10)!important;
 }
+
+
+/* v593 — Calendar icon counters must never be clipped by their own marker.
+   Counter badges deliberately sit outside the icon's top-right corner. */
+#calendar-modal .calendar-summary-icon-strip,
+#calendar-modal .calendar-summary-icon-strip .node-table-cell-icon{
+  overflow:visible!important;
+}
+#calendar-modal .calendar-summary-icon-strip .node-marker-count{
+  z-index:20!important;
+}
